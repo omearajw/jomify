@@ -182,3 +182,30 @@
     border-right-color: var(--border);
   }
 }
+
+/* Custom Jomify Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+/* The track (background) */
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* The handle (thumb) */
+::-webkit-scrollbar-thumb {
+  background: #404040; /* Tailwind neutral-700 */
+  border-radius: 10px;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: #737373; /* Tailwind neutral-500 */
+}
+
+/* Remove arrows */
+::-webkit-scrollbar-button {
+  display: none;
+}

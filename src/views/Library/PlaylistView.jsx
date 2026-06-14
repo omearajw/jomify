@@ -1,21 +1,29 @@
 import { useEffect, useState, useRef } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { fetchPlaylistDetails, playPlaylistTrack, checkTracksLiked, fetchMoreTracks, toggleShuffleState } from '../../services/spotify/api';
+import { fetchPlaylistDetails, playPlaylistTrack, checkTracksLiked, fetchMoreTracks } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
-import { Clock3, Play, Shuffle } from 'lucide-react';
+import { Clock3, Play } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 
+// Robust string cleaner to bypass Spotify's meta mismatches
+const cleanString = (str) => {
+  if (!str) return '';
+  return str
+    .split(/[-(]/)[0] // Grab everything before a hyphen or parenthesis
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '') // Keep only alphanumeric characters
+    .trim();
+};
+
 export default function PlaylistView() {
-  const { token, activePlaylistId, setLikedTracks } = useUserStore();
-  
-  // Pull the fixed isShuffled state and optimistic toggle
-  const { deviceId, playbackState, isShuffled, toggleOptimisticShuffle } = usePlayerStore();
+  const { token, activePlaylistId, setLikedTracks, setContextMenu } = useUserStore();
+  const { deviceId, playbackState } = usePlayerStore();
   const [playlist, setPlaylist] = useState(null);
   
   const isFetchingMore = useRef(false);
 
-  const currentPlayingTrackId = playbackState?.track_window?.current_track?.id;
+  const currentPlayingTrack = playbackState?.track_window?.current_track;
   const isCurrentTrackPaused = playbackState ? playbackState.paused : true;
 
   const checkLikesForChunk = (items) => {
@@ -73,19 +81,17 @@ export default function PlaylistView() {
     isFetchingMore.current = false;
   };
 
-  // PURE PLAY FUNCTION: Only handles starting tracks
   const handleTrackSelect = (index) => {
     if (!token || !deviceId) return;
     playPlaylistTrack(token, deviceId, activePlaylistId, index).catch(console.error);
   };
 
-  // PURE SHUFFLE FUNCTION: Only toggles the state, never skips/plays
-  const handleToggleShuffle = () => {
-    if (!token || !deviceId) return;
-    toggleOptimisticShuffle();
-    toggleShuffleState(token, deviceId, !isShuffled).catch((err) => {
-      console.error(err);
-      toggleOptimisticShuffle(); // Revert on network failure
+  const handleRightClick = (e, track) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      track: track
     });
   };
 
@@ -96,7 +102,7 @@ export default function PlaylistView() {
   return (
     <div className="flex flex-col pb-8">
       {/* Playlist Header */}
-      <div className="flex items-end space-x-6 mb-6 mt-4 select-none">
+      <div className="flex items-end space-x-6 mb-8 mt-4 select-none">
         {playlist.images?.length > 0 ? (
           <img src={playlist.images[0].url} alt={playlist.name} className="w-48 h-48 shadow-2xl shadow-black/50 rounded" />
         ) : (
@@ -110,25 +116,6 @@ export default function PlaylistView() {
             {playlist.owner.display_name} • {playlist.tracks.total} songs
           </p>
         </div>
-      </div>
-
-      {/* Action Bar */}
-      <div className="flex items-center space-x-4 mb-8 pl-4">
-        {/* Play Button - Always starts from the top if clicked */}
-        <button 
-          onClick={() => handleTrackSelect(0)} 
-          className="w-14 h-14 bg-green-500 text-black rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-xl"
-        >
-          <Play className="w-6 h-6 fill-current ml-1" />
-        </button>
-        
-        {/* Shuffle Toggle - Purely visual state, no playback disruption */}
-        <button 
-          onClick={handleToggleShuffle} 
-          className={`w-10 h-10 flex items-center justify-center hover:scale-110 transition-all ${isShuffled ? 'text-green-500' : 'text-neutral-400 hover:text-white'}`}
-        >
-          <Shuffle className="w-6 h-6" />
-        </button>
       </div>
 
       {/* Tracklist Header */}
@@ -145,12 +132,20 @@ export default function PlaylistView() {
           const track = item.track;
           if (!track) return null;
 
-          const isCurrentTrack = track.id === currentPlayingTrackId;
+          // Multi-layered verification matching logic
+          const isCurrentTrack = currentPlayingTrack && (
+            track.id === currentPlayingTrack.id || 
+            track.uri === currentPlayingTrack.uri ||
+            (track.linked_from && track.linked_from.id === currentPlayingTrack.id) ||
+            (cleanString(track.name) === cleanString(currentPlayingTrack.name) && 
+             track.artists?.[0]?.name === currentPlayingTrack.artists?.[0]?.name)
+          );
 
           return (
             <div 
               key={`${track.id}-${index}`} 
               onClick={() => handleTrackSelect(index)}
+              onContextMenu={(e) => handleRightClick(e, track)}
               className="grid grid-cols-[16px_minmax(0,1fr)_minmax(0,1fr)_80px] gap-4 px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer"
             >
               <div className="text-neutral-400 w-4 h-4 flex items-center justify-center">

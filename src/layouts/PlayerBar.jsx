@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, Mic2, Maximize2, VolumeX, Shuffle } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, Mic2, Maximize2, VolumeX, Shuffle, ListMusic } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { formatTime } from '../utils/formatTime';
 import { checkTracksLiked } from '../services/spotify/api';
@@ -9,7 +9,7 @@ import { toggleShuffleState } from '../services/spotify/api';
 
 export default function PlayerBar() {
   const { player, playbackState, deviceId, isShuffled, toggleOptimisticShuffle } = usePlayerStore();
-  const { token, setLikedTracks } = useUserStore();
+  const { token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack } = useUserStore();
 
   // Local state for smooth UI updates
   const [progressMs, setProgressMs] = useState(0);
@@ -18,8 +18,10 @@ export default function PlayerBar() {
 
   // Extract track info safely
   const currentTrack = playbackState?.track_window?.current_track;
+  const currentTrackUid = currentTrack?.uid;
   const isPaused = playbackState ? playbackState.paused : true;
   const durationMs = currentTrack ? playbackState.duration : 0;
+  const currentTrackUri = playbackState?.track_window?.current_track?.uri;
 
   // 1. Sync local progress with Spotify's state, and create a ticking clock
   useEffect(() => {
@@ -65,6 +67,13 @@ export default function PlayerBar() {
       toggleOptimisticShuffle(); // Revert the color if the network fails
     });
   };
+
+  // When a song starts playing, delete it from the manual queue memory
+  useEffect(() => {
+    if (currentTrack) {
+      consumeManuallyQueuedTrack(currentTrack);
+    }
+  }, [currentTrackUid, consumeManuallyQueuedTrack]);
 
   // 3. The Exponential Volume Fix
     const handleVolumeChange = (e) => {
@@ -179,7 +188,9 @@ export default function PlayerBar() {
           />
         </div>
         
-        <button className="hover:text-white transition-colors"><Maximize2 className="w-4 h-4" /></button>
+        <button onClick={toggleQueue} className="hover:text-white transition-colors">
+          <ListMusic className="w-4 h-4" />
+        </button>
       </div>
 
     </div>

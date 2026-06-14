@@ -1,6 +1,30 @@
+import { useUserStore } from '../../store/userStore';
+
+// THE NETWORK INTERCEPTOR
+async function spotifyFetch(url, options) {
+  const store = useUserStore.getState();
+  
+  // 1. If we are in timeout, block the request before it even leaves the browser
+  if (store.apiCooldownUntil && Date.now() < store.apiCooldownUntil) {
+    throw new Error("RATE_LIMITED");
+  }
+
+  const response = await fetch(url, options);
+
+  // 2. If Spotify tells us to back off, read the exact wait time and trigger the global lock
+  if (response.status === 429) {
+    const retryAfter = response.headers.get('Retry-After');
+    const waitSeconds = retryAfter ? parseInt(retryAfter, 10) : 10; // Default to 10s if missing
+    store.setApiCooldown(Date.now() + (waitSeconds * 1000));
+    throw new Error("RATE_LIMITED");
+  }
+
+  return response;
+}
+
 export async function fetchUserProfile(token) {
   // Use the REAL Spotify API endpoint here:
-  const response = await fetch("https://api.spotify.com/v1/me", {
+  const response = await spotifyFetch("https://api.spotify.com/v1/me", {
     method: "GET",
     headers: { Authorization: `Bearer ${token}` }
   });
@@ -18,7 +42,7 @@ export async function fetchUserPlaylists(token) {
 
   // Keep fetching as long as Spotify tells us there is another page
   while (nextUrl) {
-    const response = await fetch(nextUrl, {
+    const response = await spotifyFetch(nextUrl, {
       method: "GET",
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -41,7 +65,7 @@ export async function fetchUserPlaylists(token) {
 }
 
 export async function fetchPlaylistDetails(token, playlistId) {
-  const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
     method: "GET",
     headers: { Authorization: "Bearer " + token }
   });
@@ -52,7 +76,7 @@ export async function fetchPlaylistDetails(token, playlistId) {
 
 // NEW: A dedicated function to grab the next chunks
 export async function fetchMoreTracks(token, nextUrl) {
-  const response = await fetch(nextUrl, {
+  const response = await spotifyFetch(nextUrl, {
     method: "GET",
     headers: { Authorization: "Bearer " + token }
   });
@@ -62,7 +86,7 @@ export async function fetchMoreTracks(token, nextUrl) {
 }
 
 export async function playPlaylistTrack(token, deviceId, playlistId, trackIndex) {
-  const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
     method: "PUT",
     headers: {
       "Authorization": `Bearer ${token}`,
@@ -85,7 +109,7 @@ export async function searchSpotify(token, query) {
   const encodedQuery = encodeURIComponent(query);
   const url = "https://" + "api.spotify.com/v1/search?q=" + encodedQuery + "&type=track,album,artist&limit=10";
 
-  const response = await fetch(url, {
+  const response = await spotifyFetch(url, {
     method: "GET",
     headers: { Authorization: "Bearer " + token }
   });
@@ -100,7 +124,7 @@ export async function searchSpotify(token, query) {
 export async function playSingleTrack(token, deviceId, trackUri) {
   const url = "https://" + "api.spotify.com/v1/me/player/play?device_id=" + deviceId;
 
-  const response = await fetch(url, {
+  const response = await spotifyFetch(url, {
     method: "PUT",
     headers: {
       "Authorization": "Bearer " + token,
@@ -125,7 +149,7 @@ export async function checkTracksLiked(token, trackIds) {
     const chunk = trackIds.slice(i, i + 50);
     const url = "https://" + "api.spotify.com/v1/me/tracks/contains?ids=" + chunk.join(",");
     
-    const res = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+    const res = await spotifyFetch(url, { headers: { Authorization: "Bearer " + token } });
     if (res.ok) {
       const booleans = await res.json();
       chunk.forEach((id, index) => {
@@ -138,7 +162,7 @@ export async function checkTracksLiked(token, trackIds) {
 
 export async function toggleTrackLike(token, trackId, isCurrentlyLiked) {
   const url = "https://" + "api.spotify.com/v1/me/tracks?ids=" + trackId;
-  const response = await fetch(url, {
+  const response = await spotifyFetch(url, {
     method: isCurrentlyLiked ? "DELETE" : "PUT",
     headers: { Authorization: "Bearer " + token }
   });
@@ -148,7 +172,7 @@ export async function toggleTrackLike(token, trackId, isCurrentlyLiked) {
 
 export async function fetchInitialLikedSongs(token) {
   const url = "https://" + "api.spotify.com/v1/me/tracks?limit=50";
-  const response = await fetch(url, {
+  const response = await spotifyFetch(url, {
     method: "GET",
     headers: { Authorization: "Bearer " + token }
   });
@@ -159,7 +183,7 @@ export async function fetchInitialLikedSongs(token) {
 
 export async function toggleShuffleState(token, deviceId, state) {
   const url = "https://" + "api.spotify.com/v1/me/player/shuffle?state=" + state + "&device_id=" + deviceId;
-  await fetch(url, {
+  await spotifyFetch(url, {
     method: "PUT",
     headers: { Authorization: "Bearer " + token }
   });
@@ -171,7 +195,7 @@ export async function playLikedSongsQueue(token, deviceId, allUris, startIndex) 
   // Grab up to 100 tracks starting from the clicked song to respect API limits
   const uriChunk = allUris.slice(startIndex, startIndex + 100);
 
-  await fetch(url, {
+  await spotifyFetch(url, {
     method: "PUT",
     headers: {
       "Authorization": "Bearer " + token,
@@ -182,4 +206,27 @@ export async function playLikedSongsQueue(token, deviceId, allUris, startIndex) 
       offset: { position: 0 } // Start at the beginning of our sliced chunk
     })
   });
+}
+
+// Fetches the entire upcoming queue
+export async function fetchQueue(token) {
+  const url = "https://api.spotify.com/v1/me/player/queue";
+  const response = await spotifyFetch(url, {
+    method: "GET",
+    headers: { Authorization: "Bearer " + token }
+  });
+  
+  if (!response.ok) throw new Error("Failed to fetch queue");
+  return await response.json();
+}
+
+// Pushes a track to the very top of the "Up Next" queue
+export async function addToQueue(token, deviceId, trackUri) {
+  const url = `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(trackUri)}&device_id=${deviceId}`;
+  const response = await spotifyFetch(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token }
+  });
+  
+  if (!response.ok) throw new Error("Failed to add to queue");
 }

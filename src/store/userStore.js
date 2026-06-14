@@ -10,8 +10,11 @@ export const useUserStore = create(
       playlists: [],
       currentView: 'home', 
       viewHistory: [], 
+      apiCooldownUntil: null, 
       activePlaylistId: null,
       likedTracks: {}, 
+      isQueueOpen: false,
+      contextMenu: null,
       
       // NEW: Sets the token AND a 1-hour expiration timer
       setToken: (newToken) => set({ 
@@ -29,10 +32,55 @@ export const useUserStore = create(
         viewHistory: []
       }),
 
+      // NEW: Queue Sync Trigger
+      queueRefreshTrigger: 0,
+      triggerQueueRefresh: () => set((state) => ({ queueRefreshTrigger: state.queueRefreshTrigger + 1 })),
+
+      // NEW: Smart memory for manually queued tracks
+      manuallyQueuedTracks: [],
+      addManuallyQueuedTrack: (track) => set((state) => ({
+        manuallyQueuedTracks: [...state.manuallyQueuedTracks, track]
+      })),
+      
+      // NEW: Consumes the track using a robust fuzzy match
+      consumeManuallyQueuedTrack: (playingTrack) => set((state) => {
+        if (!playingTrack) return state;
+        
+        const index = state.manuallyQueuedTracks.findIndex(t => 
+          t.id === playingTrack.id || 
+          t.uri === playingTrack.uri ||
+          // Strip away " - Remastered" or "(Radio Edit)" to find the core song name
+          (t.name.split(/[-(]/)[0].trim().toLowerCase() === playingTrack.name.split(/[-(]/)[0].trim().toLowerCase() &&
+           t.artists?.[0]?.name === playingTrack.artists?.[0]?.name)
+        );
+        
+        if (index > -1) {
+          const newTracks = [...state.manuallyQueuedTracks];
+          newTracks.splice(index, 1);
+          return { manuallyQueuedTracks: newTracks };
+        }
+        return state;
+      }),
+
+      queueData: null,
+      setQueueData: (data) => set({ queueData: data }),
+      injectOptimisticQueueItem: (track) => set((state) => {
+        if (!state.queueData) return state;
+        return {
+          queueData: {
+            ...state.queueData,
+            queue: [track, ...state.queueData.queue] // Instantly pushes track to the top
+          }
+        };
+      }),
+
       setProfile: (userData) => set({ profile: userData }),
       setPlaylists: (playlistData) => set({ playlists: playlistData }),
       setActivePlaylistId: (id) => set({ activePlaylistId: id }),
       setLikedTracks: (updates) => set((state) => ({ 
+      setApiCooldown: (timestamp) => set({ apiCooldownUntil: timestamp }),
+      toggleQueue: () => set((state) => ({ isQueueOpen: !state.isQueueOpen })),
+      setContextMenu: (menuData) => set({ contextMenu: menuData }),
         likedTracks: { ...state.likedTracks, ...updates } 
       })),
 

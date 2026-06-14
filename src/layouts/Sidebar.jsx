@@ -36,10 +36,6 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="mt-auto border-t border-neutral-800 pt-6">
-        <p className="text-xs text-neutral-600">Built for pure audio.</p>
-      </div>
-
     {/* Put this at the very bottom of the sidebar, replacing your "Built for pure audio" text */}
       <div className="mt-auto border-t border-neutral-800 pt-6 flex flex-col space-y-2 text-xs text-neutral-600">
         <p>Built for pure audio.</p>

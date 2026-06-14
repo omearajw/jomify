@@ -13,7 +13,6 @@ export default function LikedSongsView() {
   
   const isFetchingMore = useRef(false);
 
-  const currentPlayingTrackId = playbackState?.track_window?.current_track?.id;
   const isCurrentTrackPaused = playbackState ? playbackState.paused : true;
 
   useEffect(() => {
@@ -112,10 +111,20 @@ export default function LikedSongsView() {
 
       {/* Tracklist */}
       <div className="flex flex-col">
-        {trackData.items.map((item, index) => {
+        {playlist.tracks.items.map((item, index) => {
           const track = item.track;
           if (!track) return null;
-          const isCurrentTrack = track.id === currentPlayingTrackId;
+
+          const currentTrack = playbackState?.track_window?.current_track;
+          
+          // ROBUST MATCH: Checks ID, URI, and falls back to exact Title + Artist match
+          const isCurrentTrack = currentTrack && (
+            track.id === currentTrack.id || 
+            track.uri === currentTrack.uri ||
+            (track.linked_from && track.linked_from.id === currentTrack.id) ||
+            (track.name.split(/[-(]/)[0].trim().toLowerCase() === currentTrack.name.split(/[-(]/)[0].trim().toLowerCase() && 
+             track.artists?.[0]?.name === currentTrack.artists?.[0]?.name)
+          );
 
           return (
             <div key={`${track.id}-${index}`} onClick={() => handleTrackSelect(index)} className="grid grid-cols-[16px_minmax(0,1fr)_minmax(0,1fr)_80px] gap-4 px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer">
