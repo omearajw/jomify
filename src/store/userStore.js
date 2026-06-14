@@ -15,6 +15,8 @@ export const useUserStore = create(
       likedTracks: {}, 
       isQueueOpen: false,
       contextMenu: null,
+      isZenMode: false,
+      savedVolume: 50,
       
       // NEW: Sets the token AND a 1-hour expiration timer
       setToken: (newToken) => set({ 
@@ -81,6 +83,8 @@ export const useUserStore = create(
       setApiCooldown: (timestamp) => set({ apiCooldownUntil: timestamp }),
       toggleQueue: () => set((state) => ({ isQueueOpen: !state.isQueueOpen })),
       setContextMenu: (menuData) => set({ contextMenu: menuData }),
+      toggleZenMode: () => set((state) => ({ isZenMode: !state.isZenMode })),
+      setSavedVolume: (vol) => set({ savedVolume: vol }),
         likedTracks: { ...state.likedTracks, ...updates } 
       })),
 
@@ -107,7 +111,8 @@ export const useUserStore = create(
       // Ensure we save BOTH the token and its death-clock
       partialize: (state) => ({ 
         token: state.token, 
-        tokenExpiresAt: state.tokenExpiresAt 
+        tokenExpiresAt: state.tokenExpiresAt,
+        savedVolume: state.savedVolume
       }), 
     }
   )

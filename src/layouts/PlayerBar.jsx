@@ -9,7 +9,7 @@ import { toggleShuffleState } from '../services/spotify/api';
 
 export default function PlayerBar() {
   const { player, playbackState, deviceId, isShuffled, toggleOptimisticShuffle } = usePlayerStore();
-  const { token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack } = useUserStore();
+  const { token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack, toggleZenMode } = useUserStore();
 
   // Local state for smooth UI updates
   const [progressMs, setProgressMs] = useState(0);
@@ -191,7 +191,15 @@ export default function PlayerBar() {
         <button onClick={toggleQueue} className="hover:text-white transition-colors">
           <ListMusic className="w-4 h-4" />
         </button>
+
+        {/* NEW: Zen Mode Toggle */}
+        <button onClick={toggleZenMode} className="text-neutral-400 hover:text-white transition-colors">
+          <Maximize2 className="w-4 h-4" />
+        </button>
+
       </div>
+
+      
 
     </div>
   );

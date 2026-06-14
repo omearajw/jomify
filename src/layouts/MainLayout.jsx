@@ -5,6 +5,7 @@ import QueuePanel from './QueuePanel';
 import ContextMenu from '../components/ContextMenu'; 
 import { ChevronLeft, AlertTriangle } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
+import ZenMode from '../views/ZenMode/ZenMode';
 
 export default function MainLayout({ children }) {
   const { goBack, viewHistory, apiCooldownUntil, setApiCooldown } = useUserStore();
@@ -67,6 +68,9 @@ export default function MainLayout({ children }) {
       
       {/* NEW: Drop the global Context Menu at the very bottom */}
       <ContextMenu />
+
+      {/* NEW: Drops the massive z-100 overlay on top of the entire app */}
+      <ZenMode />
     </div>
   );
 }
