@@ -5,6 +5,7 @@ export const useUserStore = create(
   persist(
     (set) => ({
       token: null,
+      refreshToken: null, // NEW: The key to infinite sessions
       tokenExpiresAt: null,
       profile: null,
       playlists: [],
@@ -24,11 +25,9 @@ export const useUserStore = create(
       customFolders: [], 
       activeFolderId: null,
       
-      // NEW: Global Grid Sizing Memory
       libraryGridSize: 'medium',
       setLibraryGridSize: (size) => set({ libraryGridSize: size }),
       
-      // --- GLOBAL DRAG AND DROP STATE ---
       draggedItem: null, 
       setDraggedItem: (item) => set({ draggedItem: item }),
       setActiveFolderId: (folderId) => set({ activeFolderId: folderId }),
@@ -84,15 +83,20 @@ export const useUserStore = create(
         tokenExpiresAt: Date.now() + (3600 * 1000) 
       }),
 
+      setRefreshToken: (newRefreshToken) => set({
+        refreshToken: newRefreshToken
+      }),
+
       logout: () => set({ 
         token: null, 
+        refreshToken: null,
         tokenExpiresAt: null, 
         profile: null, 
         playlists: [],
         currentView: 'home',
         viewHistory: [],
-        customFolders: [],
         activeFolderId: null
+        // FIXED: customFolders is completely removed from here so they are never wiped
       }),
 
       queueRefreshTrigger: 0,
@@ -175,9 +179,10 @@ export const useUserStore = create(
       name: 'jomify-storage',
       partialize: (state) => ({ 
         token: state.token, 
+        refreshToken: state.refreshToken,
         tokenExpiresAt: state.tokenExpiresAt,
         savedVolume: state.savedVolume,
-        customFolders: state.customFolders,
+        customFolders: state.customFolders, // Permanent storage
         libraryGridSize: state.libraryGridSize
       }), 
     }

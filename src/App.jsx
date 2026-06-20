@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { redirectToAuthCodeFlow, getAccessToken } from './services/spotify/auth';
+import { redirectToAuthCodeFlow, getAccessToken, refreshAccessToken } from './services/spotify/auth';
 import { fetchUserProfile } from './services/spotify/api';
 import { useUserStore } from './store/userStore';
 import MainLayout from './layouts/MainLayout';
@@ -13,11 +13,46 @@ import Album from './views/Album/Album';
 import LikedSongsView from './views/Library/LikedSongsView';
 
 function App() {
-  const { token, tokenExpiresAt, logout, profile, setToken, setProfile, currentView } = useUserStore();
+  const { token, refreshToken, tokenExpiresAt, logout, profile, setToken, setRefreshToken, setProfile, currentView } = useUserStore();
   const { setPlayer, setDeviceId, setPlaybackState } = usePlayerStore();
 
   // This is our lock to prevent React from double-fetching the token
   const isAuthenticating = useRef(false); 
+
+  // --- THE INFINITE SESSION HEARTBEAT ---
+  useEffect(() => {
+    const checkAndRefreshToken = async () => {
+      // If we don't have all the pieces, do nothing
+      if (!token || !refreshToken || !tokenExpiresAt) return;
+
+      // If the token expires in less than 5 minutes (300,000 ms)
+      if (Date.now() > tokenExpiresAt - 300000) {
+        console.log("Token expiring soon. Silently refreshing in background...");
+        try {
+          const data = await refreshAccessToken(refreshToken);
+          
+          // Save new token (this automatically resets the 1-hour timer in Zustand)
+          setToken(data.access_token);
+          
+          // Spotify occasionally rotates the refresh token too, so save it if they give us a new one
+          if (data.refresh_token) {
+             setRefreshToken(data.refresh_token);
+          }
+        } catch (err) {
+           console.error("Critical session expiration. Forcing re-login.", err);
+           logout(); 
+        }
+      }
+    };
+
+    // Check immediately on app load
+    checkAndRefreshToken();
+
+    // Then check every 1 minute (60,000 ms) in the background
+    const interval = setInterval(checkAndRefreshToken, 60000);
+    return () => clearInterval(interval);
+  }, [token, refreshToken, tokenExpiresAt, setToken, setRefreshToken, logout]);
+
 
   useEffect(() => {
     // Only initialize if we have a token and haven't already loaded the player

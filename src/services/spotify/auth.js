@@ -10,8 +10,8 @@ const scope = [
   'user-library-modify',
   'user-read-playback-state',
   'user-modify-playback-state',
-  'playlist-read-private',        // Allows viewing private playlists
-  'playlist-read-collaborative'    // Allows viewing shared/collaborative playlists
+  'playlist-read-private',
+  'playlist-read-collaborative'
 ].join(' ');
 
 export async function redirectToAuthCodeFlow() {
@@ -47,12 +47,33 @@ export async function getAccessToken(code) {
     body: params
   });
 
-  const { access_token } = await result.json();
-  return access_token;
+  if (!result.ok) throw new Error("Failed to fetch access token");
+
+  // CRITICAL CHANGE: Return the whole object so we can extract the refresh_token in the UI
+  return await result.json(); 
+}
+
+// NEW: The Infinite Session Engine
+export async function refreshAccessToken(refreshToken) {
+  const params = new URLSearchParams();
+  params.append("client_id", clientId);
+  params.append("grant_type", "refresh_token");
+  params.append("refresh_token", refreshToken);
+
+  const result = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params
+  });
+
+  if (!result.ok) {
+    throw new Error("Failed to refresh token");
+  }
+
+  return await result.json();
 }
 
 // --- Utility Functions for PKCE Security ---
-
 function generateCodeVerifier(length) {
   let text = '';
   let possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
