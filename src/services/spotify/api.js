@@ -262,3 +262,21 @@ export async function addTracksToPlaylist(token, playlistId, uris) {
   if (!response.ok) throw new Error("Failed to add tracks to playlist");
   return await response.json();
 }
+
+export async function removeTrackFromPlaylist(token, playlistId, trackUri) {
+  const url = `https://api.spotify.com/v1/playlists/$${playlistId}/tracks`;
+  
+  const response = await spotifyFetch(url, {
+    method: "DELETE",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      tracks: [{ uri: trackUri }]
+    })
+  });
+
+  if (!response.ok) throw new Error("Failed to remove track from playlist");
+  return await response.json();
+}

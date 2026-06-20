@@ -39,7 +39,7 @@ export default function Sidebar() {
     e.preventDefault(); 
     e.stopPropagation();
     
-    // FIX: Dynamically switch the drop effect so the browser removes the stop sign
+    // RESTORED FIX: Dynamically switch the drop effect so the browser accepts the track
     if (draggedItem?.type === 'track') {
       e.dataTransfer.dropEffect = 'copy';
     } else {

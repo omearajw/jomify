@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useUserStore } from '../../store/userStore';
+import { useUserStore } from '../../store/userStore'; // FIXED: Correct import
 import { usePlayerStore } from '../../store/playerStore';
 import { fetchPlaylistDetails, playPlaylistTrack, checkTracksLiked, fetchMoreTracks } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
@@ -17,7 +17,7 @@ const cleanString = (str) => {
 };
 
 export default function PlaylistView() {
-  const { token, activePlaylistId, setLikedTracks, setContextMenu } = useUserStore();
+  const { token, activePlaylistId, setLikedTracks, setContextMenu, setDraggedItem } = useUserStore();
   const { deviceId, playbackState } = usePlayerStore();
   const [playlist, setPlaylist] = useState(null);
   
@@ -172,7 +172,29 @@ export default function PlaylistView() {
               
               <span className="text-neutral-400 truncate pr-4">{track.album.name}</span>
               
-              <div className="flex items-center justify-end space-x-4">
+              <div 
+                key={track.id}
+                draggable="true"
+                onDragStart={(e) => {
+                  e.stopPropagation();
+                  e.dataTransfer.effectAllowed = 'all'; // Allows copying!
+                  e.dataTransfer.setData('text/plain', track.uri);
+                  setTimeout(() => setDraggedItem({ type: 'track', uri: track.uri }), 0);
+                }}
+                onDragEnd={() => setDraggedItem(null)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  // CRITICAL: We pass the activePlaylistId here. 
+                  // The ContextMenu will check if you own this playlist, and if you do, it reveals the Remove button!
+                  setContextMenu({ 
+                    x: e.pageX, 
+                    y: e.pageY, 
+                    track: track, 
+                    sourcePlaylistId: activePlaylistId 
+                  }); 
+                }}
+                className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
+              >
                 <LikeButton trackId={track.id} />
                 <span className="text-neutral-400 w-8 text-right">{formatTime(track.duration_ms)}</span>
               </div>

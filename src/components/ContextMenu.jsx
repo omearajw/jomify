@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
-import { addToQueue, addTracksToPlaylist } from '../services/spotify/api';
-import { ListPlus, Plus, ChevronRight, Folder } from 'lucide-react';
+import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist } from '../services/spotify/api';
+import { ListPlus, Plus, ChevronRight, Folder, Trash2 } from 'lucide-react';
 
 export default function ContextMenu() {
   const { 
@@ -31,6 +31,10 @@ export default function ContextMenu() {
   const userPlaylists = playlists.filter(p => p.owner.id === profile?.id);
   const unfolderedPlaylists = userPlaylists.filter(p => !customFolders.some(f => f.playlistIds.includes(p.id)));
 
+  // CHECK IF WE CAN REMOVE THIS TRACK
+  const sourcePlaylist = contextMenu.sourcePlaylistId ? playlists.find(p => p.id === contextMenu.sourcePlaylistId) : null;
+  const canRemove = sourcePlaylist && sourcePlaylist.owner.id === profile?.id;
+
   const handleAddToQueue = async () => {
     if (!token || !deviceId || !contextMenu.track) return;
     try {
@@ -55,6 +59,17 @@ export default function ContextMenu() {
     }
   };
 
+  const handleRemoveFromPlaylist = async () => {
+    if (!token || !contextMenu.track || !contextMenu.sourcePlaylistId) return;
+    try {
+      await removeTrackFromPlaylist(token, contextMenu.sourcePlaylistId, contextMenu.track.uri);
+      // NOTE: You may want to trigger a re-fetch of your playlist data here to update the UI
+      setContextMenu(null);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   return (
     <div
       ref={menuRef}
@@ -68,6 +83,17 @@ export default function ContextMenu() {
         <ListPlus className="w-4 h-4 text-neutral-400" />
         <span>Add to Queue</span>
       </button>
+
+      {/* NEW: Remove from Playlist Button */}
+      {canRemove && (
+        <button
+          onClick={handleRemoveFromPlaylist}
+          className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+        >
+          <Trash2 className="w-4 h-4 text-red-400" />
+          <span>Remove from this playlist</span>
+        </button>
+      )}
 
       <div 
         className="relative"
@@ -83,7 +109,6 @@ export default function ContextMenu() {
         </button>
 
         {showPlaylistMenu && (
-          /* NEW: The invisible padding bridge (pl-2 -ml-2) so your mouse never leaves the container */
           <div className="absolute left-full top-0 pl-2 -ml-2 z-50">
             <div className="w-64 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-2 max-h-96 overflow-y-auto custom-scrollbar">
               {unfolderedPlaylists.map(pl => (
