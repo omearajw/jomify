@@ -1,32 +1,77 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { searchSpotify, playSingleTrack, checkTracksLiked } from '../../services/spotify/api';
+import { searchSpotify, playSingleTrack, checkTracksLiked, fetchSearchPage } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
-import { Search, Play, ArrowLeft } from 'lucide-react';
+import { Search, Play, ArrowLeft, Loader } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 
-// Safe String comparison for the Green Highlight
 const cleanString = (str) => {
   if (!str) return '';
   return str.split(/[-(]/)[0].toLowerCase().replace(/[^a-z0-9]/g, '').trim();
 };
 
+// View-Level Caching: Isolates ephemeral UI memory from the global store
+const getCachedString = (key, defaultVal) => {
+  const saved = sessionStorage.getItem(key);
+  return saved !== null ? saved : defaultVal;
+};
+
+const getCachedJSON = (key, defaultVal) => {
+  const saved = sessionStorage.getItem(key);
+  try {
+    return saved ? JSON.parse(saved) : defaultVal;
+  } catch {
+    return defaultVal;
+  }
+};
+
 export default function Browse() {
   const { token, setLikedTracks, navigateToArtist, navigateToAlbum } = useUserStore();
   const { deviceId, playbackState } = usePlayerStore();
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState(null);
-  const [expandedSection, setExpandedSection] = useState(null); // null | 'tracks' | 'albums' | 'artists'
+  
+  // Initialize state directly from the session cache
+  const [query, setQuery] = useState(() => getCachedString('jomify_browse_query', ''));
+  const [results, setResults] = useState(() => getCachedJSON('jomify_browse_results', null));
+  const [expandedSection, setExpandedSection] = useState(() => getCachedString('jomify_browse_expanded', null)); 
+  const [paginationUrls, setPaginationUrls] = useState(() => getCachedJSON('jomify_browse_pagination', { tracks: null, albums: null, artists: null }));
+  
+  const [loadingMore, setLoadingMore] = useState(false);
+  const sentinelRef = useRef(null);
+  const isInitialMount = useRef(true);
 
   const currentPlayingTrack = playbackState?.track_window?.current_track;
 
+  // Real-time synchronization to cache
+  useEffect(() => { sessionStorage.setItem('jomify_browse_query', query); }, [query]);
+  useEffect(() => { 
+    if (results) sessionStorage.setItem('jomify_browse_results', JSON.stringify(results));
+    else sessionStorage.removeItem('jomify_browse_results');
+  }, [results]);
+  useEffect(() => { 
+    if (expandedSection) sessionStorage.setItem('jomify_browse_expanded', expandedSection);
+    else sessionStorage.removeItem('jomify_browse_expanded');
+  }, [expandedSection]);
+  useEffect(() => { sessionStorage.setItem('jomify_browse_pagination', JSON.stringify(paginationUrls)); }, [paginationUrls]);
+
   useEffect(() => {
+    // Prevent network requests on initial render if we successfully loaded from cache
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      const cachedResults = sessionStorage.getItem('jomify_browse_results');
+      if (cachedResults && query.trim()) return; 
+    }
+
     const delayDebounce = setTimeout(() => {
       if (query.trim() && token) {
         searchSpotify(token, query)
           .then((data) => {
             setResults(data);
+            setPaginationUrls({
+              tracks: data.tracks?.next || null,
+              albums: data.albums?.next || null,
+              artists: data.artists?.next || null
+            });
             if (data?.tracks?.items) {
               const ids = data.tracks.items.map(track => track.id).filter(Boolean);
               if (ids.length > 0) {
@@ -38,11 +83,67 @@ export default function Browse() {
       } else {
         setResults(null);
         setExpandedSection(null);
+        setPaginationUrls({ tracks: null, albums: null, artists: null });
       }
     }, 400);
 
     return () => clearTimeout(delayDebounce);
   }, [query, token, setLikedTracks]);
+
+  // Infinite scroll effect
+  useEffect(() => {
+    if (!sentinelRef.current || !expandedSection || !paginationUrls[expandedSection]) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loadingMore && paginationUrls[expandedSection]) {
+          loadMoreResults(expandedSection);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [expandedSection, paginationUrls, loadingMore]);
+
+  const loadMoreResults = useCallback(async (section) => {
+    if (!paginationUrls[section] || loadingMore || !token) return;
+
+    setLoadingMore(true);
+    try {
+      const data = await fetchSearchPage(token, paginationUrls[section]);
+      
+      setResults((prev) => {
+        if (!prev) return prev;
+        const sectionKey = section === 'tracks' ? 'tracks' : section === 'albums' ? 'albums' : 'artists';
+        return {
+          ...prev,
+          [sectionKey]: {
+            ...data[sectionKey],
+            items: [...(prev[sectionKey]?.items || []), ...data[sectionKey]?.items]
+          }
+        };
+      });
+
+      setPaginationUrls((prev) => ({
+        ...prev,
+        [section]: data[section === 'tracks' ? 'tracks' : section === 'albums' ? 'albums' : 'artists']?.next || null
+      }));
+
+      // Check if new tracks are liked
+      if (section === 'tracks' && data.tracks?.items) {
+        const ids = data.tracks.items.map(track => track.id).filter(Boolean);
+        if (ids.length > 0) {
+          checkTracksLiked(token, ids).then(setLikedTracks).catch(console.error);
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to load more ${section}:`, error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [paginationUrls, loadingMore, token, setLikedTracks]);
 
   const handleTrackPlay = (trackUri) => {
     if (!token || !deviceId) return;
@@ -50,7 +151,7 @@ export default function Browse() {
   };
 
   const handleArtistClick = (e, artistId) => {
-    e.stopPropagation(); // Prevents track playback when clicking the name
+    e.stopPropagation(); 
     navigateToArtist(artistId);
   };
 
@@ -123,6 +224,15 @@ export default function Browse() {
                   </div>
                 );
               })}
+              {/* Infinite scroll sentinel */}
+              <div ref={sentinelRef} className="py-8 flex justify-center">
+                {loadingMore && (
+                  <div className="flex items-center space-x-2 text-neutral-400">
+                    <Loader className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">Loading more songs...</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -143,6 +253,15 @@ export default function Browse() {
                   <p className="text-white text-sm font-bold truncate w-full">{artist.name}</p>
                 </div>
               ))}
+              {/* Infinite scroll sentinel */}
+              <div ref={sentinelRef} className="col-span-full py-8 flex justify-center">
+                {loadingMore && (
+                  <div className="flex items-center space-x-2 text-neutral-400">
+                    <Loader className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">Loading more artists...</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -164,6 +283,15 @@ export default function Browse() {
                   <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{album.artists[0].name}</p>
                 </div>
               ))}
+              {/* Infinite scroll sentinel */}
+              <div ref={sentinelRef} className="col-span-full py-8 flex justify-center">
+                {loadingMore && (
+                  <div className="flex items-center space-x-2 text-neutral-400">
+                    <Loader className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">Loading more albums...</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -175,7 +303,7 @@ export default function Browse() {
   // STANDARD VIEW RENDERER
   // ----------------------------------------
   return (
-    <div className="flex flex-col pb-8 select-none">
+    <div className="flex flex-col pb-8 select-none px-2">
       <h1 className="text-4xl font-extrabold text-white tracking-tighter mb-6">Browse</h1>
       
       <div className="relative w-full max-w-md mb-8">

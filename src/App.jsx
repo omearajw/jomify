@@ -8,6 +8,8 @@ import PlaylistView from './views/Library/PlaylistView';
 import { usePlayerStore } from './store/playerStore';
 import { initializeSpotifyPlayer } from './services/spotify/playback';
 import Browse from './views/Browse/Browse';
+import Artist from './views/Artist/Artist';
+import Album from './views/Album/Album';
 import LikedSongsView from './views/Library/LikedSongsView';
 
 function App() {
@@ -110,6 +112,8 @@ function App() {
           {currentView === 'library' && <Library />}
           {currentView === 'playlist' && <PlaylistView />}
           {currentView === 'browse' && <Browse />}
+          {currentView === 'artist' && <Artist />}
+          {currentView === 'album' && <Album />}
           {currentView === 'liked-songs' && <LikedSongsView />}
         </>
       ) : (

@@ -12,6 +12,8 @@ export const useUserStore = create(
       viewHistory: [], 
       apiCooldownUntil: null, 
       activePlaylistId: null,
+      currentArtistId: null,
+      currentAlbumId: null,
       likedTracks: {}, 
       isQueueOpen: false,
       contextMenu: null,
@@ -95,6 +97,18 @@ export const useUserStore = create(
           currentView: view
         };
       }),
+
+      navigateToArtist: (artistId) => set((state) => ({
+        viewHistory: [...state.viewHistory, state.currentView],
+        currentView: 'artist',
+        currentArtistId: artistId
+      })),
+
+      navigateToAlbum: (albumId) => set((state) => ({
+        viewHistory: [...state.viewHistory, state.currentView],
+        currentView: 'album',
+        currentAlbumId: albumId
+      })),
       
       goBack: () => set((state) => {
         if (state.viewHistory.length === 0) return {};

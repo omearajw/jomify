@@ -121,6 +121,21 @@ export async function searchSpotify(token, query) {
   return await response.json();
 }
 
+export async function fetchSearchPage(token, nextUrl) {
+  if (!nextUrl) return null;
+
+  const response = await spotifyFetch(nextUrl, {
+    method: "GET",
+    headers: { Authorization: "Bearer " + token }
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch search page");
+  }
+
+  return await response.json();
+}
+
 export async function playSingleTrack(token, deviceId, trackUri) {
   const url = "https://" + "api.spotify.com/v1/me/player/play?device_id=" + deviceId;
 

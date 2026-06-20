@@ -70,7 +70,12 @@ export default function LikedSongsView() {
 
   const handleTrackSelect = (index) => {
     if (!token || !deviceId || !trackData) return;
-    const allUris = trackData.items.map(item => item.track.uri);
+
+    const allUris = trackData.items
+      .map(item => item.track?.uri)
+      .filter(Boolean);
+
+    if (!allUris.length) return;
     playLikedSongsQueue(token, deviceId, allUris, index).catch(console.error);
   };
 
@@ -111,7 +116,7 @@ export default function LikedSongsView() {
 
       {/* Tracklist */}
       <div className="flex flex-col">
-        {playlist.tracks.items.map((item, index) => {
+        {trackData.items.map((item, index) => {
           const track = item.track;
           if (!track) return null;
 
