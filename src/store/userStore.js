@@ -5,7 +5,7 @@ export const useUserStore = create(
   persist(
     (set) => ({
       token: null,
-      refreshToken: null, // NEW: The key to infinite sessions
+      refreshToken: null,
       tokenExpiresAt: null,
       profile: null,
       playlists: [],
@@ -24,13 +24,14 @@ export const useUserStore = create(
       // --- CUSTOM FOLDER ENGINE ---
       customFolders: [], 
       activeFolderId: null,
-      
       libraryGridSize: 'medium',
-      setLibraryGridSize: (size) => set({ libraryGridSize: size }),
       
+      setLibraryGridSize: (size) => set({ libraryGridSize: size }),
+      setActiveFolderId: (folderId) => set({ activeFolderId: folderId }),
+
+      // --- GLOBAL DRAG AND DROP STATE ---
       draggedItem: null, 
       setDraggedItem: (item) => set({ draggedItem: item }),
-      setActiveFolderId: (folderId) => set({ activeFolderId: folderId }),
 
       createFolder: (name) => set((state) => ({ 
         customFolders: [...state.customFolders, { id: `folder-${Date.now()}`, name, playlistIds: [] }] 
@@ -96,7 +97,7 @@ export const useUserStore = create(
         currentView: 'home',
         viewHistory: [],
         activeFolderId: null
-        // FIXED: customFolders is completely removed from here so they are never wiped
+        // Notice customFolders is explicitly excluded here so they are permanent!
       }),
 
       queueRefreshTrigger: 0,
@@ -145,22 +146,29 @@ export const useUserStore = create(
       toggleZenMode: () => set((state) => ({ isZenMode: !state.isZenMode })),
       setSavedVolume: (vol) => set({ savedVolume: vol }),
 
+      // --- NAVIGATION BUG FIX: State Snapshots ---
       setCurrentView: (view) => set((state) => {
         if (state.currentView === view) return {}; 
         return {
-          viewHistory: [...state.viewHistory, state.currentView],
+          viewHistory: [...state.viewHistory, {
+            view: state.currentView,
+            playlistId: state.activePlaylistId,
+            artistId: state.currentArtistId,
+            albumId: state.currentAlbumId,
+            folderId: state.activeFolderId // Takes a snapshot of the exact folder you were in
+          }],
           currentView: view
         };
       }),
 
       navigateToArtist: (artistId) => set((state) => ({
-        viewHistory: [...state.viewHistory, state.currentView],
+        viewHistory: [...state.viewHistory, { view: state.currentView, playlistId: state.activePlaylistId, artistId: state.currentArtistId, albumId: state.currentAlbumId, folderId: state.activeFolderId }],
         currentView: 'artist',
         currentArtistId: artistId
       })),
 
       navigateToAlbum: (albumId) => set((state) => ({
-        viewHistory: [...state.viewHistory, state.currentView],
+        viewHistory: [...state.viewHistory, { view: state.currentView, playlistId: state.activePlaylistId, artistId: state.currentArtistId, albumId: state.currentAlbumId, folderId: state.activeFolderId }],
         currentView: 'album',
         currentAlbumId: albumId
       })),
@@ -168,10 +176,14 @@ export const useUserStore = create(
       goBack: () => set((state) => {
         if (state.viewHistory.length === 0) return {};
         const newHistory = [...state.viewHistory];
-        const prevView = newHistory.pop();
+        const prev = newHistory.pop();
         return {
           viewHistory: newHistory,
-          currentView: prevView
+          currentView: prev.view,
+          activePlaylistId: prev.playlistId,
+          currentArtistId: prev.artistId,
+          currentAlbumId: prev.albumId,
+          activeFolderId: prev.folderId // Restores the folder perfectly
         };
       }),
     }),
@@ -182,7 +194,7 @@ export const useUserStore = create(
         refreshToken: state.refreshToken,
         tokenExpiresAt: state.tokenExpiresAt,
         savedVolume: state.savedVolume,
-        customFolders: state.customFolders, // Permanent storage
+        customFolders: state.customFolders, 
         libraryGridSize: state.libraryGridSize
       }), 
     }

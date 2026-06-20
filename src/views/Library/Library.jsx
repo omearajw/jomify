@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
-import { fetchUserPlaylists } from '../../services/spotify/api';
+import { fetchUserPlaylists, addTracksToPlaylist } from '../../services/spotify/api';
 import { Heart, Folder, Maximize2, ChevronLeft, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -98,7 +98,14 @@ export default function Library() {
   const handleDragOver = (e, id) => { 
     e.preventDefault(); 
     e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move'; 
+    
+    // FIX: Dynamically switch the drop effect so the browser removes the stop sign
+    if (draggedItem?.type === 'track') {
+      e.dataTransfer.dropEffect = 'copy';
+    } else {
+      e.dataTransfer.dropEffect = 'move';
+    }
+    
     if (dragOverId !== id) setDragOverId(id);
   };
 
@@ -114,15 +121,37 @@ export default function Library() {
     setDraggedItem(null);
   };
 
-  const handleDropOnPlaylist = (e, targetPlaylistId, parentFolderId) => {
-    e.preventDefault(); e.stopPropagation();
+  // NEW: Bulletproof Native Drop Handler
+  const handleDropOnPlaylist = async (e, targetPlaylistId, parentFolderId) => {
+    e.preventDefault(); 
+    e.stopPropagation();
     setDragOverId(null);
-    if (!draggedItem || draggedItem.type !== 'playlist' || !parentFolderId) return;
-    if (draggedItem.parentFolderId === parentFolderId && draggedItem.id !== targetPlaylistId) {
-      reorderPlaylistInFolder(parentFolderId, draggedItem.id, targetPlaylistId);
-    } else if (draggedItem.parentFolderId !== parentFolderId) {
-      addPlaylistToFolder(parentFolderId, draggedItem.id);
+    
+    // 1. EXTRACT NATIVE BROWSER DATA
+    const droppedUri = e.dataTransfer.getData('text/plain');
+
+    // 2. TRACK DROP (Bulletproof)
+    if (droppedUri && droppedUri.includes('spotify:track:')) {
+      try {
+        await addTracksToPlaylist(token, targetPlaylistId, [droppedUri]);
+        console.log('Successfully added track to playlist!');
+      } catch (err) {
+        console.error('Failed to drop track:', err);
+      }
+      setDraggedItem(null);
+      return; 
     }
+
+    // 3. PLAYLIST REORDER DROP
+    if (!draggedItem) return;
+    if (draggedItem.type === 'playlist' && parentFolderId) {
+      if (draggedItem.parentFolderId === parentFolderId && draggedItem.id !== targetPlaylistId) {
+        reorderPlaylistInFolder(parentFolderId, draggedItem.id, targetPlaylistId);
+      } else if (draggedItem.parentFolderId !== parentFolderId) {
+        addPlaylistToFolder(parentFolderId, draggedItem.id);
+      }
+    }
+    
     setDraggedItem(null);
   };
 

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Home, Library, Disc3, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
+import { addTracksToPlaylist } from '../services/spotify/api';
 
 export default function Sidebar() {
   const { 
-    currentView, setCurrentView, logout, playlists, 
+    token, currentView, setCurrentView, logout, playlists, 
     setActivePlaylistId, customFolders, createFolder,
     draggedItem, setDraggedItem, reorderFolders, 
     addPlaylistToFolder, reorderPlaylistInFolder
@@ -27,21 +28,24 @@ export default function Sidebar() {
     if (name && name.trim()) createFolder(name.trim());
   };
 
-  // --- CRITICAL DnD FIX ---
   const handleDragStart = (e, item) => {
     e.stopPropagation();
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', item.id);
-    
-    setTimeout(() => {
-      setDraggedItem(item);
-    }, 0);
+    setTimeout(() => { setDraggedItem(item); }, 0);
   };
 
   const handleDragOver = (e, id) => { 
     e.preventDefault(); 
     e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move'; 
+    
+    // FIX: Dynamically switch the drop effect so the browser removes the stop sign
+    if (draggedItem?.type === 'track') {
+      e.dataTransfer.dropEffect = 'copy';
+    } else {
+      e.dataTransfer.dropEffect = 'move';
+    }
+    
     if (dragOverId !== id) setDragOverId(id);
   };
 
@@ -61,9 +65,24 @@ export default function Sidebar() {
     setDraggedItem(null);
   };
 
-  const handleDropOnPlaylist = (e, targetPlaylistId, parentFolderId) => {
+  // NEW: Bulletproof Native Drop Handler
+  const handleDropOnPlaylist = async (e, targetPlaylistId, parentFolderId) => {
     e.preventDefault(); e.stopPropagation();
     setDragOverId(null);
+
+    const droppedUri = e.dataTransfer.getData('text/plain');
+
+    if (droppedUri && droppedUri.includes('spotify:track:')) {
+      try {
+        await addTracksToPlaylist(token, targetPlaylistId, [droppedUri]);
+        console.log('Successfully added track to playlist via Sidebar!');
+      } catch (err) {
+        console.error('Failed to drop track:', err);
+      }
+      setDraggedItem(null);
+      return;
+    }
+
     if (!draggedItem || draggedItem.type !== 'playlist' || !parentFolderId) return;
 
     if (draggedItem.parentFolderId === parentFolderId && draggedItem.id !== targetPlaylistId) {
@@ -200,21 +219,28 @@ export default function Sidebar() {
             })}
 
             <div className="pt-2 space-y-1">
-              {unfolderedPlaylists.map(pl => (
-                <button 
-                  key={pl.id}
-                  draggable="true"
-                  onDragStart={(e) => handleDragStart(e, { type: 'playlist', id: pl.id, parentFolderId: null })}
-                  onDragEnd={handleDragEnd}
-                  onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); }}
-                  className="w-full text-left px-2 py-1.5 text-neutral-400 hover:text-white transition-colors rounded-md hover:bg-neutral-800/50 flex items-center group cursor-grab active:cursor-grabbing"
-                >
-                  <div className="w-8 h-8 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
-                    {pl.images?.[0]?.url ? <img src={pl.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
-                  </div>
-                  <span className="truncate pointer-events-none">{pl.name}</span>
-                </button>
-              ))}
+              {unfolderedPlaylists.map(pl => {
+                const isDragTarget = dragOverId === pl.id; // Added visual glow support
+                
+                return (
+                  <button 
+                    key={pl.id}
+                    draggable="true"
+                    onDragStart={(e) => handleDragStart(e, { type: 'playlist', id: pl.id, parentFolderId: null })}
+                    onDragOver={(e) => handleDragOver(e, pl.id)}
+                    onDragLeave={handleDragLeave}
+                    onDragEnd={handleDragEnd}
+                    onDrop={(e) => handleDropOnPlaylist(e, pl.id, null)} // Now catches dropped tracks
+                    onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); }}
+                    className={`w-full text-left px-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-green-500/20 text-white border border-green-500/50' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
+                  >
+                    <div className="w-8 h-8 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
+                      {pl.images?.[0]?.url ? <img src={pl.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
+                    </div>
+                    <span className="truncate pointer-events-none">{pl.name}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}

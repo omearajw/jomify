@@ -1,7 +1,9 @@
+import { useUserStore } from '../../store/userStore';
+
 const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
 const redirectUri = import.meta.env.VITE_REDIRECT_URI;
 
-// The permissions Jomify needs to work
+// The permissions Jomify needs to work (Includes the new Playlist Modify scopes)
 const scope = [
   'streaming',
   'user-read-email',
@@ -10,8 +12,10 @@ const scope = [
   'user-library-modify',
   'user-read-playback-state',
   'user-modify-playback-state',
-  'playlist-read-private',
-  'playlist-read-collaborative'
+  'playlist-read-private',        
+  'playlist-read-collaborative',
+  'playlist-modify-public',   
+  'playlist-modify-private'   
 ].join(' ');
 
 export async function redirectToAuthCodeFlow() {
@@ -49,11 +53,18 @@ export async function getAccessToken(code) {
 
   if (!result.ok) throw new Error("Failed to fetch access token");
 
-  // CRITICAL CHANGE: Return the whole object so we can extract the refresh_token in the UI
-  return await result.json(); 
+  const data = await result.json();
+
+  // FIX: Save the refresh token safely to the global store right here in the background
+  const store = useUserStore.getState();
+  if (data.refresh_token) {
+    store.setRefreshToken(data.refresh_token);
+  }
+
+  // Return ONLY the string to the Login component so it doesn't break
+  return data.access_token; 
 }
 
-// NEW: The Infinite Session Engine
 export async function refreshAccessToken(refreshToken) {
   const params = new URLSearchParams();
   params.append("client_id", clientId);
@@ -66,14 +77,10 @@ export async function refreshAccessToken(refreshToken) {
     body: params
   });
 
-  if (!result.ok) {
-    throw new Error("Failed to refresh token");
-  }
-
+  if (!result.ok) throw new Error("Failed to refresh token");
   return await result.json();
 }
 
-// --- Utility Functions for PKCE Security ---
 function generateCodeVerifier(length) {
   let text = '';
   let possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';

@@ -27,7 +27,8 @@ const getCachedJSON = (key, defaultVal) => {
 };
 
 export default function Browse() {
-  const { token, setLikedTracks, navigateToArtist, navigateToAlbum } = useUserStore();
+  // Added setContextMenu and setDraggedItem here
+  const { token, setLikedTracks, navigateToArtist, navigateToAlbum, setContextMenu, setDraggedItem } = useUserStore();
   const { deviceId, playbackState } = usePlayerStore();
   
   // Initialize state directly from the session cache
@@ -188,6 +189,18 @@ export default function Browse() {
                 return (
                   <div 
                     key={track.id}
+                    draggable="true"
+                    onDragStart={(e) => {
+                      e.stopPropagation();
+                      e.dataTransfer.effectAllowed = 'all'; // FIX: Allows the drop zone to dictate the action
+                      e.dataTransfer.setData('text/plain', track.uri);
+                      setTimeout(() => setDraggedItem({ type: 'track', uri: track.uri }), 0);
+                    }}
+                    onDragEnd={() => setDraggedItem(null)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({ x: e.pageX, y: e.pageY, track });
+                    }}
                     onClick={() => handleTrackPlay(track.uri)}
                     className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
                   >
@@ -343,6 +356,18 @@ export default function Browse() {
                   return (
                     <div 
                       key={track.id}
+                      draggable="true"
+                      onDragStart={(e) => {
+                        e.stopPropagation();
+                        e.dataTransfer.effectAllowed = 'copy';
+                        e.dataTransfer.setData('text/plain', track.uri);
+                        setTimeout(() => setDraggedItem({ type: 'track', uri: track.uri }), 0);
+                      }}
+                      onDragEnd={() => setDraggedItem(null)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setContextMenu({ x: e.pageX, y: e.pageY, track });
+                      }}
                       onClick={() => handleTrackPlay(track.uri)}
                       className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
                     >

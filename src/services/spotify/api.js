@@ -245,3 +245,20 @@ export async function addToQueue(token, deviceId, trackUri) {
   
   if (!response.ok) throw new Error("Failed to add to queue");
 }
+
+export async function addTracksToPlaylist(token, playlistId, uris) {
+  // Fixed the missing $ and using the direct secure API endpoint
+  const url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks`;
+  
+  const response = await spotifyFetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ uris })
+  });
+
+  if (!response.ok) throw new Error("Failed to add tracks to playlist");
+  return await response.json();
+}
