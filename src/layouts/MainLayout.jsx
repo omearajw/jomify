@@ -33,7 +33,7 @@ export default function MainLayout({ children }) {
       <div className="flex-1 flex overflow-hidden">
         <Sidebar />
         
-        <main className="flex-1 overflow-y-auto backdrop-blur-sm rounded-lg my-2 mr-2 relative shadow-2xl flex flex-col">
+        <main className="flex-1 overflow-y-auto [scrollbar-gutter:stable] backdrop-blur-sm rounded-lg my-2 mr-2 relative shadow-2xl flex flex-col">
           
           {/* RATE LIMIT WARNING BANNER */}
           {isCoolingDown && (

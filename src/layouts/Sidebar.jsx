@@ -5,6 +5,21 @@ import { addTracksToPlaylist, createPlaylist, uploadPlaylistCoverImage } from '.
 import PlaylistFormDialog from '../components/PlaylistFormDialog';
 import FolderFormDialog from '../components/FolderFormDialog';
 
+const TAGLINES = [
+  "All my homies HATE Spotify!",
+  "Spotify done right.",
+  "Doing what Spotify won't.",
+  "Let me show you how the boss does it - Phoenix.",
+  "Hello Father",
+  "Nobody wants to watch 'episodes'.",
+  "Bloatless.",
+  "Jomify, best in the biz.",
+  "The best of the Omifys.",
+  "Nobody does it better.",
+  "The way it should be done.",
+  "Spotify... shitify"
+];
+
 export default function Sidebar() {
   const { 
     token, profile, currentView, setCurrentView, logout, playlists, activePlaylistId,
@@ -22,6 +37,9 @@ export default function Sidebar() {
 
   const activeFolder = customFolders.find(f => f.id === isolatedFolderId);
   const unfolderedPlaylists = playlists.filter(p => !customFolders.some(f => f.playlistIds.includes(p.id)));
+  
+  // NEW: Picks a random tagline once per session
+  const [tagline] = useState(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)]);
 
   const toggleFolderExpand = (e, folderId) => {
     e.stopPropagation();
@@ -319,7 +337,7 @@ export default function Sidebar() {
       </div>
 
       <div className="mt-auto border-t border-neutral-800 pt-6 flex flex-col space-y-2 text-xs text-neutral-600 shrink-0">
-        <p>Built for pure audio.</p>
+        <p>{tagline}</p>
         <button onClick={() => { logout(); window.location.href = "/"; }} className="text-left hover:text-white transition-colors">Disconnect Account</button>
       </div>
 

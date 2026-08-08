@@ -313,7 +313,7 @@ export default function Library() {
 
   if (!activeFolder) {
     gridItems.push(
-      <div key="liked-songs" onClick={() => setCurrentView('liked-songs')} className="bg-gradient-to-br from-indigo-700 to-blue-500 p-4 rounded-xl hover:scale-[1.02] transition-all duration-300 cursor-pointer group shadow-lg flex flex-col justify-end aspect-square relative overflow-hidden">
+      <div key="liked-songs" onClick={() => setCurrentView('liked-songs')} className="bg-brand-gradient p-4 rounded-xl hover:scale-[1.02] transition-all duration-300 cursor-pointer group shadow-lg flex flex-col justify-end aspect-square relative overflow-hidden">
         <div className="absolute top-4 left-4"><Heart className="w-8 h-8 fill-white text-white shadow-sm" /></div>
         <h3 className="font-bold text-2xl text-white mb-1 leading-tight tracking-tighter">Liked Songs</h3>
         <p className="text-xs text-indigo-100 font-medium">Your saved collection</p>
