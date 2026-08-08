@@ -88,6 +88,15 @@ export const useUserStore = create(
           return { ...f, playlistIds: newIds };
         })
       })),
+
+      // --- OPTIMISTIC UI IMAGE UPDATER ---
+      updatePlaylistImage: (playlistId, newImageUrl) => set((state) => ({
+        playlists: state.playlists.map((pl) =>
+          pl.id === playlistId
+            ? { ...pl, images: [{ url: newImageUrl }] }
+            : pl
+        ),
+      })),
       
       setToken: (newToken) => set({ 
         token: newToken,
@@ -107,7 +116,6 @@ export const useUserStore = create(
         currentView: 'home',
         viewHistory: [],
         activeFolderId: null
-        // Notice customFolders is explicitly excluded here so they are permanent!
       }),
 
       queueRefreshTrigger: 0,
@@ -156,7 +164,6 @@ export const useUserStore = create(
       toggleZenMode: () => set((state) => ({ isZenMode: !state.isZenMode })),
       setSavedVolume: (vol) => set({ savedVolume: vol }),
 
-      // --- NAVIGATION BUG FIX: State Snapshots ---
       setCurrentView: (view) => set((state) => {
         if (state.currentView === view) return {}; 
         return {
@@ -165,7 +172,7 @@ export const useUserStore = create(
             playlistId: state.activePlaylistId,
             artistId: state.currentArtistId,
             albumId: state.currentAlbumId,
-            folderId: state.activeFolderId // Takes a snapshot of the exact folder you were in
+            folderId: state.activeFolderId 
           }],
           currentView: view
         };
@@ -193,7 +200,7 @@ export const useUserStore = create(
           activePlaylistId: prev.playlistId,
           currentArtistId: prev.artistId,
           currentAlbumId: prev.albumId,
-          activeFolderId: prev.folderId // Restores the folder perfectly
+          activeFolderId: prev.folderId 
         };
       }),
     }),

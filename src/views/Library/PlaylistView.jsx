@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useUserStore } from '../../store/userStore'; // FIXED: Correct import
+import { useUserStore } from '../../store/userStore'; 
 import { usePlayerStore } from '../../store/playerStore';
 import { fetchPlaylistDetails, playPlaylistTrack, checkTracksLiked, fetchMoreTracks, updatePlaylist, uploadPlaylistCoverImage } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
@@ -18,7 +18,7 @@ const cleanString = (str) => {
 };
 
 export default function PlaylistView() {
-  const { token, playlists, activePlaylistId, setLikedTracks, setContextMenu, setDraggedItem, setPlaylists } = useUserStore();
+  const { token, updatePlaylistImage, playlists, activePlaylistId, setLikedTracks, setContextMenu, setDraggedItem, setPlaylists } = useUserStore();
   const { deviceId, playbackState } = usePlayerStore();
   const [playlist, setPlaylist] = useState(null);
   
@@ -89,22 +89,36 @@ export default function PlaylistView() {
     playPlaylistTrack(token, deviceId, activePlaylistId, index).catch(console.error);
   };
 
-  const handleUpdatePlaylist = async ({ name, description, imageFile, imagePreview }) => {
+  const handleUpdatePlaylist = async ({ name, description, imageFile }) => {
     if (!token || !activePlaylistId) return;
     setIsUpdatingPlaylist(true);
 
     try {
+      // 1. Update text metadata
       const updated = await updatePlaylist(token, activePlaylistId, { name, description });
+      
+      // 2. Upload image and optimistically update UI if an image was provided
       if (imageFile) {
         try {
           await uploadPlaylistCoverImage(token, activePlaylistId, imageFile);
-          setPlaylist((prev) => prev ? { ...prev, images: [{ url: imagePreview || prev?.images?.[0]?.url }] } : prev);
+          
+          // Generate the instant local URL
+          const tempLocalUrl = URL.createObjectURL(imageFile);
+          
+          // Inject into global store (updates Sidebar/Library instantly)
+          updatePlaylistImage(activePlaylistId, tempLocalUrl);
+          
+          // Inject into local state (updates Header instantly)
+          setPlaylist((prev) => prev ? { ...prev, images: [{ url: tempLocalUrl }] } : prev);
         } catch (err) {
           console.warn('Playlist metadata updated but cover image upload failed:', err);
         }
       }
+      
+      // Update local and global text states
       setPlaylist((prev) => prev ? { ...prev, name: updated.name, description: updated.description } : prev);
       setPlaylists(playlists.map((p) => p.id === activePlaylistId ? { ...p, name: updated.name, description: updated.description } : p));
+      
       setEditDialogOpen(false);
     } catch (err) {
       console.error('Failed to update playlist:', err);
@@ -237,15 +251,14 @@ export default function PlaylistView() {
                 draggable="true"
                 onDragStart={(e) => {
                   e.stopPropagation();
-                  e.dataTransfer.effectAllowed = 'all'; // Allows copying!
+                  e.dataTransfer.effectAllowed = 'all'; 
                   e.dataTransfer.setData('text/plain', track.uri);
                   setTimeout(() => setDraggedItem({ type: 'track', uri: track.uri }), 0);
                 }}
                 onDragEnd={() => setDraggedItem(null)}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  // CRITICAL: We pass the activePlaylistId here. 
-                  // The ContextMenu will check if you own this playlist, and if you do, it reveals the Remove button!
+                  e.stopPropagation();
                   setContextMenu({ 
                     type: 'track',
                     x: e.pageX, 
@@ -254,9 +267,11 @@ export default function PlaylistView() {
                     sourcePlaylistId: activePlaylistId 
                   }); 
                 }}
-                className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
+                className="flex items-center justify-between gap-4 w-full h-full"
               >
-                <LikeButton trackId={track.id} />
+                <div className="flex items-center space-x-4">
+                    <LikeButton trackId={track.id} />
+                </div>
                 <span className="text-neutral-400 w-8 text-right">{formatTime(track.duration_ms)}</span>
               </div>
             </div>

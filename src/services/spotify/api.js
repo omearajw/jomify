@@ -141,14 +141,20 @@ async function blobToBase64(blob) {
 
 export async function uploadPlaylistCoverImage(token, playlistId, imageFile) {
   if (!imageFile) return;
-  const base64Image = await blobToBase64(imageFile);
+  
+  // 1. Get the base64 string
+  let base64Image = await blobToBase64(imageFile);
+  
+  // 2. CRITICAL FIX: Strip the "data:image/...;base64," prefix from the string
+  base64Image = base64Image.replace(/^data:image\/(jpeg|png|jpg|webp);base64,/, '');
+
   const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}/images`, {
     method: "PUT",
     headers: {
       "Authorization": `Bearer ${token}`,
-      "Content-Type": imageFile.type || "image/jpeg"
+      "Content-Type": "image/jpeg" // CRITICAL FIX: Hardcode this, do not use imageFile.type
     },
-    body: base64Image
+    body: base64Image // Send the raw, prefix-less string
   });
 
   if (response.status !== 202) throw new Error("Failed to upload playlist cover image");
