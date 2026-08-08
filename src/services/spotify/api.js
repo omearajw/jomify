@@ -92,6 +92,68 @@ export async function followPlaylist(token, playlistId) {
   if (!response.ok) throw new Error("Failed to follow playlist");
 }
 
+export async function createPlaylist(token, userId, { name, description = '', public: isPublic = false, collaborative = false } = {}) {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/users/${encodeURIComponent(userId)}/playlists`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ name, description, public: isPublic, collaborative })
+  });
+
+  if (!response.ok) throw new Error("Failed to create playlist");
+  return await response.json();
+}
+
+export async function updatePlaylist(token, playlistId, { name, description = undefined, public: isPublic = undefined, collaborative = undefined } = {}) {
+  const payload = {};
+  if (name !== undefined) payload.name = name;
+  if (description !== undefined) payload.description = description;
+  if (isPublic !== undefined) payload.public = isPublic;
+  if (collaborative !== undefined) payload.collaborative = collaborative;
+
+  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+    method: "PUT",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error("Failed to update playlist");
+  return { name, description, public: isPublic, collaborative };
+}
+
+async function blobToBase64(blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+
+  return btoa(binary);
+}
+
+export async function uploadPlaylistCoverImage(token, playlistId, imageFile) {
+  if (!imageFile) return;
+  const base64Image = await blobToBase64(imageFile);
+  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}/images`, {
+    method: "PUT",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": imageFile.type || "image/jpeg"
+    },
+    body: base64Image
+  });
+
+  if (response.status !== 202) throw new Error("Failed to upload playlist cover image");
+}
+
 // NEW: A dedicated function to grab the next chunks
 export async function fetchMoreTracks(token, nextUrl) {
   const response = await spotifyFetch(nextUrl, {
@@ -125,7 +187,7 @@ export async function searchSpotify(token, query) {
   if (!query) return null;
   
   const encodedQuery = encodeURIComponent(query);
-  const url = "https://" + "api.spotify.com/v1/search?q=" + encodedQuery + "&type=track,album,artist,playlist&limit=10";
+  const url = "https://" + "api.spotify.com/v1/search?q=" + encodedQuery + "&type=track,album,artist,playlist&limit=20";
 
   const response = await spotifyFetch(url, {
     method: "GET",

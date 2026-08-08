@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { useUserStore } from '../../store/userStore'; // FIXED: Correct import
 import { usePlayerStore } from '../../store/playerStore';
-import { fetchPlaylistDetails, playPlaylistTrack, checkTracksLiked, fetchMoreTracks } from '../../services/spotify/api';
+import { fetchPlaylistDetails, playPlaylistTrack, checkTracksLiked, fetchMoreTracks, updatePlaylist, uploadPlaylistCoverImage } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Clock3, Play } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
+import PlaylistFormDialog from '../../components/PlaylistFormDialog';
 
 // Robust string cleaner to bypass Spotify's meta mismatches
 const cleanString = (str) => {
@@ -17,7 +18,7 @@ const cleanString = (str) => {
 };
 
 export default function PlaylistView() {
-  const { token, activePlaylistId, setLikedTracks, setContextMenu, setDraggedItem } = useUserStore();
+  const { token, playlists, activePlaylistId, setLikedTracks, setContextMenu, setDraggedItem, setPlaylists } = useUserStore();
   const { deviceId, playbackState } = usePlayerStore();
   const [playlist, setPlaylist] = useState(null);
   
@@ -25,6 +26,8 @@ export default function PlaylistView() {
 
   const currentPlayingTrack = playbackState?.track_window?.current_track;
   const isCurrentTrackPaused = playbackState ? playbackState.paused : true;
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [isUpdatingPlaylist, setIsUpdatingPlaylist] = useState(false);
 
   const checkLikesForChunk = (items) => {
     const ids = items.map(item => item.track?.id).filter(Boolean);
@@ -86,6 +89,30 @@ export default function PlaylistView() {
     playPlaylistTrack(token, deviceId, activePlaylistId, index).catch(console.error);
   };
 
+  const handleUpdatePlaylist = async ({ name, description, imageFile, imagePreview }) => {
+    if (!token || !activePlaylistId) return;
+    setIsUpdatingPlaylist(true);
+
+    try {
+      const updated = await updatePlaylist(token, activePlaylistId, { name, description });
+      if (imageFile) {
+        try {
+          await uploadPlaylistCoverImage(token, activePlaylistId, imageFile);
+          setPlaylist((prev) => prev ? { ...prev, images: [{ url: imagePreview || prev?.images?.[0]?.url }] } : prev);
+        } catch (err) {
+          console.warn('Playlist metadata updated but cover image upload failed:', err);
+        }
+      }
+      setPlaylist((prev) => prev ? { ...prev, name: updated.name, description: updated.description } : prev);
+      setPlaylists(playlists.map((p) => p.id === activePlaylistId ? { ...p, name: updated.name, description: updated.description } : p));
+      setEditDialogOpen(false);
+    } catch (err) {
+      console.error('Failed to update playlist:', err);
+    } finally {
+      setIsUpdatingPlaylist(false);
+    }
+  };
+
   const handleRightClick = (e, track) => {
     e.preventDefault();
     setContextMenu({
@@ -104,19 +131,30 @@ export default function PlaylistView() {
   return (
     <div className="flex flex-col pb-8">
       {/* Playlist Header */}
-      <div className="flex items-end space-x-6 mb-8 mt-4 select-none">
-        {playlist.images?.length > 0 ? (
-          <img src={playlist.images[0].url} alt={playlist.name} className="w-48 h-48 shadow-2xl shadow-black/50 rounded" />
-        ) : (
-          <div className="w-48 h-48 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded"> 💿 </div>
-        )}
-        <div>
-          <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2">Playlist</p>
-          <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tighter mb-4">{playlist.name}</h1>
-          <p className="text-neutral-400 text-sm font-medium">
-            {playlist.description && <span className="mr-2">{playlist.description} •</span>}
-            {playlist.owner.display_name} • {playlist.tracks.total} songs
-          </p>
+      <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-8 mt-4 select-none gap-6">
+        <div className="flex items-end space-x-6">
+          {playlist.images?.length > 0 ? (
+            <img src={playlist.images[0].url} alt={playlist.name} className="w-48 h-48 shadow-2xl shadow-black/50 rounded" />
+          ) : (
+            <div className="w-48 h-48 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded"> 💿 </div>
+          )}
+          <div>
+            <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2">Playlist</p>
+            <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tighter mb-4">{playlist.name}</h1>
+            <p className="text-neutral-400 text-sm font-medium">
+              {playlist.description && <span className="mr-2">{playlist.description} •</span>}
+              {playlist.owner.display_name} • {playlist.tracks.total} songs
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setEditDialogOpen(true)}
+            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors"
+          >
+            Edit playlist
+          </button>
         </div>
       </div>
 
@@ -131,6 +169,17 @@ export default function PlaylistView() {
 
       {/* Tracklist */}
       <div className="flex flex-col">
+        <PlaylistFormDialog
+          open={editDialogOpen}
+          title="Edit playlist"
+          submitLabel="Save changes"
+          initialName={playlist.name}
+          initialDescription={playlist.description || ''}
+          initialImageUrl={playlist.images?.[0]?.url || ''}
+          onSubmit={handleUpdatePlaylist}
+          onCancel={() => setEditDialogOpen(false)}
+          isSubmitting={isUpdatingPlaylist}
+        />
         {playlist.tracks.items.map((item, index) => {
           const track = item.track;
           if (!track) return null;

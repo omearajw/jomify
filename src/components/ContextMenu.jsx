@@ -11,7 +11,7 @@ export default function ContextMenu() {
   const { 
     contextMenu, setContextMenu, token, triggerQueueRefresh, 
     addManuallyQueuedTrack, injectOptimisticQueueItem, 
-    playlists, customFolders, profile, deletePlaylist, setCurrentView, setActivePlaylistId, activePlaylistId
+    playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId, activePlaylistId
   } = useUserStore();
   const { addPlaylistToFolder, removePlaylistFromFolder } = useUserStore();
 
@@ -19,6 +19,7 @@ export default function ContextMenu() {
   const menuRef = useRef(null);
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmFolderOpen, setConfirmFolderOpen] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -36,6 +37,7 @@ export default function ContextMenu() {
   const userPlaylists = playlists.filter(p => p.owner.id === profile?.id);
   const unfolderedPlaylists = userPlaylists.filter(p => !customFolders.some(f => f.playlistIds.includes(p.id)));
   const sourcePlaylist = contextMenu.sourcePlaylistId ? playlists.find(p => p.id === contextMenu.sourcePlaylistId) : null;
+  const folder = contextMenu?.folderId ? customFolders.find(f => f.id === contextMenu.folderId) : null;
   const canRemove = sourcePlaylist && sourcePlaylist.owner.id === profile?.id;
 
   const handleAddToQueue = async () => {
@@ -99,6 +101,24 @@ export default function ContextMenu() {
       setContextMenu(null);
       setConfirmOpen(false);
     }
+  };
+
+  const handleDeleteFolder = () => {
+    if (!contextMenu?.folderId) return;
+    setConfirmFolderOpen(true);
+  };
+
+  const confirmDeleteFolder = () => {
+    if (!contextMenu?.folderId) return;
+
+    if (typeof contextMenu.onDelete === 'function') {
+      contextMenu.onDelete();
+    } else {
+      deleteFolder(contextMenu.folderId);
+      setContextMenu(null);
+    }
+
+    setConfirmFolderOpen(false);
   };
 
   return createPortal(
@@ -228,6 +248,18 @@ export default function ContextMenu() {
           </div>
         </>
       )}
+
+      {contextMenu?.type === 'folder' && folder && (
+        <>
+          <button
+            onClick={handleDeleteFolder}
+            className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
+            <span>Delete folder</span>
+          </button>
+        </>
+      )}
       {(contextMenu?.type === 'album' || contextMenu?.albumId) && (
         <button
           onClick={async () => {
@@ -253,6 +285,14 @@ export default function ContextMenu() {
         confirmLabel="Delete Playlist"
         onConfirm={confirmDeletePlaylist}
         onCancel={() => setConfirmOpen(false)}
+      />
+      <ConfirmDialog
+        open={confirmFolderOpen}
+        title="Delete Folder"
+        message={`Delete "${contextMenu?.folderName || folder?.name}"? Your playlists will not be deleted.`}
+        confirmLabel="Delete Folder"
+        onConfirm={confirmDeleteFolder}
+        onCancel={() => setConfirmFolderOpen(false)}
       />
     </div>,
     document.body

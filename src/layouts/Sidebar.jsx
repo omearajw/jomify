@@ -1,19 +1,24 @@
 import { useState } from 'react';
-import { Home, Library, Disc3, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus } from 'lucide-react';
+import { Home, Library, Disc3, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus, FolderPlus } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
-import { addTracksToPlaylist } from '../services/spotify/api';
+import { addTracksToPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../services/spotify/api';
+import PlaylistFormDialog from '../components/PlaylistFormDialog';
+import FolderFormDialog from '../components/FolderFormDialog';
 
 export default function Sidebar() {
   const { 
-    token, currentView, setCurrentView, logout, playlists, activePlaylistId,
+    token, profile, currentView, setCurrentView, logout, playlists, activePlaylistId,
     setActivePlaylistId, customFolders, createFolder,
     draggedItem, setDraggedItem, reorderFolders, 
-    addPlaylistToFolder, reorderPlaylistInFolder, setContextMenu
+    addPlaylistToFolder, reorderPlaylistInFolder, setContextMenu, setPlaylists, deleteFolder
   } = useUserStore();
   
   const [isolatedFolderId, setIsolatedFolderId] = useState(null);
   const [expandedFolders, setExpandedFolders] = useState([]);
   const [dragOverId, setDragOverId] = useState(null);
+  const [showCreatePlaylistDialog, setShowCreatePlaylistDialog] = useState(false);
+  const [showCreateFolderDialog, setShowCreateFolderDialog] = useState(false);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 
   const activeFolder = customFolders.find(f => f.id === isolatedFolderId);
   const unfolderedPlaylists = playlists.filter(p => !customFolders.some(f => f.playlistIds.includes(p.id)));
@@ -23,9 +28,43 @@ export default function Sidebar() {
     setExpandedFolders(prev => prev.includes(folderId) ? prev.filter(id => id !== folderId) : [...prev, folderId]);
   };
 
-  const handleCreateFolder = () => {
-    const name = window.prompt("Enter new folder name:");
-    if (name && name.trim()) createFolder(name.trim());
+  const handleCreateFolder = async ({ name }) => {
+    if (!name || !name.trim()) return;
+    setIsCreatingFolder(true);
+    try {
+      createFolder(name.trim());
+      setShowCreateFolderDialog(false);
+    } finally {
+      setIsCreatingFolder(false);
+    }
+  };
+
+  const handleCreatePlaylistFromSidebar = async ({ name, description, imageFile }) => {
+    if (!token || !profile?.id) return;
+    setShowCreatePlaylistDialog(false);
+
+    try {
+      const newPlaylist = await createPlaylist(token, profile.id, {
+        name,
+        description,
+        public: false,
+        collaborative: false
+      });
+
+      if (imageFile) {
+        try {
+          await uploadPlaylistCoverImage(token, newPlaylist.id, imageFile);
+        } catch (err) {
+          console.warn('Playlist created but cover image upload failed:', err);
+        }
+      }
+
+      setPlaylists([...playlists, newPlaylist]);
+      setActivePlaylistId(newPlaylist.id);
+      setCurrentView('playlist');
+    } catch (err) {
+      console.error('Sidebar playlist creation failed:', err);
+    }
   };
 
   const handleDragStart = (e, item) => {
@@ -171,9 +210,12 @@ export default function Sidebar() {
           </div>
         ) : (
           <div className="animate-fade-in space-y-1">
-            <div className="flex items-center justify-between px-2 pb-2 text-neutral-400">
+            <div className="sticky top-0 flex items-center justify-between px-2 pb-3 text-neutral-400 bg-black/100 border-b border-white/10 z-10">
               <span className="text-xs uppercase tracking-wider font-bold">Playlists</span>
-              <button onClick={handleCreateFolder} className="hover:text-white transition-colors" title="Create Folder"><Plus className="w-4 h-4" /></button>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setShowCreateFolderDialog(true)} className="hover:text-white transition-colors" title="Create Folder"><FolderPlus className="w-4 h-4" /></button>
+                <button onClick={() => setShowCreatePlaylistDialog(true)} className="hover:text-white transition-colors" title="Create Playlist"><Plus className="w-4 h-4" /></button>
+              </div>
             </div>
 
             {customFolders.map(folder => {
@@ -190,6 +232,22 @@ export default function Sidebar() {
                     onDragEnd={handleDragEnd} 
                     onDrop={(e) => handleDropOnFolder(e, folder.id)}
                     onClick={() => setIsolatedFolderId(folder.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setContextMenu({
+                        type: 'folder',
+                        folderId: folder.id,
+                        folderName: folder.name,
+                        x: e.pageX,
+                        y: e.pageY,
+                        onDelete: () => {
+                          deleteFolder(folder.id);
+                          if (isolatedFolderId === folder.id) setIsolatedFolderId(null);
+                          setContextMenu(null);
+                        }
+                      });
+                    }}
                     className={`flex items-center w-full px-2 py-2 rounded-md cursor-pointer group transition-colors cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-green-500/20 text-white border border-green-500/50' : draggedItem?.type === 'playlist' ? 'text-neutral-300 hover:bg-neutral-800/50 border border-dashed border-green-500/30 bg-green-500/5' : 'text-neutral-300 hover:text-white hover:bg-neutral-800/50'}`}
                   >
                     <button onClick={(e) => toggleFolderExpand(e, folder.id)} className="p-0.5 hover:bg-neutral-700 rounded text-neutral-400 hover:text-white mr-1 transition-colors">
@@ -264,6 +322,23 @@ export default function Sidebar() {
         <p>Built for pure audio.</p>
         <button onClick={() => { logout(); window.location.href = "/"; }} className="text-left hover:text-white transition-colors">Disconnect Account</button>
       </div>
+
+      <PlaylistFormDialog
+        open={showCreatePlaylistDialog}
+        title="Create playlist"
+        submitLabel="Create"
+        onSubmit={handleCreatePlaylistFromSidebar}
+        onCancel={() => setShowCreatePlaylistDialog(false)}
+        isSubmitting={false}
+      />
+      <FolderFormDialog
+        open={showCreateFolderDialog}
+        title="Create folder"
+        submitLabel="Create"
+        onSubmit={handleCreateFolder}
+        onCancel={() => setShowCreateFolderDialog(false)}
+        isSubmitting={isCreatingFolder}
+      />
     </aside>
   );
 }

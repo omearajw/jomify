@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
-import { fetchUserPlaylists, addTracksToPlaylist, unfollowPlaylist } from '../../services/spotify/api';
+import { fetchUserPlaylists, addTracksToPlaylist, unfollowPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../../services/spotify/api';
 import { Heart, Folder, Maximize2, ChevronLeft, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import PlaylistFormDialog from '../../components/PlaylistFormDialog';
 
 // --- VISUAL UPGRADE: Safely Bounded Right-to-Left Fan Stack ---
 const FolderStack = ({ folder, playlists }) => {
@@ -40,7 +41,7 @@ const FolderStack = ({ folder, playlists }) => {
 
 export default function Library() {
   const { 
-    token, playlists, setPlaylists, setCurrentView, setActivePlaylistId,
+    token, profile, playlists, setPlaylists, setCurrentView, setActivePlaylistId,
     customFolders, addPlaylistToFolder, removePlaylistFromFolder, deleteFolder, deletePlaylist,
     draggedItem, setDraggedItem, reorderFolders, reorderPlaylistInFolder,
     libraryGridSize, setLibraryGridSize
@@ -56,6 +57,8 @@ export default function Library() {
   const [confirmState, setConfirmState] = useState({ open: false, type: null, playlist: null, folderId: null });
   
   const [dragOverId, setDragOverId] = useState(null);
+  const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false);
+  const [isSubmittingPlaylist, setIsSubmittingPlaylist] = useState(false);
 
   const activeFolder = customFolders.find(f => f.id === isolatedFolderId);
   const unfolderedPlaylists = playlists.filter(p => !customFolders.some(f => f.playlistIds.includes(p.id)));
@@ -91,6 +94,23 @@ export default function Library() {
     const x = e.pageX || rect.left;
     const y = e.pageY || rect.top;
     setContextMenu({ type: 'playlist', playlistId, parentFolderId, x, y });
+  };
+
+  const handleFolderContextMenu = (e, folder) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      type: 'folder',
+      folderId: folder.id,
+      folderName: folder.name,
+      x: e.pageX,
+      y: e.pageY,
+      onDelete: () => {
+        deleteFolder(folder.id);
+        if (isolatedFolderId === folder.id) setIsolatedFolderId(null);
+        setContextMenu(null);
+      }
+    });
   };
 
   const handleDeletePlaylist = (e, playlist) => {
@@ -207,6 +227,37 @@ export default function Library() {
     return 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6';
   };
 
+  const handleCreatePlaylist = async ({ name, description, imageFile }) => {
+    if (!token || !profile?.id) return;
+    setIsSubmittingPlaylist(true);
+
+    try {
+      const newPlaylist = await createPlaylist(token, profile.id, {
+        name,
+        description,
+        public: false,
+        collaborative: false
+      });
+
+      if (imageFile) {
+        try {
+          await uploadPlaylistCoverImage(token, newPlaylist.id, imageFile);
+        } catch (err) {
+          console.warn('Playlist created but cover image upload failed:', err);
+        }
+      }
+
+      setPlaylists([...playlists, newPlaylist]);
+      setActivePlaylistId(newPlaylist.id);
+      setCurrentView('playlist');
+      setPlaylistDialogOpen(false);
+    } catch (err) {
+      console.error('Failed to create playlist:', err);
+    } finally {
+      setIsSubmittingPlaylist(false);
+    }
+  };
+
   const SizingControls = () => (
     <div className="flex items-center space-x-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 w-fit shrink-0">
       <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider mr-2">Size</span>
@@ -314,9 +365,10 @@ export default function Library() {
             onDragEnd={handleDragEnd} 
             onDrop={(e) => handleDropOnFolder(e, folder.id)}
             onClick={() => setIsolatedFolderId(folder.id)} 
+            onContextMenu={(e) => handleFolderContextMenu(e, folder)}
             className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border relative flex flex-col h-full cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-green-500/10 border-green-500 scale-[1.02]' : 'bg-neutral-800/40 border-transparent hover:border-neutral-700 hover:bg-neutral-800/80'} ${draggedItem?.type === 'playlist' && !isDragTarget ? 'border-dashed border-green-500/50 bg-green-500/5' : ''}`}
           >
-            <button onClick={(e) => toggleFolderExpand(e, folder.id)} className="absolute top-4 right-4 z-10 w-8 h-8 bg-black/40 hover:bg-black/80 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors" title="Expand Inline">
+            <button onClick={(e) => toggleFolderExpand(e, folder.id)} className="absolute top-4 right-4 z-100 w-8 h-8 bg-black/40 hover:bg-black/80 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors" title="Expand Inline">
               <Maximize2 className="w-4 h-4 text-white transition-transform duration-300" />
             </button>
             <div className="aspect-square w-full mb-4 rounded-md shadow-md shrink-0 pointer-events-none">
@@ -414,14 +466,31 @@ export default function Library() {
       ) : (
         <>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
-            <h1 className="text-4xl font-extrabold text-white tracking-tighter">Your Library</h1>
-            <SizingControls />
+            <div>
+              <h1 className="text-4xl font-extrabold text-white tracking-tighter">Your Library</h1>
+              <p className="text-sm text-neutral-400 mt-1">Create playlists and organize your collection.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setPlaylistDialogOpen(true)} className="px-5 py-2 rounded-full bg-green-500 text-black font-bold hover:bg-green-400 transition-all">
+                Create Playlist
+              </button>
+              <SizingControls />
+            </div>
           </div>
           <div className={`grid ${getGridClass()}`}>
             {gridItems}
           </div>
         </>
       )}
+      <PlaylistFormDialog
+        open={playlistDialogOpen}
+        title="Create playlist"
+        submitLabel="Create"
+        onSubmit={handleCreatePlaylist}
+        onCancel={() => setPlaylistDialogOpen(false)}
+        isSubmitting={isSubmittingPlaylist}
+      />
+
       <ConfirmDialog
         open={confirmState.open}
         title={confirmState.type === 'playlist' ? 'Delete Playlist' : 'Delete Folder'}

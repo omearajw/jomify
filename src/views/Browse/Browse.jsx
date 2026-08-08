@@ -35,7 +35,13 @@ export default function Browse() {
   const [query, setQuery] = useState(() => getCachedString('jomify_browse_query', ''));
   const [results, setResults] = useState(() => getCachedJSON('jomify_browse_results', null));
   const [expandedSection, setExpandedSection] = useState(() => getCachedString('jomify_browse_expanded', null)); 
-  const [paginationUrls, setPaginationUrls] = useState(() => getCachedJSON('jomify_browse_pagination', { tracks: null, albums: null, artists: null, playlists: null }));
+  const [paginationUrls, setPaginationUrls] = useState(() => ({
+    tracks: null,
+    albums: null,
+    artists: null,
+    playlists: null,
+    ...getCachedJSON('jomify_browse_pagination', {})
+  }));
   
   const [loadingMore, setLoadingMore] = useState(false);
   const sentinelRef = useRef(null);
@@ -85,12 +91,53 @@ export default function Browse() {
       } else {
         setResults(null);
         setExpandedSection(null);
-        setPaginationUrls({ tracks: null, albums: null, artists: null });
+        setPaginationUrls({ tracks: null, albums: null, artists: null, playlists: null });
       }
     }, 400);
 
     return () => clearTimeout(delayDebounce);
   }, [query, token, setLikedTracks]);
+
+  const loadMoreResults = useCallback(async (section) => {
+    if (!paginationUrls[section] || loadingMore || !token) return;
+
+    setLoadingMore(true);
+    try {
+      const data = await fetchSearchPage(token, paginationUrls[section]);
+      
+      setResults((prev) => {
+        if (!prev || !data) return prev;
+        const sectionKey = section === 'tracks' ? 'tracks' : section === 'albums' ? 'albums' : section === 'artists' ? 'artists' : 'playlists';
+        const existingItems = Array.isArray(prev[sectionKey]?.items) ? prev[sectionKey].items : [];
+        const newItems = Array.isArray(data[sectionKey]?.items) ? data[sectionKey].items : [];
+
+        return {
+          ...prev,
+          [sectionKey]: {
+            ...data[sectionKey],
+            items: [...existingItems, ...newItems]
+          }
+        };
+      });
+
+      setPaginationUrls((prev) => ({
+        ...prev,
+        [section]: data?.[section === 'tracks' ? 'tracks' : section === 'albums' ? 'albums' : section === 'artists' ? 'artists' : 'playlists']?.next || null
+      }));
+
+      // Check if new tracks are liked
+      if (section === 'tracks' && data.tracks?.items) {
+        const ids = data.tracks.items.map(track => track.id).filter(Boolean);
+        if (ids.length > 0) {
+          checkTracksLiked(token, ids).then(setLikedTracks).catch(console.error);
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to load more ${section}:`, error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [paginationUrls, loadingMore, token, setLikedTracks]);
 
   // Infinite scroll effect
   useEffect(() => {
@@ -107,45 +154,7 @@ export default function Browse() {
 
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [expandedSection, paginationUrls, loadingMore]);
-
-  const loadMoreResults = useCallback(async (section) => {
-    if (!paginationUrls[section] || loadingMore || !token) return;
-
-    setLoadingMore(true);
-    try {
-      const data = await fetchSearchPage(token, paginationUrls[section]);
-      
-      setResults((prev) => {
-        if (!prev) return prev;
-        const sectionKey = section === 'tracks' ? 'tracks' : section === 'albums' ? 'albums' : section === 'artists' ? 'artists' : 'playlists';
-        return {
-          ...prev,
-          [sectionKey]: {
-            ...data[sectionKey],
-            items: [...(prev[sectionKey]?.items || []), ...data[sectionKey]?.items]
-          }
-        };
-      });
-
-      setPaginationUrls((prev) => ({
-        ...prev,
-        [section]: data[section === 'tracks' ? 'tracks' : section === 'albums' ? 'albums' : section === 'artists' ? 'artists' : 'playlists']?.next || null
-      }));
-
-      // Check if new tracks are liked
-      if (section === 'tracks' && data.tracks?.items) {
-        const ids = data.tracks.items.map(track => track.id).filter(Boolean);
-        if (ids.length > 0) {
-          checkTracksLiked(token, ids).then(setLikedTracks).catch(console.error);
-        }
-      }
-    } catch (error) {
-      console.error(`Failed to load more ${section}:`, error);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [paginationUrls, loadingMore, token, setLikedTracks]);
+  }, [expandedSection, paginationUrls, loadingMore, loadMoreResults]);
 
   const handleTrackPlay = (trackUri) => {
     if (!token || !deviceId) return;
@@ -166,20 +175,27 @@ export default function Browse() {
   // EXPANDED VIEW RENDERER
   // ----------------------------------------
   if (expandedSection && results) {
+    const trackItems = Array.isArray(results.tracks?.items) ? results.tracks.items : [];
+    const artistItems = Array.isArray(results.artists?.items) ? results.artists.items : [];
+    const albumItems = Array.isArray(results.albums?.items) ? results.albums.items : [];
+    const playlistItems = Array.isArray(results.playlists?.items) ? results.playlists.items : [];
+
     return (
       <div className="flex flex-col pb-8 select-none animate-fade-in px-2">
-        <button 
-          onClick={() => setExpandedSection(null)} 
-          className="flex items-center text-neutral-400 hover:text-white mb-6 w-fit font-bold transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5 mr-2" /> Back to Search
-        </button>
+        <div className="sticky top-15 z-10 bg-neutral-900/90 backdrop-blur-md px-8 py-4 flex items-center">
+          <button 
+            onClick={() => setExpandedSection(null)} 
+            className="flex items-center text-neutral-400 hover:text-white mb-1 w-fit font-bold transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 mr-2" /> Back to Search
+          </button>
+        </div>
 
         {expandedSection === 'tracks' && (
           <div>
             <h1 className="text-3xl font-extrabold text-white mb-6">All Songs</h1>
             <div className="flex flex-col space-y-1">
-              {results.tracks.items.map((track) => {
+              {trackItems.map((track) => {
                 const isCurrentTrack = currentPlayingTrack && (
                   track.id === currentPlayingTrack.id || 
                   track.uri === currentPlayingTrack.uri ||
@@ -239,14 +255,79 @@ export default function Browse() {
                 );
               })}
               {/* Infinite scroll sentinel */}
-              <div ref={sentinelRef} className="py-8 flex justify-center">
-                {loadingMore && (
+              <div ref={sentinelRef} className="py-8 flex flex-col items-center justify-center">
+                {loadingMore ? (
                   <div className="flex items-center space-x-2 text-neutral-400">
                     <Loader className="w-4 h-4 animate-spin" />
                     <span className="text-sm">Loading more songs...</span>
                   </div>
+                ) : paginationUrls.tracks ? (
+                  <button
+                    type="button"
+                    onClick={() => loadMoreResults('tracks')}
+                    className="text-sm font-semibold text-white bg-neutral-800/70 hover:bg-neutral-700 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    Load more songs
+                  </button>
+                ) : (
+                  <p className="text-sm text-neutral-500">No more songs to load.</p>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {expandedSection === 'playlists' && (
+          <div>
+            <h1 className="text-3xl font-extrabold text-white mb-6">All Playlists</h1>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {playlistItems.map((playlist) => {
+                // GUARD CLAUSE: Skip null/deleted playlist slots from Spotify
+                if (!playlist) return null;
+
+                return (
+                  <div
+                    key={playlist.id}
+                    onClick={() => { setActivePlaylistId(playlist.id); setCurrentView('playlist'); }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({ type: 'playlist', x: e.pageX, y: e.pageY, playlistId: playlist.id, playlistSource: 'browse' });
+                    }}
+                    className="bg-neutral-800/30 rounded-xl p-4 cursor-pointer hover:bg-neutral-800/60 transition-colors"
+                  >
+                    <div className="w-full aspect-square rounded-md overflow-hidden bg-neutral-700 mb-4">
+                      {playlist.images?.[0]?.url ? (
+                        <img src={playlist.images?.[0]?.url} alt={playlist.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-neutral-800 flex items-center justify-center">💿</div>
+                      )}
+                    </div>
+                    <p className="text-white font-semibold truncate mb-1">{playlist.name}</p>
+                    <p className="text-neutral-400 text-xs truncate">{playlist.owner?.display_name || playlist.owner?.id}</p>
+                    {typeof playlist.tracks?.total === 'number' && (
+                      <p className="text-neutral-500 text-xs truncate mt-1">{playlist.tracks.total} tracks</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div ref={sentinelRef} className="py-8 flex flex-col items-center justify-center">
+              {loadingMore ? (
+                <div className="flex items-center space-x-2 text-neutral-400">
+                  <Loader className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Loading more playlists...</span>
+                </div>
+              ) : paginationUrls.playlists ? (
+                <button
+                  type="button"
+                  onClick={() => loadMoreResults('playlists')}
+                  className="text-sm font-semibold text-white bg-neutral-800/70 hover:bg-neutral-700 px-4 py-2 rounded-lg transition-colors"
+                >
+                  Load more playlists
+                </button>
+              ) : (
+                <p className="text-sm text-neutral-500">No more playlists to load.</p>
+              )}
             </div>
           </div>
         )}
@@ -255,7 +336,7 @@ export default function Browse() {
           <div>
             <h1 className="text-3xl font-extrabold text-white mb-6">All Artists</h1>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {results.artists.items.map((artist) => (
+              {artistItems.map((artist) => (
                 <div 
                   key={artist.id} 
                   onClick={(e) => handleArtistClick(e, artist.id)}
@@ -268,12 +349,22 @@ export default function Browse() {
                 </div>
               ))}
               {/* Infinite scroll sentinel */}
-              <div ref={sentinelRef} className="col-span-full py-8 flex justify-center">
-                {loadingMore && (
+              <div ref={sentinelRef} className="col-span-full py-8 flex flex-col items-center justify-center">
+                {loadingMore ? (
                   <div className="flex items-center space-x-2 text-neutral-400">
                     <Loader className="w-4 h-4 animate-spin" />
                     <span className="text-sm">Loading more artists...</span>
                   </div>
+                ) : paginationUrls.artists ? (
+                  <button
+                    type="button"
+                    onClick={() => loadMoreResults('artists')}
+                    className="text-sm font-semibold text-white bg-neutral-800/70 hover:bg-neutral-700 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    Load more artists
+                  </button>
+                ) : (
+                  <p className="text-sm text-neutral-500">No more artists to load.</p>
                 )}
               </div>
             </div>
@@ -283,8 +374,8 @@ export default function Browse() {
         {expandedSection === 'albums' && (
           <div>
             <h1 className="text-3xl font-extrabold text-white mb-6">All Albums</h1>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {results.albums.items.map((album) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {albumItems.map((album) => (
                 <div 
                   key={album.id} 
                   onClick={(e) => handleAlbumClick(e, album.id)}
@@ -302,12 +393,22 @@ export default function Browse() {
                 </div>
               ))}
               {/* Infinite scroll sentinel */}
-              <div ref={sentinelRef} className="col-span-full py-8 flex justify-center">
-                {loadingMore && (
+              <div ref={sentinelRef} className="col-span-full py-8 flex flex-col items-center justify-center">
+                {loadingMore ? (
                   <div className="flex items-center space-x-2 text-neutral-400">
                     <Loader className="w-4 h-4 animate-spin" />
                     <span className="text-sm">Loading more albums...</span>
                   </div>
+                ) : paginationUrls.albums ? (
+                  <button
+                    type="button"
+                    onClick={() => loadMoreResults('albums')}
+                    className="text-sm font-semibold text-white bg-neutral-800/70 hover:bg-neutral-700 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    Load more albums
+                  </button>
+                ) : (
+                  <p className="text-sm text-neutral-500">No more albums to load.</p>
                 )}
               </div>
             </div>
