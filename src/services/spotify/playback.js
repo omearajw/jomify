@@ -1,3 +1,5 @@
+import { useUserStore } from '../../store/userStore';
+
 export function initializeSpotifyPlayer(token, storeActions) {
   const { setPlayer, setDeviceId, setPlaybackState } = storeActions;
 
@@ -5,7 +7,12 @@ export function initializeSpotifyPlayer(token, storeActions) {
   window.onSpotifyWebPlaybackSDKReady = () => {
     const player = new window.Spotify.Player({
       name: 'Jomify Web Player',
-      getOAuthToken: cb => { cb(token); },
+      // CRITICAL FIX: Do not use the 'token' argument! 
+      // Reach directly into Zustand so the SDK always gets the newly refreshed token.
+      getOAuthToken: cb => { 
+        const freshToken = useUserStore.getState().token;
+        cb(freshToken); 
+      },
       volume: 0.5
     });
 
@@ -14,7 +21,8 @@ export function initializeSpotifyPlayer(token, storeActions) {
       setDeviceId(device_id);
       
       // Auto-transfer playback to this browser
-      transferPlayback(device_id, token).catch(console.error);
+      // We also pull the fresh token here just to be safe
+      transferPlayback(device_id, useUserStore.getState().token).catch(console.error);
     });
 
     player.addListener('not_ready', ({ device_id }) => {
@@ -41,13 +49,13 @@ export function initializeSpotifyPlayer(token, storeActions) {
 }
 
 // Utility function to hijack the playback
-async function transferPlayback(deviceId, token) {
+async function transferPlayback(deviceId, activeToken) {
   const url = "https://" + "api.spotify.com/v1/me/player";
   
   await fetch(url, {
     method: 'PUT',
     headers: {
-      'Authorization': "Bearer " + token,
+      'Authorization': "Bearer " + activeToken,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
