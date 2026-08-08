@@ -5,10 +5,10 @@ import { addTracksToPlaylist } from '../services/spotify/api';
 
 export default function Sidebar() {
   const { 
-    token, currentView, setCurrentView, logout, playlists, 
+    token, currentView, setCurrentView, logout, playlists, activePlaylistId,
     setActivePlaylistId, customFolders, createFolder,
     draggedItem, setDraggedItem, reorderFolders, 
-    addPlaylistToFolder, reorderPlaylistInFolder
+    addPlaylistToFolder, reorderPlaylistInFolder, setContextMenu
   } = useUserStore();
   
   const [isolatedFolderId, setIsolatedFolderId] = useState(null);
@@ -91,6 +91,17 @@ export default function Sidebar() {
     setDraggedItem(null);
   };
 
+  const handlePlaylistContextMenu = (e, playlist) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      type: 'playlist',
+      playlistId: playlist.id,
+      x: e.pageX,
+      y: e.pageY
+    });
+  };
+
   const navItems = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'browse', label: 'Browse', icon: Disc3 },
@@ -145,6 +156,7 @@ export default function Sidebar() {
                     onDragLeave={handleDragLeave}
                     onDragEnd={handleDragEnd} 
                     onDrop={(e) => handleDropOnPlaylist(e, pl.id, activeFolder.id)}
+                      onContextMenu={(e) => handlePlaylistContextMenu(e, pl)}
                     onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); }}
                     className={`w-full text-left px-2 py-1.5 transition-colors flex items-center group cursor-grab active:cursor-grabbing rounded-md ${isDragTarget ? 'bg-green-500/20 text-white border border-green-500/50' : 'text-neutral-400 hover:text-white'}`}
                   >
@@ -202,6 +214,7 @@ export default function Sidebar() {
                             onDragLeave={handleDragLeave}
                             onDragEnd={handleDragEnd} 
                             onDrop={(e) => handleDropOnPlaylist(e, pl.id, folder.id)}
+                            onContextMenu={(e) => handlePlaylistContextMenu(e, pl)}
                             onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); }}
                             className={`w-full text-left py-1.5 transition-colors flex items-center group cursor-grab active:cursor-grabbing rounded ${isSubDragTarget ? 'bg-green-500/20 text-white border border-green-500/50 px-2 -ml-2' : 'text-neutral-400 hover:text-white'}`}
                           >
@@ -231,6 +244,7 @@ export default function Sidebar() {
                     onDragLeave={handleDragLeave}
                     onDragEnd={handleDragEnd}
                     onDrop={(e) => handleDropOnPlaylist(e, pl.id, null)} // Now catches dropped tracks
+                  onContextMenu={(e) => handlePlaylistContextMenu(e, pl)}
                     onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); }}
                     className={`w-full text-left px-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-green-500/20 text-white border border-green-500/50' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
                   >

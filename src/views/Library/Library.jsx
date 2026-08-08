@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
-import { fetchUserPlaylists, addTracksToPlaylist } from '../../services/spotify/api';
+import { fetchUserPlaylists, addTracksToPlaylist, unfollowPlaylist } from '../../services/spotify/api';
 import { Heart, Folder, Maximize2, ChevronLeft, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 // --- VISUAL UPGRADE: Safely Bounded Right-to-Left Fan Stack ---
 const FolderStack = ({ folder, playlists }) => {
@@ -40,7 +41,7 @@ const FolderStack = ({ folder, playlists }) => {
 export default function Library() {
   const { 
     token, playlists, setPlaylists, setCurrentView, setActivePlaylistId,
-    customFolders, addPlaylistToFolder, removePlaylistFromFolder, deleteFolder,
+    customFolders, addPlaylistToFolder, removePlaylistFromFolder, deleteFolder, deletePlaylist,
     draggedItem, setDraggedItem, reorderFolders, reorderPlaylistInFolder,
     libraryGridSize, setLibraryGridSize
   } = useUserStore();
@@ -50,6 +51,7 @@ export default function Library() {
   const [expandedFolders, setExpandedFolders] = useState([]);
   const [isManaging, setIsManaging] = useState(false); 
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [confirmState, setConfirmState] = useState({ open: false, type: null, playlist: null, folderId: null });
   
   const [dragOverId, setDragOverId] = useState(null);
 
@@ -79,8 +81,15 @@ export default function Library() {
   };
 
   const handleMenuClick = (e, playlistId) => {
+    e.preventDefault();
     e.stopPropagation();
-    setOpenMenuId(openMenuId === playlistId ? null : playlistId);
+    setOpenMenuId((prev) => (prev === playlistId ? null : playlistId));
+  };
+
+  const handleDeletePlaylist = (e, playlist) => {
+    e.stopPropagation();
+    setOpenMenuId(null);
+    setConfirmState({ open: true, type: 'playlist', playlist, folderId: null });
   };
 
   // --- CRITICAL DnD FIX ---
@@ -107,6 +116,35 @@ export default function Library() {
     }
     
     if (dragOverId !== id) setDragOverId(id);
+  };
+
+  const cancelConfirm = () => {
+    setConfirmState({ open: false, type: null, playlist: null, folderId: null });
+  };
+
+  const handleConfirm = async () => {
+    if (confirmState.type === 'playlist') {
+      const playlist = confirmState.playlist;
+      if (!token || !playlist) return cancelConfirm();
+
+      try {
+        await unfollowPlaylist(token, playlist.id);
+        deletePlaylist(playlist.id);
+        setCurrentView('library');
+        setActivePlaylistId(null);
+      } catch (err) {
+        console.error('Failed to delete playlist:', err);
+      } finally {
+        cancelConfirm();
+      }
+      return;
+    }
+
+    if (confirmState.type === 'folder' && confirmState.folderId) {
+      deleteFolder(confirmState.folderId);
+      setIsolatedFolderId(null);
+      cancelConfirm();
+    }
   };
 
   const handleDragLeave = () => setDragOverId(null);
@@ -184,19 +222,24 @@ export default function Library() {
         onDragEnd={handleDragEnd} 
         onDrop={(e) => handleDropOnPlaylist(e, playlist.id, parentFolderId)}
         onClick={() => { setActivePlaylistId(playlist.id); setCurrentView('playlist'); }}
+        onContextMenu={(e) => { e.preventDefault(); handleMenuClick(e, playlist.id); }}
         className={`p-4 rounded-xl hover:bg-neutral-800 transition-all duration-300 cursor-pointer group shadow-lg flex flex-col h-full relative cursor-grab active:cursor-grabbing ${isDragTarget ? 'ring-2 ring-green-500 bg-green-500/10 scale-[1.02]' : isSubItem ? 'bg-neutral-800/40 border border-neutral-700/30 hover:border-neutral-500/50' : 'bg-neutral-800/40'}`}
       >
-        <button onClick={(e) => handleMenuClick(e, playlist.id)} className="absolute top-6 right-6 z-10 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md">
+        <button type="button" onClick={(e) => handleMenuClick(e, playlist.id)} onContextMenu={(e) => handleMenuClick(e, playlist.id)} className="absolute top-6 right-6 z-10 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md">
           <MoreVertical className="w-4 h-4" />
         </button>
 
         {openMenuId === playlist.id && (
-          <div onClick={(e) => e.stopPropagation()} className="absolute top-16 right-6 z-50 w-48 bg-neutral-900 border border-neutral-800 rounded-lg shadow-2xl py-2 animate-fade-in text-sm font-medium cursor-default">
-            {parentFolderId && <button onClick={(e) => { e.stopPropagation(); removePlaylistFromFolder(parentFolderId, playlist.id); setOpenMenuId(null); }} className="w-full text-left px-4 py-2 text-red-400 hover:bg-neutral-800 transition-colors">Remove from folder</button>}
+          <div onClick={(e) => e.stopPropagation()} className="absolute top-16 right-6 z-50 w-56 bg-neutral-900 border border-neutral-800 rounded-lg shadow-2xl py-2 animate-fade-in text-sm font-medium cursor-default">
+            <button type="button" onClick={(e) => handleDeletePlaylist(e, playlist)} className="w-full text-left px-4 py-2 text-red-400 hover:bg-neutral-800 transition-colors flex items-center space-x-2">
+              <Trash2 className="w-4 h-4" />
+              <span>Delete playlist</span>
+            </button>
+            {parentFolderId && <button type="button" onClick={(e) => { e.stopPropagation(); removePlaylistFromFolder(parentFolderId, playlist.id); setOpenMenuId(null); }} className="w-full text-left px-4 py-2 text-red-400 hover:bg-neutral-800 transition-colors">Remove from folder</button>}
             <div className="px-4 py-2 text-xs text-neutral-500 uppercase tracking-wider font-bold flex items-center"><FolderPlus className="w-3 h-3 mr-2" /> Move to...</div>
             <div className="max-h-48 overflow-y-auto custom-scrollbar">
               {customFolders.map(folder => (
-                <button key={folder.id} onClick={(e) => { e.stopPropagation(); addPlaylistToFolder(folder.id, playlist.id); setOpenMenuId(null); }} disabled={folder.id === parentFolderId} className="w-full text-left px-4 py-2 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors truncate">
+                <button key={folder.id} type="button" onClick={(e) => { e.stopPropagation(); addPlaylistToFolder(folder.id, playlist.id); setOpenMenuId(null); }} disabled={folder.id === parentFolderId} className="w-full text-left px-4 py-2 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors truncate">
                   {folder.name}
                 </button>
               ))}
@@ -352,7 +395,7 @@ export default function Library() {
                 </div>
               </div>
               <div className="pt-8 border-t border-red-500/20">
-                <button onClick={() => { if (window.confirm('Are you sure you want to delete this folder? Your playlists will not be deleted.')) { deleteFolder(activeFolder.id); setIsolatedFolderId(null); } }} className="flex items-center px-4 py-2 text-red-500 hover:bg-red-500/10 rounded-md font-bold transition-colors">
+                <button onClick={() => { setConfirmState({ open: true, type: 'folder', playlist: null, folderId: activeFolder?.id }); }} className="flex items-center px-4 py-2 text-red-500 hover:bg-red-500/10 rounded-md font-bold transition-colors">
                   <Trash2 className="w-5 h-5 mr-2" /> Delete Folder
                 </button>
               </div>
@@ -389,6 +432,14 @@ export default function Library() {
           </div>
         </>
       )}
+      <ConfirmDialog
+        open={confirmState.open}
+        title={confirmState.type === 'playlist' ? 'Delete Playlist' : 'Delete Folder'}
+        message={confirmState.type === 'playlist' ? `Delete "${confirmState.playlist?.name}" from your library?` : 'Are you sure you want to delete this folder? Your playlists will not be deleted.'}
+        confirmLabel={confirmState.type === 'playlist' ? 'Delete Playlist' : 'Delete Folder'}
+        onConfirm={handleConfirm}
+        onCancel={cancelConfirm}
+      />
     </div>
   );
 }

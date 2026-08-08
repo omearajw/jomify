@@ -74,6 +74,15 @@ export async function fetchPlaylistDetails(token, playlistId) {
   return await response.json();
 }
 
+export async function unfollowPlaylist(token, playlistId) {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}/followers`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  if (!response.ok) throw new Error("Failed to delete playlist");
+}
+
 // NEW: A dedicated function to grab the next chunks
 export async function fetchMoreTracks(token, nextUrl) {
   const response = await spotifyFetch(nextUrl, {
@@ -264,7 +273,7 @@ export async function addTracksToPlaylist(token, playlistId, uris) {
 }
 
 export async function removeTrackFromPlaylist(token, playlistId, trackUri) {
-  const url = `https://api.spotify.com/v1/playlists/$${playlistId}/tracks`;
+  const url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks`;
   
   const response = await spotifyFetch(url, {
     method: "DELETE",

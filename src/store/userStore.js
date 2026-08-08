@@ -54,6 +54,16 @@ export const useUserStore = create(
         )
       })),
 
+      deletePlaylist: (playlistId) => set((state) => ({
+        playlists: state.playlists.filter(p => p.id !== playlistId),
+        customFolders: state.customFolders.map(f => ({
+          ...f,
+          playlistIds: f.playlistIds.filter(id => id !== playlistId)
+        })),
+        activePlaylistId: state.activePlaylistId === playlistId ? null : state.activePlaylistId,
+        currentView: state.activePlaylistId === playlistId ? 'library' : state.currentView
+      })),
+
       reorderFolders: (dragId, dropId) => set((state) => {
         const newFolders = [...state.customFolders];
         const dragIndex = newFolders.findIndex(f => f.id === dragId);
