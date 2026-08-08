@@ -215,7 +215,7 @@ export default function Sidebar() {
                     onDrop={(e) => handleDropOnPlaylist(e, pl.id, activeFolder.id)}
                       onContextMenu={(e) => handlePlaylistContextMenu(e, pl)}
                     onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); }}
-                    className={`w-full text-left px-2 py-1.5 transition-colors flex items-center group cursor-grab active:cursor-grabbing rounded-md ${isDragTarget ? 'bg-brand-gradient text-white/20 text-white border border-[#f91362]/50' : 'text-neutral-400 hover:text-white'}`}
+                    className={`w-full text-left px-2 py-1.5 transition-colors flex items-center group cursor-grab active:cursor-grabbing rounded-md ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white'}`}
                   >
                     <div className="w-6 h-6 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
                       {pl.images?.[0]?.url ? <img src={pl.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
@@ -266,7 +266,7 @@ export default function Sidebar() {
                         }
                       });
                     }}
-                    className={`flex items-center w-full px-2 py-2 rounded-md cursor-pointer group transition-colors cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-brand-gradient text-white/20 text-white border border-[#f91362]/50' : draggedItem?.type === 'playlist' ? 'text-neutral-300 hover:bg-neutral-800/50 border border-dashed border-[#f91362]/30 bg-brand-gradient text-white/5' : 'text-neutral-300 hover:text-white hover:bg-neutral-800/50'}`}
+                    className={`flex items-center w-full px-2 py-2 rounded-md cursor-pointer group transition-colors cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : draggedItem?.type === 'playlist' ? 'text-neutral-300 hover:bg-neutral-800/50 border border-dashed border-[#f91362]/30 bg-brand-gradient text-white/5' : 'text-neutral-300 hover:text-white hover:bg-neutral-800/50'}`}
                   >
                     <button onClick={(e) => toggleFolderExpand(e, folder.id)} className="p-0.5 hover:bg-neutral-700 rounded text-neutral-400 hover:text-white mr-1 transition-colors">
                       {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -322,7 +322,7 @@ export default function Sidebar() {
                     onDrop={(e) => handleDropOnPlaylist(e, pl.id, null)} // Now catches dropped tracks
                   onContextMenu={(e) => handlePlaylistContextMenu(e, pl)}
                     onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); }}
-                    className={`w-full text-left px-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-brand-gradient text-white/20 text-white border border-[#f91362]/50' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
+                    className={`w-full text-left px-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
                   >
                     <div className="w-8 h-8 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
                       {pl.images?.[0]?.url ? <img src={pl.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
