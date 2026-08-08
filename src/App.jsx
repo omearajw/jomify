@@ -117,7 +117,7 @@ function App() {
         <div className="fixed inset-0 z-[2] bg-noise opacity-[0.03] pointer-events-none"></div>
         
         <div className="text-center z-10 relative">
-          <h1 className="text-6xl font-extrabold mb-8 text-brand-gradient tracking-tighter">Jomify</h1>
+          <h1 className="text-6xl font-extrabold mb-8 text-brand-gradient tracking-tighter pb-3 pt-1">Jomify</h1>
           <button 
             onClick={redirectToAuthCodeFlow}
             className="px-8 py-3 bg-brand-gradient text-white font-bold rounded-full shadow-brand-glow hover:scale-105 transition-all"
