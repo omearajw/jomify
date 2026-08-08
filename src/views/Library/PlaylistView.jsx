@@ -89,9 +89,11 @@ export default function PlaylistView() {
   const handleRightClick = (e, track) => {
     e.preventDefault();
     setContextMenu({
+      type: 'track',
       x: e.clientX,
       y: e.clientY,
-      track: track
+      track: track,
+      sourcePlaylistId: activePlaylistId
     });
   };
 
@@ -119,8 +121,9 @@ export default function PlaylistView() {
       </div>
 
       {/* Tracklist Header */}
-      <div className="grid grid-cols-[16px_minmax(0,1fr)_minmax(0,1fr)_80px] gap-4 px-4 py-2 border-b border-neutral-800 text-neutral-400 text-sm mb-4 items-center select-none">
+      <div className="grid grid-cols-[16px_48px_minmax(0,1fr)_minmax(0,1fr)_80px] gap-4 px-4 py-2 border-b border-neutral-800 text-neutral-400 text-sm mb-4 items-center select-none">
         <span>#</span>
+        <span />
         <span>Title</span>
         <span>Album</span>
         <div className="flex justify-end pr-2"><Clock3 className="w-4 h-4" /></div>
@@ -146,7 +149,7 @@ export default function PlaylistView() {
               key={`${track.id}-${index}`} 
               onClick={() => handleTrackSelect(index)}
               onContextMenu={(e) => handleRightClick(e, track)}
-              className="grid grid-cols-[16px_minmax(0,1fr)_minmax(0,1fr)_80px] gap-4 px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer"
+              className="grid grid-cols-[16px_48px_minmax(0,1fr)_minmax(0,1fr)_80px] gap-4 px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer"
             >
               <div className="text-neutral-400 w-4 h-4 flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
@@ -161,6 +164,14 @@ export default function PlaylistView() {
                 )}
               </div>
               
+              <div className="w-12 h-12 rounded-md overflow-hidden flex-shrink-0">
+                {track.album?.images?.[0]?.url ? (
+                  <img src={track.album.images[0].url} alt={track.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-neutral-800 flex items-center justify-center">💿</div>
+                )}
+              </div>
+
               <div className="flex flex-col truncate pr-4">
                 <span className={`font-medium truncate ${isCurrentTrack ? 'text-green-500' : 'text-white'}`}>
                   {track.name}
@@ -187,6 +198,7 @@ export default function PlaylistView() {
                   // CRITICAL: We pass the activePlaylistId here. 
                   // The ContextMenu will check if you own this playlist, and if you do, it reveals the Remove button!
                   setContextMenu({ 
+                    type: 'track',
                     x: e.pageX, 
                     y: e.pageY, 
                     track: track, 

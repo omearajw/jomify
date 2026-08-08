@@ -199,7 +199,7 @@ export default function Browse() {
                     onDragEnd={() => setDraggedItem(null)}
                     onContextMenu={(e) => {
                       e.preventDefault();
-                      setContextMenu({ x: e.pageX, y: e.pageY, track });
+                      setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track });
                     }}
                     onClick={() => handleTrackPlay(track.uri)}
                     className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
@@ -287,6 +287,10 @@ export default function Browse() {
                 <div 
                   key={album.id} 
                   onClick={(e) => handleAlbumClick(e, album.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id });
+                  }}
                   className="bg-neutral-800/30 p-4 rounded-xl cursor-pointer hover:bg-neutral-800/60 transition-colors group"
                 >
                   <div className="aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
@@ -366,7 +370,7 @@ export default function Browse() {
                       onDragEnd={() => setDraggedItem(null)}
                       onContextMenu={(e) => {
                         e.preventDefault();
-                        setContextMenu({ x: e.pageX, y: e.pageY, track });
+                        setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track });
                       }}
                       onClick={() => handleTrackPlay(track.uri)}
                       className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
@@ -453,6 +457,10 @@ export default function Browse() {
                   <div 
                     key={album.id} 
                     onClick={(e) => handleAlbumClick(e, album.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id });
+                    }}
                     className="bg-neutral-800/30 p-4 rounded-xl cursor-pointer hover:bg-neutral-800/60 transition-colors group"
                   >
                     <div className="aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">

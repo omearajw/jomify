@@ -13,7 +13,7 @@ const cleanString = (str) => {
 };
 
 export default function Artist() {
-  const { token, setLikedTracks, currentArtistId, goBack } = useUserStore();
+  const { token, setLikedTracks, currentArtistId, goBack, setContextMenu, navigateToAlbum } = useUserStore();
   const { deviceId, playbackState } = usePlayerStore();
   const [artist, setArtist] = useState(null);
   const [topTracks, setTopTracks] = useState([]);
@@ -140,12 +140,13 @@ export default function Artist() {
                  track.artists?.[0]?.name === currentPlayingTrack.artists?.[0]?.name)
               );
 
-              return (
-                <div
-                  key={track.id}
-                  onClick={() => handleTrackPlay(track.uri)}
-                  className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
-                >
+                return (
+                  <div
+                    key={track.id}
+                    onClick={() => handleTrackPlay(track.uri)}
+                    onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track }); }}
+                    className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
+                  >
                   <div className="flex items-center space-x-4 truncate pr-4">
                     <div className="relative w-12 h-12 bg-neutral-800 rounded flex-shrink-0 flex items-center justify-center">
                       <img src={track.album.images?.[0]?.url} alt="" className="w-full h-full object-cover rounded" />
@@ -181,6 +182,8 @@ export default function Artist() {
             {albums.map((album) => (
               <div 
                 key={album.id}
+                onClick={() => navigateToAlbum(album.id)}
+                onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id }); }}
                 className="bg-neutral-800/30 p-4 rounded-xl cursor-pointer hover:bg-neutral-800/60 transition-colors group"
               >
                 <div className="aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">

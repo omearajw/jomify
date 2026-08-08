@@ -13,7 +13,7 @@ const cleanString = (str) => {
 };
 
 export default function Album() {
-  const { token, setLikedTracks, currentAlbumId, goBack, navigateToArtist } = useUserStore();
+  const { token, setLikedTracks, currentAlbumId, goBack, navigateToArtist, setContextMenu } = useUserStore();
   const { deviceId, playbackState } = usePlayerStore();
   const [album, setAlbum] = useState(null);
   const [tracks, setTracks] = useState([]);
@@ -142,6 +142,7 @@ export default function Album() {
                 <div
                   key={track.id}
                   onClick={() => handleTrackPlay(track.uri)}
+                  onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track, sourceAlbumId: currentAlbumId }); }}
                   className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
                 >
                   <div className="flex items-center space-x-4 truncate pr-4">

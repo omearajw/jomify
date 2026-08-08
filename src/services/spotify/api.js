@@ -289,3 +289,13 @@ export async function removeTrackFromPlaylist(token, playlistId, trackUri) {
   if (!response.ok) throw new Error("Failed to remove track from playlist");
   return await response.json();
 }
+
+export async function saveAlbumToLibrary(token, albumId) {
+  const url = `https://api.spotify.com/v1/me/albums?ids=${encodeURIComponent(albumId)}`;
+  const response = await spotifyFetch(url, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  if (!response.ok) throw new Error('Failed to save album to library');
+}

@@ -45,6 +45,8 @@ export default function Library() {
     draggedItem, setDraggedItem, reorderFolders, reorderPlaylistInFolder,
     libraryGridSize, setLibraryGridSize
   } = useUserStore();
+  // global context menu setter
+  const { setContextMenu } = useUserStore();
 
   const [loading, setLoading] = useState(playlists.length === 0);
   const [isolatedFolderId, setIsolatedFolderId] = useState(null); 
@@ -68,7 +70,8 @@ export default function Library() {
   }, [token, playlists, setPlaylists]);
 
   useEffect(() => {
-    const handleClickOutside = () => setOpenMenuId(null);
+    // Keep for compatibility if other code uses it; no-op listener retained
+    const handleClickOutside = () => {};
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
@@ -80,10 +83,14 @@ export default function Library() {
     setExpandedFolders(prev => prev.includes(folderId) ? prev.filter(id => id !== folderId) : [...prev, folderId]);
   };
 
-  const handleMenuClick = (e, playlistId) => {
+  const handleMenuClick = (e, playlistId, parentFolderId = null) => {
     e.preventDefault();
     e.stopPropagation();
-    setOpenMenuId((prev) => (prev === playlistId ? null : playlistId));
+    // Open the global context menu instead of an inline menu
+    const rect = e.currentTarget?.getBoundingClientRect?.() || { left: e.pageX, top: e.pageY };
+    const x = e.pageX || rect.left;
+    const y = e.pageY || rect.top;
+    setContextMenu({ type: 'playlist', playlistId, parentFolderId, x, y });
   };
 
   const handleDeletePlaylist = (e, playlist) => {
@@ -222,30 +229,13 @@ export default function Library() {
         onDragEnd={handleDragEnd} 
         onDrop={(e) => handleDropOnPlaylist(e, playlist.id, parentFolderId)}
         onClick={() => { setActivePlaylistId(playlist.id); setCurrentView('playlist'); }}
-        onContextMenu={(e) => { e.preventDefault(); handleMenuClick(e, playlist.id); }}
+        onContextMenu={(e) => { e.preventDefault(); handleMenuClick(e, playlist.id, parentFolderId); }}
         className={`p-4 rounded-xl hover:bg-neutral-800 transition-all duration-300 cursor-pointer group shadow-lg flex flex-col h-full relative cursor-grab active:cursor-grabbing ${isDragTarget ? 'ring-2 ring-green-500 bg-green-500/10 scale-[1.02]' : isSubItem ? 'bg-neutral-800/40 border border-neutral-700/30 hover:border-neutral-500/50' : 'bg-neutral-800/40'}`}
       >
-        <button type="button" onClick={(e) => handleMenuClick(e, playlist.id)} onContextMenu={(e) => handleMenuClick(e, playlist.id)} className="absolute top-6 right-6 z-10 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md">
+        <button type="button" onClick={(e) => handleMenuClick(e, playlist.id, parentFolderId)} onContextMenu={(e) => handleMenuClick(e, playlist.id, parentFolderId)} className="absolute top-6 right-6 z-10 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md">
           <MoreVertical className="w-4 h-4" />
         </button>
-
-        {openMenuId === playlist.id && (
-          <div onClick={(e) => e.stopPropagation()} className="absolute top-16 right-6 z-50 w-56 bg-neutral-900 border border-neutral-800 rounded-lg shadow-2xl py-2 animate-fade-in text-sm font-medium cursor-default">
-            <button type="button" onClick={(e) => handleDeletePlaylist(e, playlist)} className="w-full text-left px-4 py-2 text-red-400 hover:bg-neutral-800 transition-colors flex items-center space-x-2">
-              <Trash2 className="w-4 h-4" />
-              <span>Delete playlist</span>
-            </button>
-            {parentFolderId && <button type="button" onClick={(e) => { e.stopPropagation(); removePlaylistFromFolder(parentFolderId, playlist.id); setOpenMenuId(null); }} className="w-full text-left px-4 py-2 text-red-400 hover:bg-neutral-800 transition-colors">Remove from folder</button>}
-            <div className="px-4 py-2 text-xs text-neutral-500 uppercase tracking-wider font-bold flex items-center"><FolderPlus className="w-3 h-3 mr-2" /> Move to...</div>
-            <div className="max-h-48 overflow-y-auto custom-scrollbar">
-              {customFolders.map(folder => (
-                <button key={folder.id} type="button" onClick={(e) => { e.stopPropagation(); addPlaylistToFolder(folder.id, playlist.id); setOpenMenuId(null); }} disabled={folder.id === parentFolderId} className="w-full text-left px-4 py-2 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors truncate">
-                  {folder.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        
 
         <div className="relative aspect-square w-full mb-4 rounded-md overflow-hidden bg-neutral-800 flex items-center justify-center shadow-md shrink-0 pointer-events-none">
           {playlist.images?.length > 0 ? <img src={playlist.images[0].url} draggable="false" alt={playlist.name} className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300" /> : <span className="text-3xl">💿</span>}

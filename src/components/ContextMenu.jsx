@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist } from '../services/spotify/api';
-import { ListPlus, Plus, ChevronRight, Folder, Trash2 } from 'lucide-react';
+import { ListPlus, Plus, ChevronRight, Folder, Trash2, FolderPlus } from 'lucide-react';
+import { saveAlbumToLibrary } from '../services/spotify/api';
 import ConfirmDialog from './ConfirmDialog';
 
 export default function ContextMenu() {
@@ -12,6 +13,7 @@ export default function ContextMenu() {
     addManuallyQueuedTrack, injectOptimisticQueueItem, 
     playlists, customFolders, profile, deletePlaylist, setCurrentView, setActivePlaylistId, activePlaylistId
   } = useUserStore();
+  const { addPlaylistToFolder, removePlaylistFromFolder } = useUserStore();
 
   const { deviceId } = usePlayerStore();
   const menuRef = useRef(null);
@@ -180,12 +182,68 @@ export default function ContextMenu() {
       )}
 
       {(contextMenu?.type === 'playlist' || contextMenu?.playlistId) && (
+        <>
+          <button
+            onClick={handleDeletePlaylist}
+            className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
+            <span>Delete playlist</span>
+          </button>
+
+          {contextMenu?.parentFolderId && (
+            <button
+              onClick={async () => {
+                try {
+                  removePlaylistFromFolder(contextMenu.parentFolderId, contextMenu.playlistId);
+                } catch (err) {
+                  console.error('Failed to remove from folder', err);
+                } finally {
+                  setContextMenu(null);
+                }
+              }}
+              className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+            >
+              <Trash2 className="w-4 h-4 text-red-400" />
+              <span>Remove from folder</span>
+            </button>
+          )}
+
+          <div className="px-4 py-2 text-xs text-neutral-500 uppercase tracking-wider font-bold flex items-center"><FolderPlus className="w-3 h-3 mr-2" /> Move to...</div>
+          <div className="max-h-48 overflow-y-auto custom-scrollbar">
+            {customFolders.map(folder => (
+              <button
+                key={folder.id}
+                onClick={(e) => {
+                  e?.stopPropagation?.();
+                  addPlaylistToFolder(folder.id, contextMenu.playlistId);
+                  setContextMenu(null);
+                }}
+                disabled={folder.id === contextMenu?.parentFolderId}
+                className="w-full text-left px-4 py-2 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors truncate"
+              >
+                {folder.name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {(contextMenu?.type === 'album' || contextMenu?.albumId) && (
         <button
-          onClick={handleDeletePlaylist}
-          className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+          onClick={async () => {
+            if (!token || !(contextMenu?.albumId)) return setContextMenu(null);
+            try {
+              await saveAlbumToLibrary(token, contextMenu.albumId);
+            } catch (err) {
+              console.error('Failed to save album:', err);
+            } finally {
+              setContextMenu(null);
+            }
+          }}
+          className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
         >
-          <Trash2 className="w-4 h-4 text-red-400" />
-          <span>Delete playlist</span>
+          <ListPlus className="w-4 h-4 text-neutral-400" />
+          <span>Add album to Library</span>
         </button>
       )}
       <ConfirmDialog
