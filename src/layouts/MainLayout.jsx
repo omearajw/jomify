@@ -29,11 +29,11 @@ export default function MainLayout({ children }) {
   }, [apiCooldownUntil, setApiCooldown]);
 
   return (
-    <div className="flex flex-col h-screen bg-black overflow-hidden font-sans">
+    <div className="flex flex-col h-screen bg-transparent overflow-hidden font-sans">
       <div className="flex-1 flex overflow-hidden">
         <Sidebar />
         
-        <main className="flex-1 overflow-y-auto bg-neutral-900 rounded-lg my-2 mr-2 relative shadow-2xl flex flex-col">
+        <main className="flex-1 overflow-y-auto backdrop-blur-sm rounded-lg my-2 mr-2 relative shadow-2xl flex flex-col">
           
           {/* RATE LIMIT WARNING BANNER */}
           {isCoolingDown && (
@@ -44,7 +44,7 @@ export default function MainLayout({ children }) {
           )}
 
           {/* Sticky Top Navigation Bar */}
-          <div className="sticky top-0 z-10 bg-neutral-900/90 backdrop-blur-md px-8 py-4 flex items-center">
+          <div className="sticky top-0 z-10 backdrop-blur-md px-8 py-4 flex items-center">
             <button 
               onClick={goBack}
               disabled={viewHistory.length === 0}

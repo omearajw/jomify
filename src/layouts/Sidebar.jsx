@@ -148,7 +148,7 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 bg-black flex flex-col p-6 space-y-6 select-none overflow-hidden h-full">
+    <aside className="w-64 bg-black/40 backdrop-blur-md border-r border-white/5 flex flex-col p-6 space-y-6 select-none overflow-hidden h-full relative z-10">
       <div className="text-brand-gradient font-extrabold text-3xl tracking-tighter shrink-0">Jomify</div>
       
       <nav className="flex flex-col space-y-4 font-semibold shrink-0">
@@ -161,14 +161,14 @@ export default function Sidebar() {
               onClick={() => { setIsolatedFolderId(null); setCurrentView(item.id); }}
               className={`flex items-center space-x-4 transition-colors duration-200 text-left ${isActive ? 'text-white font-bold' : 'text-neutral-400 hover:text-white'}`}
             >
-              <Icon className={`w-6 h-6 ${isActive ? 'text-brand-gradient' : ''}`} />
+              <Icon className={`w-6 h-6 ${isActive ? 'text-[var(--brand-mid)]' : 'text-neutral-400'}`} />
               <span>{item.label}</span>
             </button>
           );
         })}
       </nav>
 
-      <hr className="border-neutral-800 shrink-0" />
+      {/* <hr className="border-neutral-800 shrink-0" /> */}
 
       <div className="flex-1 overflow-y-auto pr-2 -mr-2 space-y-1 custom-scrollbar text-sm font-medium">
         
@@ -210,7 +210,7 @@ export default function Sidebar() {
           </div>
         ) : (
           <div className="animate-fade-in space-y-1">
-            <div className="sticky top-0 flex items-center justify-between px-2 pb-3 text-neutral-400 bg-black/100 border-b border-white/10 z-10">
+            <div className="sticky top-0 flex items-center justify-between px-2 pb-3 pt-3 text-neutral-400 bg-transparent backdrop-blur-[3px] border-b border-t border-white/10 z-10">
               <span className="text-xs uppercase tracking-wider font-bold">Playlists</span>
               <div className="flex items-center gap-3">
                 <button onClick={() => setShowCreateFolderDialog(true)} className="hover:text-white transition-colors" title="Create Folder"><FolderPlus className="w-4 h-4" /></button>

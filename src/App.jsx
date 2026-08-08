@@ -111,12 +111,16 @@ function App() {
   
   if (!token) {
     return (
-      <div className="flex items-center justify-center h-screen bg-neutral-900 text-white">
-        <div className="text-center">
+      <div className="relative flex items-center justify-center h-screen bg-black text-white overflow-hidden">
+        {/* Global Aurora & Noise injected into Login Screen */}
+        <div className="fixed inset-0 z-[1] bg-aurora opacity-20"></div>
+        <div className="fixed inset-0 z-[2] bg-noise opacity-[0.03] pointer-events-none"></div>
+        
+        <div className="text-center z-10 relative">
           <h1 className="text-6xl font-extrabold mb-8 text-brand-gradient tracking-tighter">Jomify</h1>
           <button 
             onClick={redirectToAuthCodeFlow}
-            className="px-8 py-3 bg-brand-gradient text-white text-black font-bold rounded-full hover:bg-brand-gradient text-white hover:scale-105 transition-all"
+            className="px-8 py-3 bg-brand-gradient text-white font-bold rounded-full shadow-brand-glow hover:scale-105 transition-all"
           >
             Connect to Spotify
           </button>
@@ -126,49 +130,55 @@ function App() {
   }
   
   return (
-    <MainLayout>
-      {profile ? (
-        <>
-          {currentView === 'home' && (
-            <div className="flex flex-col items-start">
-              <div className="flex items-center space-x-6 mb-8">
-                {profile.images?.length > 0 ? (
-                  <img 
-                    src={profile.images[0].url} 
-                    alt="Profile Avatar" 
-                    className="w-48 h-48 rounded-full shadow-2xl shadow-black/50"
-                  />
-                ) : (
-                  <div className="w-48 h-48 rounded-full bg-neutral-800 flex items-center justify-center text-6xl shadow-2xl">
-                    🎧
+    <>
+      {/* Global Aurora & Noise injected at the absolute root */}
+      <div className="fixed inset-0 z-[-2] bg-aurora opacity-20"></div>
+      <div className="fixed inset-0 z-[-1] bg-noise opacity-[0.03] pointer-events-none"></div>
+      
+      <MainLayout>
+        {profile ? (
+          <>
+            {currentView === 'home' && (
+              <div className="flex flex-col items-start relative z-10">
+                <div className="flex items-center space-x-6 mb-8">
+                  {profile.images?.length > 0 ? (
+                    <img 
+                      src={profile.images[0].url} 
+                      alt="Profile Avatar" 
+                      className="w-48 h-48 rounded-full shadow-2xl shadow-black/50"
+                    />
+                  ) : (
+                    <div className="w-48 h-48 rounded-full bg-neutral-800 flex items-center justify-center text-6xl shadow-2xl">
+                      🎧
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-1">Profile</p>
+                    <h1 className="text-7xl font-extrabold text-white tracking-tighter mb-4">{profile.display_name}</h1>
+                    <p className="text-neutral-400 font-medium">
+                      {profile.followers?.total} Followers • {profile.product} tier
+                    </p>
                   </div>
-                )}
-                <div>
-                  <p className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-1">Profile</p>
-                  <h1 className="text-7xl font-extrabold text-white tracking-tighter mb-4">{profile.display_name}</h1>
-                  <p className="text-neutral-400 font-medium">
-                    {profile.followers?.total} Followers • {profile.product} tier
-                  </p>
                 </div>
+                <h2 className="text-2xl font-bold text-white mb-4">Ready to play.</h2>
+                <p className="text-neutral-400">Select your library to see your un-bloated music collection.</p>
               </div>
-              <h2 className="text-2xl font-bold text-white mb-4">Ready to play.</h2>
-              <p className="text-neutral-400">Select your library to see your un-bloated music collection.</p>
-            </div>
-          )}
+            )}
 
-          {currentView === 'library' && <Library />}
-          {currentView === 'playlist' && <PlaylistView />}
-          {currentView === 'browse' && <Browse />}
-          {currentView === 'artist' && <Artist />}
-          {currentView === 'album' && <Album />}
-          {currentView === 'liked-songs' && <LikedSongsView />}
-        </>
-      ) : (
-        <div className="flex items-center justify-center h-full">
-          <p className="text-neutral-400 animate-pulse text-lg">Loading Jomify core...</p>
-        </div>
-      )}
-    </MainLayout>
+            {currentView === 'library' && <Library />}
+            {currentView === 'playlist' && <PlaylistView />}
+            {currentView === 'browse' && <Browse />}
+            {currentView === 'artist' && <Artist />}
+            {currentView === 'album' && <Album />}
+            {currentView === 'liked-songs' && <LikedSongsView />}
+          </>
+        ) : (
+          <div className="flex items-center justify-center h-full relative z-10">
+            <p className="text-neutral-400 animate-pulse text-lg">Loading Jomify core...</p>
+          </div>
+        )}
+      </MainLayout>
+    </>
   );
 }
 

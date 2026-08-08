@@ -328,10 +328,10 @@ export default function Library() {
         gridItems.push(
           <div key={`expanded-${folder.id}`} className="col-span-full bg-neutral-800/30 border border-neutral-700/50 rounded-2xl p-6 shadow-inner animate-fade-in mb-4">
             <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
-              <div className="flex items-center cursor-pointer group hover:text-brand-gradient transition-colors" onClick={() => setIsolatedFolderId(folder.id)}>
+              <div className="flex items-center cursor-pointer group hover:text-green-400 transition-colors" onClick={() => setIsolatedFolderId(folder.id)}>
                 <Folder className="w-8 h-8 text-brand-gradient fill-current mr-4" />
                 <div>
-                  <h3 className="text-2xl font-extrabold text-white tracking-tight group-hover:text-brand-gradient transition-colors">{folder.name}</h3>
+                  <h3 className="text-2xl font-extrabold text-white tracking-tight group-hover:text-green-400 transition-colors">{folder.name}</h3>
                   <p className="text-sm text-neutral-400 font-medium">{folder.playlistIds.length} playlists inside</p>
                 </div>
               </div>

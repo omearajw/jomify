@@ -107,7 +107,7 @@ export default function PlayerBar() {
     };
 
   return (
-    <div className="h-24 bg-black border-t border-neutral-800 flex items-center justify-between px-6 text-white select-none">
+    <div className="h-24 bg-black/60 backdrop-blur-xl border-t border-white/5 flex items-center justify-between px-6 text-white select-none relative z-10">
       
       {/* Track Info (Left) */}
       <div className="flex items-center space-x-4 w-1/3">
