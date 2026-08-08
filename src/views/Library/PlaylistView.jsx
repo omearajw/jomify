@@ -216,10 +216,10 @@ export default function PlaylistView() {
             >
               <div className="text-neutral-400 w-4 h-4 flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
-                  <span className="text-green-500 font-bold animate-pulse">🔊</span>
+                  <span className="text-brand-gradient font-bold animate-pulse">🔊</span>
                 ) : (
                   <>
-                    <span className={`group-hover:hidden ${isCurrentTrack ? 'text-green-500 font-bold' : ''}`}>
+                    <span className={`group-hover:hidden ${isCurrentTrack ? 'text-brand-gradient font-bold' : ''}`}>
                       {index + 1}
                     </span>
                     <Play className="w-4 h-4 text-white hidden group-hover:block fill-current" />
@@ -236,7 +236,7 @@ export default function PlaylistView() {
               </div>
 
               <div className="flex flex-col truncate pr-4">
-                <span className={`font-medium truncate ${isCurrentTrack ? 'text-green-500' : 'text-white'}`}>
+                <span className={`font-medium truncate ${isCurrentTrack ? 'text-brand-gradient' : 'text-white'}`}>
                   {track.name}
                 </span>
                 <span className="text-neutral-400 text-xs truncate">

@@ -46,7 +46,7 @@ export default function QueuePanel() {
             <div className="flex items-center space-x-3">
               <img src={queueData.currently_playing.album.images[0]?.url} alt="" className="w-12 h-12 rounded object-cover shadow-md" />
               <div className="flex flex-col truncate">
-                <span className="text-green-500 text-sm font-medium truncate">{queueData.currently_playing.name}</span>
+                <span className="text-brand-gradient text-sm font-medium truncate">{queueData.currently_playing.name}</span>
                 <span className="text-neutral-400 text-xs truncate">{queueData.currently_playing.artists.map(a => a.name).join(', ')}</span>
               </div>
             </div>
@@ -84,7 +84,7 @@ export default function QueuePanel() {
                          <div className="flex items-center space-x-2">
                            <span className="text-white text-sm font-medium truncate">{track.name}</span>
                            {isManuallyQueued && (
-                             <ListPlus className="w-3.5 h-3.5 text-green-500 shrink-0" title="Manually Queued" />
+                             <ListPlus className="w-3.5 h-3.5 text-brand-gradient shrink-0" title="Manually Queued" />
                            )}
                          </div>
                          

@@ -145,7 +145,7 @@ export default function ZenMode() {
               transition={{ type: "spring", stiffness: 100, damping: 20, mass: 1 }}
               className="flex flex-col items-center w-full"
             >
-              <div className="relative group mb-10 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] rounded-2xl overflow-hidden transition-all duration-700 hover:shadow-green-500/5 hover:shadow-[0_30px_70px_-10px_rgba(34,197,94,0.15)] hover:scale-[1.01]">
+              <div className="relative group mb-10 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] rounded-2xl overflow-hidden transition-all duration-700 hover:shadow-[var(--brand-mid)]/5 hover:shadow-[0_30px_70px_-10px_rgba(34,197,94,0.15)] hover:scale-[1.01]">
                 <img 
                   src={albumArtUrl} 
                   alt="" 

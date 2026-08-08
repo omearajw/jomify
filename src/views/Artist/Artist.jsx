@@ -118,7 +118,7 @@ export default function Artist() {
           {artist.genres?.length > 0 && (
             <div className="flex gap-2 flex-wrap">
               {artist.genres.slice(0, 5).map((genre) => (
-                <span key={genre} className="px-3 py-1 bg-green-500/20 text-green-400 text-sm rounded-full">
+                <span key={genre} className="px-3 py-1 bg-brand-gradient text-white/20 text-brand-gradient text-sm rounded-full">
                   {genre}
                 </span>
               ))}
@@ -155,7 +155,7 @@ export default function Artist() {
                       </div>
                     </div>
                     <div className="truncate">
-                      <p className={`font-medium truncate ${isCurrentTrack ? 'text-green-500' : 'text-white'}`}>
+                      <p className={`font-medium truncate ${isCurrentTrack ? 'text-brand-gradient' : 'text-white'}`}>
                         {track.name}
                       </p>
                       <p className="text-neutral-400 text-xs truncate">

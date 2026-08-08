@@ -229,7 +229,7 @@ export default function Browse() {
                         </div>
                       </div>
                       <div className="truncate">
-                        <p className={`font-medium truncate ${isCurrentTrack ? 'text-green-500' : 'text-white'}`}>
+                        <p className={`font-medium truncate ${isCurrentTrack ? 'text-brand-gradient' : 'text-white'}`}>
                           {track.name}
                         </p>
                         <p className="text-neutral-400 text-xs truncate">
@@ -432,7 +432,7 @@ export default function Browse() {
           placeholder="Search songs, artists, or albums..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full bg-neutral-800 border-none rounded-full py-3 pl-12 pr-6 text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition-all"
+          className="w-full bg-neutral-800 border-none rounded-full py-3 pl-12 pr-6 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f91362] transition-all"
         />
       </div>
 
@@ -485,7 +485,7 @@ export default function Browse() {
                           </div>
                         </div>
                         <div className="truncate">
-                          <p className={`font-medium truncate ${isCurrentTrack ? 'text-green-500' : 'text-white'}`}>
+                          <p className={`font-medium truncate ${isCurrentTrack ? 'text-brand-gradient' : 'text-white'}`}>
                             {track.name}
                           </p>
                           <p className="text-neutral-400 text-xs truncate">

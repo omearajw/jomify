@@ -32,7 +32,7 @@ export default function FolderFormDialog({ open, title, submitLabel, initialName
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-2xl bg-neutral-900 border border-white/10 px-4 py-3 text-white placeholder:text-neutral-500 focus:border-green-500 outline-none focus:ring-2 focus:ring-green-500/20"
+              className="w-full rounded-2xl bg-neutral-900 border border-white/10 px-4 py-3 text-white placeholder:text-neutral-500 focus:border-[#f91362] outline-none focus:ring-2 focus:ring-[#f91362]/20"
               placeholder="My favorite playlists"
             />
           </div>
@@ -49,7 +49,7 @@ export default function FolderFormDialog({ open, title, submitLabel, initialName
               type="button"
               disabled={!name.trim() || isSubmitting}
               onClick={() => onSubmit({ name: name.trim() })}
-              className="rounded-full bg-green-500 px-5 py-2 text-sm font-semibold text-black transition-all disabled:cursor-not-allowed disabled:opacity-50 hover:bg-green-400"
+              className="rounded-full bg-brand-gradient text-white px-5 py-2 text-sm font-semibold text-black transition-all disabled:cursor-not-allowed disabled:opacity-50 hover:bg-brand-gradient text-white"
             >
               {isSubmitting ? 'Saving...' : submitLabel}
             </button>

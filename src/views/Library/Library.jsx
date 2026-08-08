@@ -281,7 +281,7 @@ export default function Library() {
         onDrop={(e) => handleDropOnPlaylist(e, playlist.id, parentFolderId)}
         onClick={() => { setActivePlaylistId(playlist.id); setCurrentView('playlist'); }}
         onContextMenu={(e) => { e.preventDefault(); handleMenuClick(e, playlist.id, parentFolderId); }}
-        className={`p-4 rounded-xl hover:bg-neutral-800 transition-all duration-300 cursor-pointer group shadow-lg flex flex-col h-full relative cursor-grab active:cursor-grabbing ${isDragTarget ? 'ring-2 ring-green-500 bg-green-500/10 scale-[1.02]' : isSubItem ? 'bg-neutral-800/40 border border-neutral-700/30 hover:border-neutral-500/50' : 'bg-neutral-800/40'}`}
+        className={`p-4 rounded-xl hover:bg-neutral-800 transition-all duration-300 cursor-pointer group shadow-lg flex flex-col h-full relative cursor-grab active:cursor-grabbing ${isDragTarget ? 'ring-2 ring-[#f91362] bg-brand-gradient text-white/10 scale-[1.02]' : isSubItem ? 'bg-neutral-800/40 border border-neutral-700/30 hover:border-neutral-500/50' : 'bg-neutral-800/40'}`}
       >
         <button type="button" onClick={(e) => handleMenuClick(e, playlist.id, parentFolderId)} onContextMenu={(e) => handleMenuClick(e, playlist.id, parentFolderId)} className="absolute top-6 right-6 z-10 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md">
           <MoreVertical className="w-4 h-4" />
@@ -298,11 +298,11 @@ export default function Library() {
   };
 
   const ManageCard = ({ playlist, action, onClick }) => (
-    <div onClick={onClick} className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border border-transparent flex flex-col h-full ${action === 'add' ? 'bg-neutral-800/20 hover:border-green-500/50 hover:bg-green-500/10' : 'bg-neutral-800/40 hover:border-red-500/50 hover:bg-red-500/10'}`}>
+    <div onClick={onClick} className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border border-transparent flex flex-col h-full ${action === 'add' ? 'bg-neutral-800/20 hover:border-[#f91362]/50 hover:bg-brand-gradient text-white/10' : 'bg-neutral-800/40 hover:border-red-500/50 hover:bg-red-500/10'}`}>
       <div className="relative aspect-square w-full mb-4 rounded-md overflow-hidden bg-neutral-800 flex items-center justify-center shadow-md shrink-0">
         {playlist.images?.length > 0 ? <img src={playlist.images[0].url} draggable="false" alt={playlist.name} className="object-cover w-full h-full opacity-60 group-hover:opacity-100 transition-opacity duration-300" /> : <span className="text-3xl opacity-60 group-hover:opacity-100">💿</span>}
         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-          {action === 'add' ? <Plus className="w-12 h-12 text-green-500" /> : <Minus className="w-12 h-12 text-red-500" />}
+          {action === 'add' ? <Plus className="w-12 h-12 text-brand-gradient" /> : <Minus className="w-12 h-12 text-red-500" />}
         </div>
       </div>
       <h3 className="font-bold text-sm text-white truncate mb-1">{playlist.name}</h3>
@@ -328,10 +328,10 @@ export default function Library() {
         gridItems.push(
           <div key={`expanded-${folder.id}`} className="col-span-full bg-neutral-800/30 border border-neutral-700/50 rounded-2xl p-6 shadow-inner animate-fade-in mb-4">
             <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
-              <div className="flex items-center cursor-pointer group hover:text-green-400 transition-colors" onClick={() => setIsolatedFolderId(folder.id)}>
-                <Folder className="w-8 h-8 text-green-500 fill-current mr-4" />
+              <div className="flex items-center cursor-pointer group hover:text-brand-gradient transition-colors" onClick={() => setIsolatedFolderId(folder.id)}>
+                <Folder className="w-8 h-8 text-brand-gradient fill-current mr-4" />
                 <div>
-                  <h3 className="text-2xl font-extrabold text-white tracking-tight group-hover:text-green-400 transition-colors">{folder.name}</h3>
+                  <h3 className="text-2xl font-extrabold text-white tracking-tight group-hover:text-brand-gradient transition-colors">{folder.name}</h3>
                   <p className="text-sm text-neutral-400 font-medium">{folder.playlistIds.length} playlists inside</p>
                 </div>
               </div>
@@ -366,7 +366,7 @@ export default function Library() {
             onDrop={(e) => handleDropOnFolder(e, folder.id)}
             onClick={() => setIsolatedFolderId(folder.id)} 
             onContextMenu={(e) => handleFolderContextMenu(e, folder)}
-            className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border relative flex flex-col h-full cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-green-500/10 border-green-500 scale-[1.02]' : 'bg-neutral-800/40 border-transparent hover:border-neutral-700 hover:bg-neutral-800/80'} ${draggedItem?.type === 'playlist' && !isDragTarget ? 'border-dashed border-green-500/50 bg-green-500/5' : ''}`}
+            className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border relative flex flex-col h-full cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-brand-gradient text-white/10 border-[#f91362] scale-[1.02]' : 'bg-neutral-800/40 border-transparent hover:border-neutral-700 hover:bg-neutral-800/80'} ${draggedItem?.type === 'playlist' && !isDragTarget ? 'border-dashed border-[#f91362]/50 bg-brand-gradient text-white/5' : ''}`}
           >
             <button onClick={(e) => toggleFolderExpand(e, folder.id)} className="absolute top-4 right-4 z-100 w-8 h-8 bg-black/40 hover:bg-black/80 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors" title="Expand Inline">
               <Maximize2 className="w-4 h-4 text-white transition-transform duration-300" />
@@ -375,7 +375,7 @@ export default function Library() {
                <FolderStack folder={folder} playlists={playlists} />
             </div>
             <h3 className="font-bold text-sm text-white truncate mb-1 flex items-center pointer-events-none">
-              <Folder className="w-4 h-4 mr-2 text-green-500 fill-current shrink-0" />
+              <Folder className="w-4 h-4 mr-2 text-brand-gradient fill-current shrink-0" />
               <span className="truncate">{folder.name}</span>
             </h3>
             <p className="text-xs text-neutral-400 truncate mt-auto pointer-events-none">{folder.playlistIds.length} playlists</p>
@@ -471,7 +471,7 @@ export default function Library() {
               <p className="text-sm text-neutral-400 mt-1">Create playlists and organize your collection.</p>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => setPlaylistDialogOpen(true)} className="px-5 py-2 rounded-full bg-green-500 text-black font-bold hover:bg-green-400 transition-all">
+              <button onClick={() => setPlaylistDialogOpen(true)} className="px-5 py-2 rounded-full bg-brand-gradient text-white text-black font-bold hover:bg-brand-gradient text-white transition-all">
                 Create Playlist
               </button>
               <SizingControls />

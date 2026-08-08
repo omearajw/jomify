@@ -48,7 +48,7 @@ export default function PlaylistFormDialog({
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-2xl bg-neutral-900 border border-white/10 px-4 py-3 text-white placeholder:text-neutral-500 focus:border-green-500 outline-none focus:ring-2 focus:ring-green-500/20"
+              className="w-full rounded-2xl bg-neutral-900 border border-white/10 px-4 py-3 text-white placeholder:text-neutral-500 focus:border-[#f91362] outline-none focus:ring-2 focus:ring-[#f91362]/20"
               placeholder="My new playlist"
             />
           </div>
@@ -59,7 +59,7 @@ export default function PlaylistFormDialog({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
-              className="w-full rounded-2xl bg-neutral-900 border border-white/10 px-4 py-3 text-white placeholder:text-neutral-500 focus:border-green-500 outline-none focus:ring-2 focus:ring-green-500/20"
+              className="w-full rounded-2xl bg-neutral-900 border border-white/10 px-4 py-3 text-white placeholder:text-neutral-500 focus:border-[#f91362] outline-none focus:ring-2 focus:ring-[#f91362]/20"
               placeholder="A playlist for late night listening..."
             />
           </div>
@@ -80,7 +80,7 @@ export default function PlaylistFormDialog({
               <input
                 type="file"
                 accept="image/*"
-                className="text-sm text-neutral-300 file:text-sm file:rounded-full file:border-0 file:bg-green-500 file:px-4 file:py-2 file:text-black"
+                className="text-sm text-neutral-300 file:text-sm file:rounded-full file:border-0 file:bg-brand-gradient text-white file:px-4 file:py-2 file:text-black"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) {
@@ -114,7 +114,7 @@ export default function PlaylistFormDialog({
               type="button"
               disabled={!name.trim() || isSubmitting}
               onClick={() => onSubmit({ name: name.trim(), description: description.trim(), imageFile, imagePreview })}
-              className="rounded-full bg-green-500 px-5 py-2 text-sm font-semibold text-black transition-all disabled:cursor-not-allowed disabled:opacity-50 hover:bg-green-400"
+              className="rounded-full bg-brand-gradient text-white px-5 py-2 text-sm font-semibold text-black transition-all disabled:cursor-not-allowed disabled:opacity-50 hover:bg-brand-gradient text-white"
             >
               {isSubmitting ? 'Saving...' : submitLabel}
             </button>

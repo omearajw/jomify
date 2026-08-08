@@ -23,7 +23,7 @@ export default function LikeButton({ trackId }) {
 
   return (
     <button onClick={handleToggle} className="flex items-center justify-center transition-all hover:scale-110">
-      <Heart className={`w-5 h-5 transition-colors ${isLiked ? 'fill-green-500 text-green-500' : 'text-neutral-400 hover:text-white'}`} />
+      <Heart className={`w-5 h-5 transition-colors ${isLiked ? 'fill-[var(--brand-mid)] text-brand-gradient' : 'text-neutral-400 hover:text-white'}`} />
     </button>
   );
 }

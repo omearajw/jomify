@@ -148,7 +148,7 @@ export default function Album() {
                   <div className="flex items-center space-x-4 truncate pr-4">
                     <span className="text-neutral-400 w-8 text-right">{index + 1}</span>
                     <div className="truncate">
-                      <p className={`font-medium truncate ${isCurrentTrack ? 'text-green-500' : 'text-white'}`}>
+                      <p className={`font-medium truncate ${isCurrentTrack ? 'text-brand-gradient' : 'text-white'}`}>
                         {track.name}
                       </p>
                       <p className="text-neutral-400 text-xs truncate">

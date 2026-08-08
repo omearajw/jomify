@@ -113,10 +113,10 @@ function App() {
     return (
       <div className="flex items-center justify-center h-screen bg-neutral-900 text-white">
         <div className="text-center">
-          <h1 className="text-6xl font-extrabold mb-8 text-green-500 tracking-tighter">Jomify</h1>
+          <h1 className="text-6xl font-extrabold mb-8 text-brand-gradient tracking-tighter">Jomify</h1>
           <button 
             onClick={redirectToAuthCodeFlow}
-            className="px-8 py-3 bg-green-500 text-black font-bold rounded-full hover:bg-green-400 hover:scale-105 transition-all"
+            className="px-8 py-3 bg-brand-gradient text-white text-black font-bold rounded-full hover:bg-brand-gradient text-white hover:scale-105 transition-all"
           >
             Connect to Spotify
           </button>

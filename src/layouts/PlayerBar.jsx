@@ -136,7 +136,7 @@ export default function PlayerBar() {
       {/* Main Controls (Center) */}
       <div className="flex flex-col items-center justify-center w-1/3 space-y-2">
         <div className="flex items-center space-x-6">
-          <button onClick={handleToggleShuffle} className={`mr-4 transition-colors ${isShuffled ? 'text-green-500' : 'text-neutral-400 hover:text-white'}`}>
+          <button onClick={handleToggleShuffle} className={`mr-4 transition-colors ${isShuffled ? 'text-brand-gradient' : 'text-neutral-400 hover:text-white'}`}>
             <Shuffle className="w-4 h-4" />
           </button>
 
@@ -163,7 +163,7 @@ export default function PlayerBar() {
             value={progressMs} 
             onChange={handleSeek}
             disabled={!player || !currentTrack}
-            className="flex-1 h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer accent-white hover:accent-green-500 transition-all"
+            className="flex-1 h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer accent-white hover:accent-[var(--brand-mid)] transition-all"
           />
           <span className="w-8">{formatTime(durationMs)}</span>
         </div>
@@ -175,7 +175,7 @@ export default function PlayerBar() {
         
         <div className="flex items-center space-x-2 group">
           <button onClick={toggleMute} className="hover:text-white transition-colors">
-            {visualVolume === 0 ? <VolumeX className="w-5 h-5 text-green-500" /> : <Volume2 className="w-5 h-5" />}
+            {visualVolume === 0 ? <VolumeX className="w-5 h-5 text-brand-gradient" /> : <Volume2 className="w-5 h-5" />}
           </button>
           {/* Volume Slider */}
           <input 
@@ -184,7 +184,7 @@ export default function PlayerBar() {
             max="100" 
             value={visualVolume} 
             onChange={handleVolumeChange}
-            className="w-24 h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer accent-white group-hover:accent-green-500 transition-all"
+            className="w-24 h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer accent-white group-hover:accent-[var(--brand-mid)] transition-all"
           />
         </div>
         
