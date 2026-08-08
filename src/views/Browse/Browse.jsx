@@ -28,14 +28,14 @@ const getCachedJSON = (key, defaultVal) => {
 
 export default function Browse() {
   // Added setContextMenu and setDraggedItem here
-  const { token, setLikedTracks, navigateToArtist, navigateToAlbum, setContextMenu, setDraggedItem } = useUserStore();
+  const { token, setLikedTracks, navigateToArtist, navigateToAlbum, setContextMenu, setDraggedItem, setActivePlaylistId, setCurrentView } = useUserStore();
   const { deviceId, playbackState } = usePlayerStore();
   
   // Initialize state directly from the session cache
   const [query, setQuery] = useState(() => getCachedString('jomify_browse_query', ''));
   const [results, setResults] = useState(() => getCachedJSON('jomify_browse_results', null));
   const [expandedSection, setExpandedSection] = useState(() => getCachedString('jomify_browse_expanded', null)); 
-  const [paginationUrls, setPaginationUrls] = useState(() => getCachedJSON('jomify_browse_pagination', { tracks: null, albums: null, artists: null }));
+  const [paginationUrls, setPaginationUrls] = useState(() => getCachedJSON('jomify_browse_pagination', { tracks: null, albums: null, artists: null, playlists: null }));
   
   const [loadingMore, setLoadingMore] = useState(false);
   const sentinelRef = useRef(null);
@@ -71,7 +71,8 @@ export default function Browse() {
             setPaginationUrls({
               tracks: data.tracks?.next || null,
               albums: data.albums?.next || null,
-              artists: data.artists?.next || null
+              artists: data.artists?.next || null,
+              playlists: data.playlists?.next || null
             });
             if (data?.tracks?.items) {
               const ids = data.tracks.items.map(track => track.id).filter(Boolean);
@@ -117,7 +118,7 @@ export default function Browse() {
       
       setResults((prev) => {
         if (!prev) return prev;
-        const sectionKey = section === 'tracks' ? 'tracks' : section === 'albums' ? 'albums' : 'artists';
+        const sectionKey = section === 'tracks' ? 'tracks' : section === 'albums' ? 'albums' : section === 'artists' ? 'artists' : 'playlists';
         return {
           ...prev,
           [sectionKey]: {
@@ -129,7 +130,7 @@ export default function Browse() {
 
       setPaginationUrls((prev) => ({
         ...prev,
-        [section]: data[section === 'tracks' ? 'tracks' : section === 'albums' ? 'albums' : 'artists']?.next || null
+        [section]: data[section === 'tracks' ? 'tracks' : section === 'albums' ? 'albums' : section === 'artists' ? 'artists' : 'playlists']?.next || null
       }));
 
       // Check if new tracks are liked
@@ -206,7 +207,7 @@ export default function Browse() {
                   >
                     <div className="flex items-center space-x-4 truncate pr-4">
                       <div className="relative w-12 h-12 bg-neutral-800 rounded flex-shrink-0 flex items-center justify-center">
-                        <img src={track.album.images?.[0]?.url} alt="" className="w-full h-full object-cover rounded" />
+                        <img src={track.album?.images?.[0]?.url} alt="" className="w-full h-full object-cover rounded" />
                         <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center rounded">
                           <Play className="w-4 h-4 text-white fill-current" />
                         </div>
@@ -336,19 +337,19 @@ export default function Browse() {
 
       {results ? (
         <div className="space-y-10 animate-fade-in">
-          
-          {/* Songs Preview */}
-          {results.tracks?.items?.length > 0 && (
-            <div>
-              <div className="flex justify-between items-end mb-4">
-                <h2 className="text-xl font-bold text-white">Songs</h2>
-                {results.tracks.items.length > 4 && (
-                  <button onClick={() => setExpandedSection('tracks')} className="text-sm font-bold text-neutral-400 hover:text-white transition-colors">
-                    See more
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-col space-y-1">
+          <div className="grid gap-6 lg:grid-cols-[1.4fr_0.8fr]">
+            {/* Songs Preview */}
+            {results.tracks?.items?.length > 0 && (
+              <div>
+                <div className="flex justify-between items-end mb-4">
+                  <h2 className="text-xl font-bold text-white">Songs</h2>
+                  {results.tracks.items.length > 4 && (
+                    <button onClick={() => setExpandedSection('tracks')} className="text-sm font-bold text-neutral-400 hover:text-white transition-colors">
+                      See more
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-col space-y-1">
                 {results.tracks.items.slice(0, 4).map((track) => {
                   const isCurrentTrack = currentPlayingTrack && (
                     track.id === currentPlayingTrack.id || 
@@ -377,7 +378,7 @@ export default function Browse() {
                     >
                       <div className="flex items-center space-x-4 truncate pr-4">
                         <div className="relative w-10 h-10 bg-neutral-800 rounded flex-shrink-0 flex items-center justify-center">
-                          <img src={track.album.images?.[0]?.url} alt="" className="w-full h-full object-cover rounded" />
+                          <img src={track.album?.images?.[0]?.url} alt="" className="w-full h-full object-cover rounded" />
                           <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center rounded">
                             <Play className="w-4 h-4 text-white fill-current" />
                           </div>
@@ -411,6 +412,54 @@ export default function Browse() {
               </div>
             </div>
           )}
+
+            {/* Playlist Preview */}
+            {results.playlists?.items?.length > 0 && (
+              <div>
+                <div className="flex justify-between items-end mb-4">
+                  <h2 className="text-xl font-bold text-white">Playlists</h2>
+                  {results.playlists.items.length > 5 && (
+                    <button onClick={() => setExpandedSection('playlists')} className="text-sm font-bold text-neutral-400 hover:text-white transition-colors">
+                      See more
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  {results.playlists.items.slice(0, 5).map((playlist) => {
+                    // CRITICAL FIX: Skip this loop iteration if Spotify returned a dead/null playlist
+                    if (!playlist) return null; 
+
+                    return (
+                      <div
+                        key={playlist.id}
+                        onClick={() => { setActivePlaylistId(playlist.id); setCurrentView('playlist'); }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setContextMenu({ type: 'playlist', x: e.pageX, y: e.pageY, playlistId: playlist.id, playlistSource: 'browse' });
+                        }}
+                        className="bg-neutral-800/30 rounded-xl p-4 flex items-center gap-3 cursor-pointer hover:bg-neutral-800/60 transition-colors"
+                      >
+                        <div className="w-16 h-16 rounded-md overflow-hidden bg-neutral-700 flex-shrink-0">
+                          {playlist.images?.[0]?.url ? (
+                            <img src={playlist.images?.[0]?.url} alt={playlist.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-neutral-800 flex items-center justify-center">💿</div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-white font-semibold truncate">{playlist.name}</p>
+                          <p className="text-neutral-400 text-xs truncate">{playlist.owner?.display_name || playlist.owner?.id}</p>
+                          {typeof playlist.tracks?.total === 'number' && (
+                            <p className="text-neutral-500 text-xs truncate mt-1">{playlist.tracks.total} tracks</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Artists Preview */}
           {results.artists?.items?.length > 0 && (
@@ -464,7 +513,7 @@ export default function Browse() {
                     className="bg-neutral-800/30 p-4 rounded-xl cursor-pointer hover:bg-neutral-800/60 transition-colors group"
                   >
                     <div className="aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
-                      {album.images?.[0]?.url && <img src={album.images[0].url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
+                      {album.images?.[0]?.url && <img src={album.images?.[0]?.url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
                     </div>
                     <p className="text-white text-sm font-bold truncate w-full">{album.name}</p>
                     <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{album.artists[0].name}</p>

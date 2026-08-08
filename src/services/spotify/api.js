@@ -83,6 +83,15 @@ export async function unfollowPlaylist(token, playlistId) {
   if (!response.ok) throw new Error("Failed to delete playlist");
 }
 
+export async function followPlaylist(token, playlistId) {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}/followers`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  if (!response.ok) throw new Error("Failed to follow playlist");
+}
+
 // NEW: A dedicated function to grab the next chunks
 export async function fetchMoreTracks(token, nextUrl) {
   const response = await spotifyFetch(nextUrl, {
@@ -116,7 +125,7 @@ export async function searchSpotify(token, query) {
   if (!query) return null;
   
   const encodedQuery = encodeURIComponent(query);
-  const url = "https://" + "api.spotify.com/v1/search?q=" + encodedQuery + "&type=track,album,artist&limit=10";
+  const url = "https://" + "api.spotify.com/v1/search?q=" + encodedQuery + "&type=track,album,artist,playlist&limit=10";
 
   const response = await spotifyFetch(url, {
     method: "GET",
