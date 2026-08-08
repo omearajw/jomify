@@ -8,8 +8,7 @@ export default function ZenMode() {
   const { isZenMode, toggleZenMode, savedVolume, setSavedVolume } = useUserStore();
   const { player, playbackState } = usePlayerStore();
   
-  const [isMuted, setIsMuted] = useState(false);
-  // NEW: Inactivity state
+  const [prevVolume, setPrevVolume] = useState(50);
   const [isActive, setIsActive] = useState(true);
 
   const currentTrack = playbackState?.track_window?.current_track;
@@ -17,7 +16,6 @@ export default function ZenMode() {
   const albumArtUrl = currentTrack?.album?.images?.[0]?.url || '';
   const trackId = currentTrack?.id || 'empty';
 
-  // --- INACTIVITY TIMER ---
   useEffect(() => {
     let timeout;
     const resetTimer = () => {
@@ -26,13 +24,12 @@ export default function ZenMode() {
       timeout = setTimeout(() => setIsActive(false), 3000);
     };
 
-    // Listen for any interaction to wake up the UI
     window.addEventListener('mousemove', resetTimer);
     window.addEventListener('mousedown', resetTimer);
     window.addEventListener('keydown', resetTimer);
     window.addEventListener('touchstart', resetTimer);
 
-    resetTimer(); // Trigger initially
+    resetTimer(); 
 
     return () => {
       window.removeEventListener('mousemove', resetTimer);
@@ -43,7 +40,6 @@ export default function ZenMode() {
     };
   }, []);
 
-  // --- DYNAMIC FONT SIZER ---
   const getFontSizeClass = (text) => {
     if (!text) return 'text-4xl md:text-6xl';
     if (text.length > 32) return 'text-2xl md:text-4xl';
@@ -51,7 +47,6 @@ export default function ZenMode() {
     return 'text-4xl md:text-6xl';
   };
 
-  // --- AUTO FULLSCREEN LOGIC ---
   useEffect(() => {
     if (isZenMode) document.documentElement.requestFullscreen().catch(() => {});
     else if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -65,7 +60,7 @@ export default function ZenMode() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, [isZenMode, toggleZenMode]);
 
-  // --- PERSISTENT VOLUME ---
+  // Unified Exponential Volume Logic
   useEffect(() => {
     if (player && isZenMode) {
       const exponentialVolume = Math.pow(savedVolume / 100, 3);
@@ -77,30 +72,36 @@ export default function ZenMode() {
     const uiValue = parseInt(e.target.value, 10);
     setSavedVolume(uiValue); 
 
+    if (uiValue > 0) {
+        setPrevVolume(uiValue);
+    }
+
     if (player) {
       const exponentialVolume = Math.pow(uiValue / 100, 3);
       player.setVolume(exponentialVolume).catch(console.error);
     }
-    if (uiValue > 0 && isMuted) setIsMuted(false);
   };
 
   const toggleMute = () => {
     if (!player) return;
-    if (isMuted) {
-      const exponentialVolume = Math.pow(savedVolume / 100, 3);
-      player.setVolume(exponentialVolume).then(() => setIsMuted(false)).catch(console.error);
+    
+    if (savedVolume > 0) {
+      setPrevVolume(savedVolume);
+      setSavedVolume(0);
+      player.setVolume(0).catch(console.error);
     } else {
-      player.setVolume(0).then(() => setIsMuted(true)).catch(console.error);
+      const restoredVolume = prevVolume > 0 ? prevVolume : 50;
+      setSavedVolume(restoredVolume);
+      const exponentialVolume = Math.pow(restoredVolume / 100, 3);
+      player.setVolume(exponentialVolume).catch(console.error);
     }
   };
 
   if (!isZenMode) return null;
 
   return (
-    // Added 'cursor-none' when inactive to hide the mouse pointer completely
     <div className={`fixed inset-0 z-[100] bg-black overflow-hidden flex items-center justify-center font-sans select-none transition-colors duration-700 ${isActive ? '' : 'cursor-none'}`}>
       
-      {/* 1. ANIMATED AMBIENT ENGINE */}
       <AnimatePresence mode="popLayout">
         {albumArtUrl && (
           <motion.div 
@@ -125,7 +126,6 @@ export default function ZenMode() {
         )}
       </AnimatePresence>
 
-      {/* 2. EXIT CONTROLLER (Fades out on inactivity) */}
       <button 
         onClick={toggleZenMode}
         className={`absolute top-8 right-8 z-20 w-12 h-12 flex items-center justify-center bg-white/5 border border-white/10 text-white/60 hover:text-white rounded-full backdrop-blur-xl hover:bg-white/10 hover:scale-105 active:scale-95 transition-all duration-700 shadow-2xl ${isActive ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
@@ -133,7 +133,6 @@ export default function ZenMode() {
         <Minimize2 className="w-5 h-5" />
       </button>
 
-      {/* 3. CORE INTERFACE (Album & Text only) */}
       <div className="relative z-10 flex flex-col items-center max-w-4xl w-full px-8 text-center -mt-16">
         <AnimatePresence mode="wait">
           {currentTrack ? (
@@ -155,7 +154,6 @@ export default function ZenMode() {
               </div>
               
               <div className="py-2 w-full flex flex-col items-center">
-                {/* FIX: Removed 'truncate', added 'whitespace-nowrap overflow-hidden text-ellipsis pb-2 leading-normal' to fix clipping */}
                 <h1 className={`font-extrabold text-white tracking-tighter mb-2 max-w-2xl whitespace-nowrap overflow-hidden text-ellipsis pb-2 leading-normal px-4 drop-shadow-[0_4px_12px_rgba(0,0,0,0.6)] ${getFontSizeClass(currentTrack.name)}`}>
                   {currentTrack.name}
                 </h1>
@@ -176,7 +174,6 @@ export default function ZenMode() {
         </AnimatePresence>
       </div>
 
-      {/* 4. STATIC MEDIA CONTROLS (Absolutely positioned to never jitter, fades out on inactivity) */}
       <div 
         className={`absolute bottom-[12%] left-1/2 -translate-x-1/2 flex items-center space-x-8 bg-white/[0.02] border border-white/[0.06] backdrop-blur-2xl px-8 py-4 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.4)] transition-all duration-700 ease-in-out ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'}`}
       >
@@ -206,10 +203,9 @@ export default function ZenMode() {
         </button>
       </div>
 
-      {/* 5. DISCRETE HOVER VOLUME HUD (Only hoverable when active) */}
       <div className={`absolute bottom-8 right-8 z-20 flex items-center space-x-3 bg-neutral-950/20 border border-white/5 hover:border-white/10 hover:bg-neutral-900/40 backdrop-blur-xl px-4 py-3 rounded-xl transition-all duration-500 group ${isActive ? 'opacity-0 hover:opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
         <button onClick={toggleMute} className="text-white/60 hover:text-white transition-colors">
-          {isMuted || savedVolume === 0 ? (
+          {savedVolume === 0 ? (
             <VolumeX className="w-4 h-4 text-red-400" />
           ) : (
             <Volume2 className="w-4 h-4" />
@@ -219,7 +215,7 @@ export default function ZenMode() {
           type="range"
           min="0"
           max="100"
-          value={isMuted ? 0 : savedVolume}
+          value={savedVolume}
           onChange={handleVolumeChange}
           className="w-0 group-hover:w-20 accent-white h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer transition-all duration-500 ease-out origin-right"
         />

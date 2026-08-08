@@ -9,21 +9,20 @@ import { toggleShuffleState } from '../services/spotify/api';
 
 export default function PlayerBar() {
   const { player, playbackState, deviceId, isShuffled, toggleOptimisticShuffle } = usePlayerStore();
-  const { token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack, toggleZenMode } = useUserStore();
+  const { token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack, toggleZenMode, savedVolume, setSavedVolume } = useUserStore();
 
-  // Local state for smooth UI updates
   const [progressMs, setProgressMs] = useState(0);
-  const [visualVolume, setVisualVolume] = useState(50); // 0 to 100
   const [prevVolume, setPrevVolume] = useState(50);
 
-  // Extract track info safely
   const currentTrack = playbackState?.track_window?.current_track;
   const currentTrackUid = currentTrack?.uid;
   const isPaused = playbackState ? playbackState.paused : true;
   const durationMs = currentTrack ? playbackState.duration : 0;
-  const currentTrackUri = playbackState?.track_window?.current_track?.uri;
 
-  // 1. Sync local progress with Spotify's state, and create a ticking clock
+  // Calculate percentages for the dynamic gradients
+  const progressPercentage = durationMs > 0 ? (progressMs / durationMs) * 100 : 0;
+  const volumePercentage = savedVolume;
+
   useEffect(() => {
     if (playbackState) {
       setProgressMs(playbackState.position);
@@ -44,9 +43,8 @@ export default function PlayerBar() {
     if (token && currentTrack?.id) {
         checkTracksLiked(token, [currentTrack.id]).then(setLikedTracks);
     }
-    }, [token, currentTrack?.id, setLikedTracks]);
+  }, [token, currentTrack?.id, setLikedTracks]);
 
-  // 2. Control Functions
   const handleTogglePlay = () => player?.togglePlay().catch(console.error);
   const handleNext = () => player?.nextTrack().catch(console.error);
   const handlePrev = () => player?.previousTrack().catch(console.error);
@@ -60,56 +58,52 @@ export default function PlayerBar() {
   const handleToggleShuffle = () => {
     if (!player || !deviceId) return;
     
-    toggleOptimisticShuffle(); // Instantly turns the button green/grey
+    toggleOptimisticShuffle();
     
     toggleShuffleState(token, deviceId, !isShuffled).catch((err) => {
       console.error(err);
-      toggleOptimisticShuffle(); // Revert the color if the network fails
+      toggleOptimisticShuffle();
     });
   };
 
-  // When a song starts playing, delete it from the manual queue memory
   useEffect(() => {
     if (currentTrack) {
       consumeManuallyQueuedTrack(currentTrack);
     }
   }, [currentTrackUid, consumeManuallyQueuedTrack]);
 
-  // 3. The Exponential Volume Fix
-    const handleVolumeChange = (e) => {
+  const handleVolumeChange = (e) => {
     const sliderValue = parseInt(e.target.value, 10);
-    setVisualVolume(sliderValue);
+    setSavedVolume(sliderValue);
 
     if (sliderValue > 0) {
-        setPrevVolume(sliderValue); // Dynamically update memory cash as you slide
+        setPrevVolume(sliderValue);
     }
 
     const normalized = sliderValue / 100;
-    const humanEarVolume = Math.pow(normalized, 2); 
+    const humanEarVolume = Math.pow(normalized, 3); 
     player?.setVolume(humanEarVolume).catch(console.error);
-    };
+  };
 
-    const toggleMute = () => {
+  const toggleMute = () => {
     if (!player) return;
 
-    if (visualVolume > 0) {
-        // Currently has sound -> Mute it
-        setPrevVolume(visualVolume);
-        setVisualVolume(0);
+    if (savedVolume > 0) {
+        setPrevVolume(savedVolume);
+        setSavedVolume(0);
         player.setVolume(0).catch(console.error);
     } else {
-        // Currently muted -> Restore sound based on memory cache
-        setVisualVolume(prevVolume);
-        const normalized = prevVolume / 100;
-        const humanEarVolume = Math.pow(normalized, 2);
+        const restoredVolume = prevVolume > 0 ? prevVolume : 50;
+        setSavedVolume(restoredVolume);
+        const normalized = restoredVolume / 100;
+        const humanEarVolume = Math.pow(normalized, 3);
         player.setVolume(humanEarVolume).catch(console.error);
     }
-    };
+  };
 
   return (
     <div className="h-24 bg-black/60 backdrop-blur-xl border-t border-white/5 flex items-center justify-between px-6 text-white select-none relative z-10">
       
-      {/* Track Info (Left) */}
       <div className="flex items-center space-x-4 w-1/3">
         {currentTrack?.album?.images?.[0]?.url ? (
           <img 
@@ -133,7 +127,6 @@ export default function PlayerBar() {
         </div>
       </div>
 
-      {/* Main Controls (Center) */}
       <div className="flex flex-col items-center justify-center w-1/3 space-y-2">
         <div className="flex items-center space-x-6">
           <button onClick={handleToggleShuffle} className={`mr-4 transition-colors ${isShuffled ? 'text-brand-gradient' : 'text-neutral-400 hover:text-white'}`}>
@@ -153,8 +146,7 @@ export default function PlayerBar() {
           </button>
         </div>
 
-        {/* Timeline Slider */}
-        <div className="w-full flex items-center space-x-3 text-xs text-neutral-400 font-medium tracking-tighter">
+        <div className="w-full flex items-center space-x-3 text-xs text-neutral-400 font-medium tracking-tighter group">
           <span className="w-8 text-right">{formatTime(progressMs)}</span>
           <input 
             type="range" 
@@ -163,28 +155,32 @@ export default function PlayerBar() {
             value={progressMs} 
             onChange={handleSeek}
             disabled={!player || !currentTrack}
-            className="flex-1 h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer accent-white hover:accent-[var(--brand-mid)] transition-all"
+            className="flex-1 h-1.5 rounded-lg appearance-none cursor-pointer accent-white transition-all"
+            style={{
+              background: `linear-gradient(to right, var(--brand-start) 0%, var(--brand-mid) ${progressPercentage}%, #404040 ${progressPercentage}%, #404040 100%)`
+            }}
           />
           <span className="w-8">{formatTime(durationMs)}</span>
         </div>
       </div>
 
-      {/* Extra Controls (Right) */}
       <div className="flex items-center justify-end space-x-4 w-1/3 text-neutral-400">
         <button className="hover:text-white transition-colors"><Mic2 className="w-4 h-4" /></button>
         
         <div className="flex items-center space-x-2 group">
           <button onClick={toggleMute} className="hover:text-white transition-colors">
-            {visualVolume === 0 ? <VolumeX className="w-5 h-5 text-brand-gradient" /> : <Volume2 className="w-5 h-5" />}
+            {savedVolume === 0 ? <VolumeX className="w-5 h-5 text-brand-gradient" /> : <Volume2 className="w-5 h-5" />}
           </button>
-          {/* Volume Slider */}
           <input 
             type="range" 
             min="0" 
             max="100" 
-            value={visualVolume} 
+            value={savedVolume} 
             onChange={handleVolumeChange}
-            className="w-24 h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer accent-white group-hover:accent-[var(--brand-mid)] transition-all"
+            className="w-24 h-1.5 rounded-lg appearance-none cursor-pointer accent-white transition-all"
+            style={{
+              background: `linear-gradient(to right, var(--brand-start) 0%, var(--brand-mid) ${volumePercentage}%, #404040 ${volumePercentage}%, #404040 100%)`
+            }}
           />
         </div>
         
@@ -192,15 +188,10 @@ export default function PlayerBar() {
           <ListMusic className="w-4 h-4" />
         </button>
 
-        {/* NEW: Zen Mode Toggle */}
         <button onClick={toggleZenMode} className="text-neutral-400 hover:text-white transition-colors">
           <Maximize2 className="w-4 h-4" />
         </button>
-
       </div>
-
-      
-
     </div>
   );
 }
