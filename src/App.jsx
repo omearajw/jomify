@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { redirectToAuthCodeFlow, getAccessToken, refreshAccessToken } from './services/spotify/auth';
-import { fetchUserProfile } from './services/spotify/api';
+import { fetchUserProfile, fetchUserPlaylists } from './services/spotify/api';
 import { useUserStore } from './store/userStore';
 import MainLayout from './layouts/MainLayout';
 import Library from './views/Library/Library';
@@ -13,7 +13,7 @@ import Album from './views/Album/Album';
 import LikedSongsView from './views/Library/LikedSongsView';
 
 function App() {
-  const { token, refreshToken, tokenExpiresAt, logout, profile, setToken, setRefreshToken, setProfile, currentView } = useUserStore();
+  const { token, refreshToken, tokenExpiresAt, logout, profile, setToken, setRefreshToken, setProfile, setPlaylists, currentView } = useUserStore();
   const { setPlayer, setDeviceId, setPlaybackState } = usePlayerStore();
 
   // This is our lock to prevent React from double-fetching the token
@@ -85,6 +85,18 @@ function App() {
       });
     }
   }, [token, profile, setProfile]);
+
+  useEffect(() => {
+    if (token && !useUserStore.getState().playlists.length) {
+      fetchUserPlaylists(token)
+        .then((data) => {
+          setPlaylists(data.items);
+        })
+        .catch((error) => {
+          console.error("Unable to preload playlists:", error);
+        });
+    }
+  }, [token, setPlaylists]);
 
   useEffect(() => {
     if (token) {
