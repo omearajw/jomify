@@ -167,7 +167,7 @@ export default function Sidebar() {
 
   return (
     <aside className="w-64 bg-black/40 backdrop-blur-md border-r border-white/5 flex flex-col p-6 space-y-6 select-none overflow-hidden h-full relative z-10">
-      <div className="text-brand-gradient font-extrabold text-3xl tracking-tighter shrink-0">Jomify</div>
+      <div className="text-brand-gradient font-extrabold text-3xl tracking-tighter shrink-0"><img src="/Jomify-Logo.png" alt="Jomify" className="w-30 object-contain"/></div>
       
       <nav className="flex flex-col space-y-4 font-semibold shrink-0">
         {navItems.map((item) => {

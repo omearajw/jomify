@@ -182,7 +182,7 @@ export default function Browse() {
 
     return (
       <div className="flex flex-col pb-8 select-none animate-fade-in px-2">
-        <div className="sticky top-15 z-10 backdrop-blur-md px-8 py-4 flex items-center">
+        <div className="sticky top-16 z-10 backdrop-blur-md px-8 py-4 flex items-center">
           <button 
             onClick={() => setExpandedSection(null)} 
             className="flex items-center text-neutral-400 hover:text-white mb-1 w-fit font-bold transition-colors"
