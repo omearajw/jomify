@@ -34,12 +34,24 @@ export const useUserStore = create(
       draggedItem: null, 
       setDraggedItem: (item) => set({ draggedItem: item }),
 
+      // --- PINNED SANDBOX STATE ---
+      pinnedItems: [], 
+      togglePin: (id, type) => set((state) => {
+        const isPinned = state.pinnedItems.some(item => item.id === id);
+        if (isPinned) {
+          return { pinnedItems: state.pinnedItems.filter(item => item.id !== id) };
+        } else {
+          return { pinnedItems: [...state.pinnedItems, { id, type }] };
+        }
+      }),
+
       createFolder: (name) => set((state) => ({ 
         customFolders: [...state.customFolders, { id: `folder-${Date.now()}`, name, playlistIds: [] }] 
       })),
       
       deleteFolder: (folderId) => set((state) => ({ 
-        customFolders: state.customFolders.filter(f => f.id !== folderId) 
+        customFolders: state.customFolders.filter(f => f.id !== folderId),
+        pinnedItems: state.pinnedItems.filter(p => p.id !== folderId) // Remove from pins if deleted
       })),
       
       addPlaylistToFolder: (folderId, playlistId) => set((state) => ({
@@ -61,11 +73,10 @@ export const useUserStore = create(
           ...f,
           playlistIds: f.playlistIds.filter(id => id !== playlistId)
         })),
+        pinnedItems: state.pinnedItems.filter(p => p.id !== playlistId), // Remove from pins if deleted
         activePlaylistId: state.activePlaylistId === playlistId ? null : state.activePlaylistId,
         currentView: state.activePlaylistId === playlistId ? 'library' : state.currentView
       })),
-
-      setAlbums: (albumData) => set({ albums: albumData }),
 
       reorderFolders: (dragId, dropId) => set((state) => {
         const newFolders = [...state.customFolders];
@@ -92,7 +103,6 @@ export const useUserStore = create(
         })
       })),
 
-      // --- OPTIMISTIC UI IMAGE UPDATER ---
       updatePlaylistImage: (playlistId, newImageUrl) => set((state) => ({
         playlists: state.playlists.map((pl) =>
           pl.id === playlistId
@@ -116,6 +126,8 @@ export const useUserStore = create(
         tokenExpiresAt: null, 
         profile: null, 
         playlists: [],
+        albums: [],
+        pinnedItems: [],
         currentView: 'home',
         viewHistory: [],
         activeFolderId: null
@@ -159,6 +171,7 @@ export const useUserStore = create(
 
       setProfile: (userData) => set({ profile: userData }),
       setPlaylists: (playlistData) => set({ playlists: playlistData }),
+      setAlbums: (albumData) => set({ albums: albumData }),
       setActivePlaylistId: (id) => set({ activePlaylistId: id }),
       setLikedTracks: (updates) => set((state) => ({ likedTracks: { ...state.likedTracks, ...updates } })),
       setApiCooldown: (timestamp) => set({ apiCooldownUntil: timestamp }),
@@ -215,7 +228,8 @@ export const useUserStore = create(
         tokenExpiresAt: state.tokenExpiresAt,
         savedVolume: state.savedVolume,
         customFolders: state.customFolders, 
-        libraryGridSize: state.libraryGridSize
+        libraryGridSize: state.libraryGridSize,
+        pinnedItems: state.pinnedItems // SAVES YOUR SANDBOX
       }), 
     }
   )

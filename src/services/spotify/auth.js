@@ -6,6 +6,7 @@ const redirectUri = import.meta.env.VITE_REDIRECT_URI;
 // The permissions Jomify needs to work (Includes the new Playlist Modify scopes)
 const scope = [
   'streaming',
+  'user-top-read',
   'user-read-email',
   'user-read-private',
   'user-library-read',

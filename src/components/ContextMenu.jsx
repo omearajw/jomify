@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
-import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist } from '../services/spotify/api';
-import { ListPlus, Plus, ChevronRight, Folder, Trash2, FolderPlus } from 'lucide-react';
-import { saveAlbumToLibrary } from '../services/spotify/api';
+import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, saveAlbumToLibrary } from '../services/spotify/api';
+import { ListPlus, Plus, ChevronRight, Folder, Trash2, FolderPlus, Pin, PinOff } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
 
 export default function ContextMenu() {
@@ -12,7 +11,8 @@ export default function ContextMenu() {
     contextMenu, setContextMenu, token, triggerQueueRefresh, 
     addManuallyQueuedTrack, injectOptimisticQueueItem, 
     playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId, activePlaylistId,
-    albums, setAlbums, addPlaylistToFolder, removePlaylistFromFolder
+    albums, setAlbums, addPlaylistToFolder, removePlaylistFromFolder,
+    pinnedItems, togglePin
   } = useUserStore();
 
   const { deviceId } = usePlayerStore();
@@ -39,6 +39,12 @@ export default function ContextMenu() {
   const sourcePlaylist = contextMenu.sourcePlaylistId ? playlists.find(p => p.id === contextMenu.sourcePlaylistId) : null;
   const folder = contextMenu?.folderId ? customFolders.find(f => f.id === contextMenu.folderId) : null;
   const canRemove = sourcePlaylist && sourcePlaylist.owner.id === profile?.id;
+
+  // Sandbox Pinning Logic
+  const activeId = contextMenu?.playlistId || contextMenu?.albumId || contextMenu?.folderId;
+  const activeType = contextMenu?.type;
+  const canPin = ['playlist', 'album', 'folder'].includes(activeType);
+  const isPinned = canPin ? pinnedItems.some(i => i.id === activeId) : false;
 
   const handleAddToQueue = async () => {
     if (!token || !deviceId || !contextMenu.track) return;
@@ -124,18 +130,15 @@ export default function ContextMenu() {
   const handleRemoveAlbum = async () => {
     if (!token || !contextMenu.albumId) return;
     try {
-      // 1. Delete from Spotify
       await fetch(`https://api.spotify.com/v1/me/albums?ids=${contextMenu.albumId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // 2. Remove from global state
       if (albums && setAlbums) {
         setAlbums(albums.filter(a => a.id !== contextMenu.albumId));
       }
       
-      // 3. Purge from any custom folders it was dropped into
       customFolders.forEach(f => {
          if (f.playlistIds.includes(contextMenu.albumId)) {
              removePlaylistFromFolder(f.id, contextMenu.albumId);
@@ -154,6 +157,17 @@ export default function ContextMenu() {
       style={{ top: contextMenu.y, left: contextMenu.x }}
       className="fixed z-[9999] w-56 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-1 overflow-visible"
     >
+      {/* UNIVERSAL PIN TOGGLE */}
+      {canPin && (
+        <button
+          onClick={() => { togglePin(activeId, activeType); setContextMenu(null); }}
+          className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors border-b border-white/5"
+        >
+          {isPinned ? <PinOff className="w-4 h-4 text-neutral-400" /> : <Pin className="w-4 h-4 text-neutral-400" />}
+          <span>{isPinned ? 'Unpin from Home' : 'Pin to Home'}</span>
+        </button>
+      )}
+
       {(contextMenu?.type === 'track' || contextMenu?.track) && (
         <>
           <button
