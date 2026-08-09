@@ -5,6 +5,7 @@ import { useUserStore } from './store/userStore';
 import MainLayout from './layouts/MainLayout';
 import Library from './views/Library/Library';
 import PlaylistView from './views/Library/PlaylistView';
+import LyricsView from './views/Lyrics/LyricsView';
 import { usePlayerStore } from './store/playerStore';
 import { initializeSpotifyPlayer } from './services/spotify/playback';
 import Browse from './views/Browse/Browse';
@@ -411,6 +412,7 @@ function App() {
             {currentView === 'artist' && <Artist />}
             {currentView === 'album' && <Album />}
             {currentView === 'liked-songs' && <LikedSongsView />}
+            {currentView === 'lyrics' && <LyricsView />}
           </>
         ) : (
           <div className="flex items-center justify-center h-full relative z-10">

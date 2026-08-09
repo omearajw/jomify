@@ -9,7 +9,11 @@ import { toggleShuffleState } from '../services/spotify/api';
 
 export default function PlayerBar() {
   const { player, playbackState, deviceId, isShuffled, toggleOptimisticShuffle } = usePlayerStore();
-  const { token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack, toggleZenMode, savedVolume, setSavedVolume } = useUserStore();
+  const { 
+    token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack, 
+    toggleZenMode, savedVolume, setSavedVolume,
+    currentView, setCurrentView, goBack
+  } = useUserStore();
 
   const [progressMs, setProgressMs] = useState(0);
   const [prevVolume, setPrevVolume] = useState(50);
@@ -129,7 +133,7 @@ export default function PlayerBar() {
 
       <div className="flex flex-col items-center justify-center w-1/3 space-y-2">
         <div className="flex items-center space-x-6">
-          <button onClick={handleToggleShuffle} className={`mr-4 transition-colors ${isShuffled ? 'text-brand-gradient' : 'text-neutral-400 hover:text-white'}`}>
+          <button onClick={handleToggleShuffle} className={`mr-4 transition-colors ${isShuffled ? 'text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]' : 'text-neutral-400 hover:text-white'}`}>
             <Shuffle className="w-4 h-4" />
           </button>
 
@@ -165,11 +169,16 @@ export default function PlayerBar() {
       </div>
 
       <div className="flex items-center justify-end space-x-4 w-1/3 text-neutral-400">
-        <button className="hover:text-white transition-colors"><Mic2 className="w-4 h-4" /></button>
+        <button 
+          onClick={() => currentView === 'lyrics' ? goBack() : setCurrentView('lyrics')} 
+          className={`transition-colors ${currentView === 'lyrics' ? 'text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]' : 'hover:text-white'}`}
+        >
+          <Mic2 className="w-4 h-4" />
+        </button>
         
         <div className="flex items-center space-x-2 group">
           <button onClick={toggleMute} className="hover:text-white transition-colors">
-            {savedVolume === 0 ? <VolumeX className="w-5 h-5 text-brand-gradient" /> : <Volume2 className="w-5 h-5" />}
+            {savedVolume === 0 ? <VolumeX className="w-5 h-5 text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]" /> : <Volume2 className="w-5 h-5" />}
           </button>
           <input 
             type="range" 
