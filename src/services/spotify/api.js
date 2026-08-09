@@ -126,6 +126,23 @@ export async function updatePlaylist(token, playlistId, { name, description = un
   return { name, description, public: isPublic, collaborative };
 }
 
+export async function fetchUserAlbums(token) {
+  const response = await spotifyFetch('https://api.spotify.com/v1/me/albums', {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  const data = await response.json();
+  // Map them to match a consistent structure (id, name, images, type)
+  return data.items.map(item => ({
+    id: item.album.id,
+    name: item.album.name,
+    images: item.album.images,
+    artists: item.album.artists,
+    type: 'album',
+    total_tracks: item.album.total_tracks
+  }));
+}
+
 async function blobToBase64(blob) {
   const arrayBuffer = await blob.arrayBuffer();
   const bytes = new Uint8Array(arrayBuffer);

@@ -9,6 +9,7 @@ export const useUserStore = create(
       tokenExpiresAt: null,
       profile: null,
       playlists: [],
+      albums: [],
       currentView: 'home', 
       viewHistory: [], 
       apiCooldownUntil: null, 
@@ -63,6 +64,8 @@ export const useUserStore = create(
         activePlaylistId: state.activePlaylistId === playlistId ? null : state.activePlaylistId,
         currentView: state.activePlaylistId === playlistId ? 'library' : state.currentView
       })),
+
+      setAlbums: (albumData) => set({ albums: albumData }),
 
       reorderFolders: (dragId, dropId) => set((state) => {
         const newFolders = [...state.customFolders];

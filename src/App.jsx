@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { redirectToAuthCodeFlow, getAccessToken, refreshAccessToken } from './services/spotify/auth';
-import { fetchUserProfile, fetchUserPlaylists } from './services/spotify/api';
+import { fetchUserProfile, fetchUserPlaylists, fetchUserAlbums } from './services/spotify/api';
 import { useUserStore } from './store/userStore';
 import MainLayout from './layouts/MainLayout';
 import Library from './views/Library/Library';
@@ -77,6 +77,18 @@ function App() {
       });
     }
   }, [token, setToken]);
+
+  useEffect(() => {
+    if (token && !useUserStore.getState().albums.length) {
+      fetchUserAlbums(token)
+        .then((albums) => {
+          useUserStore.getState().setAlbums(albums);
+        })
+        .catch((error) => {
+          console.error("Unable to preload albums:", error);
+        });
+    }
+  }, [token]);
 
   useEffect(() => {
     if (token && !profile) {

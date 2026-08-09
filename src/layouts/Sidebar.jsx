@@ -22,10 +22,10 @@ const TAGLINES = [
 
 export default function Sidebar() {
   const { 
-    token, profile, currentView, setCurrentView, logout, playlists, activePlaylistId,
+    token, profile, currentView, setCurrentView, logout, playlists, albums, activePlaylistId, navigateToAlbum,
     setActivePlaylistId, customFolders, createFolder,
     draggedItem, setDraggedItem, reorderFolders, 
-    addPlaylistToFolder, reorderPlaylistInFolder, setContextMenu, setPlaylists, deleteFolder
+    addPlaylistToFolder, removePlaylistFromFolder, reorderPlaylistInFolder, setContextMenu, setPlaylists, deleteFolder
   } = useUserStore();
   
   const [isolatedFolderId, setIsolatedFolderId] = useState(null);
@@ -37,8 +37,8 @@ export default function Sidebar() {
 
   const activeFolder = customFolders.find(f => f.id === isolatedFolderId);
   const unfolderedPlaylists = playlists.filter(p => !customFolders.some(f => f.playlistIds.includes(p.id)));
+  const unfolderedAlbums = (albums || []).filter(a => !customFolders.some(f => f.playlistIds.includes(a.id)));
   
-  // NEW: Picks a random tagline once per session
   const [tagline] = useState(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)]);
 
   const toggleFolderExpand = (e, folderId) => {
@@ -96,7 +96,6 @@ export default function Sidebar() {
     e.preventDefault(); 
     e.stopPropagation();
     
-    // RESTORED FIX: Dynamically switch the drop effect so the browser accepts the track
     if (draggedItem?.type === 'track') {
       e.dataTransfer.dropEffect = 'copy';
     } else {
@@ -116,13 +115,12 @@ export default function Sidebar() {
 
     if (draggedItem.type === 'folder' && draggedItem.id !== targetFolderId) {
       reorderFolders(draggedItem.id, targetFolderId);
-    } else if (draggedItem.type === 'playlist') {
+    } else if (draggedItem.type === 'playlist' || draggedItem.type === 'album') {
       addPlaylistToFolder(targetFolderId, draggedItem.id);
     }
     setDraggedItem(null);
   };
 
-  // NEW: Bulletproof Native Drop Handler
   const handleDropOnPlaylist = async (e, targetPlaylistId, parentFolderId) => {
     e.preventDefault(); e.stopPropagation();
     setDragOverId(null);
@@ -132,7 +130,7 @@ export default function Sidebar() {
     if (droppedUri && droppedUri.includes('spotify:track:')) {
       try {
         await addTracksToPlaylist(token, targetPlaylistId, [droppedUri]);
-        console.log('Successfully added track to playlist via Sidebar!');
+        console.log('Successfully added track via Sidebar!');
       } catch (err) {
         console.error('Failed to drop track:', err);
       }
@@ -140,7 +138,7 @@ export default function Sidebar() {
       return;
     }
 
-    if (!draggedItem || draggedItem.type !== 'playlist' || !parentFolderId) return;
+    if (!draggedItem || (draggedItem.type !== 'playlist' && draggedItem.type !== 'album') || !parentFolderId) return;
 
     if (draggedItem.parentFolderId === parentFolderId && draggedItem.id !== targetPlaylistId) {
       reorderPlaylistInFolder(parentFolderId, draggedItem.id, targetPlaylistId);
@@ -148,15 +146,17 @@ export default function Sidebar() {
     setDraggedItem(null);
   };
 
-  const handlePlaylistContextMenu = (e, playlist) => {
+  // NEW: Catch items dropped into the empty space of the sidebar to remove them from folders
+  const handleDropOnRoot = (e) => {
     e.preventDefault();
-    e.stopPropagation();
-    setContextMenu({
-      type: 'playlist',
-      playlistId: playlist.id,
-      x: e.pageX,
-      y: e.pageY
-    });
+    setDragOverId(null);
+    if (!draggedItem) return;
+
+    // Only unfolder if it's an item that actually came from a folder
+    if ((draggedItem.type === 'playlist' || draggedItem.type === 'album') && draggedItem.parentFolderId) {
+      removePlaylistFromFolder(draggedItem.parentFolderId, draggedItem.id);
+    }
+    setDraggedItem(null);
   };
 
   const navItems = [
@@ -186,9 +186,14 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* <hr className="border-neutral-800 shrink-0" /> */}
-
-      <div className="flex-1 overflow-y-auto pr-2 -mr-2 space-y-1 custom-scrollbar text-sm font-medium">
+      <div 
+        className="flex-1 overflow-y-auto pr-2 -mr-2 space-y-1 custom-scrollbar text-sm font-medium"
+        onDragOver={(e) => { 
+          e.preventDefault(); 
+          if (draggedItem?.parentFolderId) e.dataTransfer.dropEffect = 'move'; 
+        }}
+        onDrop={handleDropOnRoot}
+      >
         
         {activeFolder ? (
           <div className="animate-fade-in">
@@ -200,27 +205,34 @@ export default function Sidebar() {
             </h3>
             <div className="space-y-1 pl-2">
               {activeFolder.playlistIds.map(id => {
-                const pl = playlists.find(p => p.id === id);
-                if (!pl) return null;
-                const isDragTarget = dragOverId === pl.id;
+                const item = playlists.find(p => p.id === id) || (albums && albums.find(a => a.id === id));
+                if (!item) return null;
+                const isAlbum = item.type === 'album';
+                const isDragTarget = dragOverId === item.id;
                 
                 return (
                   <button 
-                    key={pl.id} 
+                    key={item.id} 
                     draggable="true"
-                    onDragStart={(e) => handleDragStart(e, { type: 'playlist', id: pl.id, parentFolderId: activeFolder.id })}
-                    onDragOver={(e) => handleDragOver(e, pl.id)}
+                    onDragStart={(e) => handleDragStart(e, { type: isAlbum ? 'album' : 'playlist', id: item.id, parentFolderId: activeFolder.id })}
+                    onDragOver={(e) => handleDragOver(e, item.id)}
                     onDragLeave={handleDragLeave}
                     onDragEnd={handleDragEnd} 
-                    onDrop={(e) => handleDropOnPlaylist(e, pl.id, activeFolder.id)}
-                      onContextMenu={(e) => handlePlaylistContextMenu(e, pl)}
-                    onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); }}
+                    onDrop={(e) => handleDropOnPlaylist(e, item.id, activeFolder.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault(); e.stopPropagation();
+                      setContextMenu({ type: isAlbum ? 'album' : 'playlist', playlistId: isAlbum ? null : item.id, albumId: isAlbum ? item.id : null, parentFolderId: activeFolder.id, x: e.pageX, y: e.pageY });
+                    }}
+                    onClick={() => {
+                      if (isAlbum) navigateToAlbum(item.id);
+                      else { setActivePlaylistId(item.id); setCurrentView('playlist'); }
+                    }}
                     className={`w-full text-left px-2 py-1.5 transition-colors flex items-center group cursor-grab active:cursor-grabbing rounded-md ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white'}`}
                   >
                     <div className="w-6 h-6 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
-                      {pl.images?.[0]?.url ? <img src={pl.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
+                      {item.images?.[0]?.url ? <img src={item.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
                     </div>
-                    <span className="truncate pointer-events-none">{pl.name}</span>
+                    <span className="truncate pointer-events-none">{item.name}</span>
                   </button>
                 );
               })}
@@ -229,7 +241,7 @@ export default function Sidebar() {
         ) : (
           <div className="animate-fade-in space-y-1">
             <div className="sticky top-0 flex items-center justify-between px-2 pb-3 pt-3 text-neutral-400 bg-transparent backdrop-blur-[3px] border-b border-t border-white/10 z-10">
-              <span className="text-xs uppercase tracking-wider font-bold">Playlists</span>
+              <span className="text-xs uppercase tracking-wider font-bold">Library</span>
               <div className="flex items-center gap-3">
                 <button onClick={() => setShowCreateFolderDialog(true)} className="hover:text-white transition-colors" title="Create Folder"><FolderPlus className="w-4 h-4" /></button>
                 <button onClick={() => setShowCreatePlaylistDialog(true)} className="hover:text-white transition-colors" title="Create Playlist"><Plus className="w-4 h-4" /></button>
@@ -254,19 +266,11 @@ export default function Sidebar() {
                       e.preventDefault();
                       e.stopPropagation();
                       setContextMenu({
-                        type: 'folder',
-                        folderId: folder.id,
-                        folderName: folder.name,
-                        x: e.pageX,
-                        y: e.pageY,
-                        onDelete: () => {
-                          deleteFolder(folder.id);
-                          if (isolatedFolderId === folder.id) setIsolatedFolderId(null);
-                          setContextMenu(null);
-                        }
+                        type: 'folder', folderId: folder.id, folderName: folder.name, x: e.pageX, y: e.pageY,
+                        onDelete: () => { deleteFolder(folder.id); if (isolatedFolderId === folder.id) setIsolatedFolderId(null); setContextMenu(null); }
                       });
                     }}
-                    className={`flex items-center w-full px-2 py-2 rounded-md cursor-pointer group transition-colors cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : draggedItem?.type === 'playlist' ? 'text-neutral-300 hover:bg-neutral-800/50 border border-dashed border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/10' : 'text-neutral-300 hover:text-white hover:bg-neutral-800/50'}`}
+                    className={`flex items-center w-full px-2 py-2 rounded-md cursor-pointer group transition-colors cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : (draggedItem?.type === 'playlist' || draggedItem?.type === 'album') ? 'text-neutral-300 hover:bg-neutral-800/50 border border-dashed border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/10' : 'text-neutral-300 hover:text-white hover:bg-neutral-800/50'}`}
                   >
                     <button onClick={(e) => toggleFolderExpand(e, folder.id)} className="p-0.5 hover:bg-neutral-700 rounded text-neutral-400 hover:text-white mr-1 transition-colors">
                       {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -278,26 +282,33 @@ export default function Sidebar() {
                   {isExpanded && (
                     <div className="pl-9 pr-2 space-y-1 mt-1 mb-2">
                       {folder.playlistIds.map(id => {
-                        const pl = playlists.find(p => p.id === id);
-                        if (!pl) return null;
-                        const isSubDragTarget = dragOverId === pl.id;
+                        const item = playlists.find(p => p.id === id) || (albums && albums.find(a => a.id === id));
+                        if (!item) return null;
+                        const isAlbum = item.type === 'album';
+                        const isSubDragTarget = dragOverId === item.id;
                         return (
                           <button 
-                            key={pl.id}
+                            key={item.id}
                             draggable="true"
-                            onDragStart={(e) => handleDragStart(e, { type: 'playlist', id: pl.id, parentFolderId: folder.id })}
-                            onDragOver={(e) => handleDragOver(e, pl.id)}
+                            onDragStart={(e) => handleDragStart(e, { type: isAlbum ? 'album' : 'playlist', id: item.id, parentFolderId: folder.id })}
+                            onDragOver={(e) => handleDragOver(e, item.id)}
                             onDragLeave={handleDragLeave}
                             onDragEnd={handleDragEnd} 
-                            onDrop={(e) => handleDropOnPlaylist(e, pl.id, folder.id)}
-                            onContextMenu={(e) => handlePlaylistContextMenu(e, pl)}
-                            onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); }}
+                            onDrop={(e) => handleDropOnPlaylist(e, item.id, folder.id)}
+                            onContextMenu={(e) => {
+                              e.preventDefault(); e.stopPropagation();
+                              setContextMenu({ type: isAlbum ? 'album' : 'playlist', playlistId: isAlbum ? null : item.id, albumId: isAlbum ? item.id : null, parentFolderId: folder.id, x: e.pageX, y: e.pageY });
+                            }}
+                            onClick={() => {
+                              if (isAlbum) navigateToAlbum(item.id);
+                              else { setActivePlaylistId(item.id); setCurrentView('playlist'); }
+                            }}
                             className={`w-full text-left py-1.5 transition-colors flex items-center group cursor-grab active:cursor-grabbing rounded ${isSubDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white px-2 -ml-2' : 'text-neutral-400 hover:text-white'}`}
                           >
                             <div className="w-6 h-6 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
-                              {pl.images?.[0]?.url ? <img src={pl.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
+                              {item.images?.[0]?.url ? <img src={item.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
                             </div>
-                            <span className="truncate pointer-events-none">{pl.name}</span>
+                            <span className="truncate pointer-events-none">{item.name}</span>
                           </button>
                         );
                       })}
@@ -309,8 +320,7 @@ export default function Sidebar() {
 
             <div className="pt-2 space-y-1">
               {unfolderedPlaylists.map(pl => {
-                const isDragTarget = dragOverId === pl.id; // Added visual glow support
-                
+                const isDragTarget = dragOverId === pl.id; 
                 return (
                   <button 
                     key={pl.id}
@@ -319,8 +329,11 @@ export default function Sidebar() {
                     onDragOver={(e) => handleDragOver(e, pl.id)}
                     onDragLeave={handleDragLeave}
                     onDragEnd={handleDragEnd}
-                    onDrop={(e) => handleDropOnPlaylist(e, pl.id, null)} // Now catches dropped tracks
-                  onContextMenu={(e) => handlePlaylistContextMenu(e, pl)}
+                    onDrop={(e) => handleDropOnPlaylist(e, pl.id, null)} 
+                    onContextMenu={(e) => {
+                      e.preventDefault(); e.stopPropagation();
+                      setContextMenu({ type: 'playlist', playlistId: pl.id, parentFolderId: null, x: e.pageX, y: e.pageY });
+                    }}
                     onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); }}
                     className={`w-full text-left px-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
                   >
@@ -328,6 +341,32 @@ export default function Sidebar() {
                       {pl.images?.[0]?.url ? <img src={pl.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
                     </div>
                     <span className="truncate pointer-events-none">{pl.name}</span>
+                  </button>
+                );
+              })}
+
+              {unfolderedAlbums.map(album => {
+                const isDragTarget = dragOverId === album.id;
+                return (
+                  <button 
+                    key={album.id}
+                    draggable="true"
+                    onDragStart={(e) => handleDragStart(e, { type: 'album', id: album.id, parentFolderId: null })}
+                    onDragOver={(e) => handleDragOver(e, album.id)}
+                    onDragLeave={handleDragLeave}
+                    onDragEnd={handleDragEnd}
+                    onDrop={(e) => handleDropOnPlaylist(e, album.id, null)} 
+                    onContextMenu={(e) => {
+                      e.preventDefault(); e.stopPropagation();
+                      setContextMenu({ type: 'album', albumId: album.id, parentFolderId: null, x: e.pageX, y: e.pageY });
+                    }}
+                    onClick={() => navigateToAlbum(album.id)}
+                    className={`w-full text-left px-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
+                  >
+                    <div className="w-8 h-8 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
+                      {album.images?.[0]?.url ? <img src={album.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
+                    </div>
+                    <span className="truncate pointer-events-none">{album.name}</span>
                   </button>
                 );
               })}

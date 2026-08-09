@@ -5,30 +5,30 @@ import { Heart, Folder, Maximize2, ChevronLeft, Plus, Minus, Trash2, MoreVertica
 import { motion } from 'framer-motion';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
+import FolderFormDialog from '../../components/FolderFormDialog';
 
 // --- VISUAL UPGRADE: Safely Bounded Right-to-Left Fan Stack ---
-const FolderStack = ({ folder, playlists }) => {
-  const folderPlaylists = folder.playlistIds.map(id => playlists.find(p => p.id === id)).filter(Boolean);
+const FolderStack = ({ folder, items }) => {
+  const folderItems = folder.playlistIds.map(id => items.find(p => p.id === id)).filter(Boolean);
   
-  if (folderPlaylists.length === 0) {
+  if (folderItems.length === 0) {
     return <div className="w-full h-full flex items-center justify-center bg-neutral-800"><Folder className="w-16 h-16 text-neutral-700" /></div>;
   }
   
   return (
     <div className="relative w-full h-full flex items-center overflow-hidden bg-neutral-800/50">
-      {folderPlaylists.slice(0, 4).reverse().map((pl, i, arr) => {
+      {folderItems.slice(0, 4).reverse().map((item, i, arr) => {
         const index = arr.length - 1 - i; 
-        // Use percentages so it scales perfectly on any screen size without overflowing
         const rightOffset = 5 + (index * 14); 
         const scale = 1 - (index * 0.15); 
         return (
           <div 
-            key={pl.id} 
+            key={item.id} 
             className="absolute w-[75%] h-[75%] rounded-md shadow-2xl overflow-hidden bg-neutral-900 border border-white/10 transition-transform duration-500 ease-out group-hover:-translate-y-3"
             style={{ right: `${rightOffset}%`, transform: `scale(${scale})`, zIndex: 10 - index }}
           >
-            {pl.images?.[0]?.url ? (
-              <img src={pl.images[0].url} draggable="false" className="w-full h-full object-cover pointer-events-none" alt="" />
+            {item.images?.[0]?.url ? (
+              <img src={item.images[0].url} draggable="false" className="w-full h-full object-cover pointer-events-none" alt="" />
             ) : (
               <span className="text-2xl flex items-center justify-center w-full h-full opacity-30">💿</span>
             )}
@@ -41,27 +41,31 @@ const FolderStack = ({ folder, playlists }) => {
 
 export default function Library() {
   const { 
-    token, profile, playlists, setPlaylists, setCurrentView, setActivePlaylistId,
-    customFolders, addPlaylistToFolder, removePlaylistFromFolder, deleteFolder, deletePlaylist,
+    token, profile, playlists, albums, setPlaylists, setCurrentView, setActivePlaylistId, navigateToAlbum,
+    customFolders, addPlaylistToFolder, removePlaylistFromFolder, deleteFolder, deletePlaylist, createFolder,
     draggedItem, setDraggedItem, reorderFolders, reorderPlaylistInFolder,
-    libraryGridSize, setLibraryGridSize
+    libraryGridSize, setLibraryGridSize, setContextMenu
   } = useUserStore();
-  // global context menu setter
-  const { setContextMenu } = useUserStore();
 
   const [loading, setLoading] = useState(playlists.length === 0);
   const [isolatedFolderId, setIsolatedFolderId] = useState(null); 
   const [expandedFolders, setExpandedFolders] = useState([]);
   const [isManaging, setIsManaging] = useState(false); 
-  const [openMenuId, setOpenMenuId] = useState(null);
   const [confirmState, setConfirmState] = useState({ open: false, type: null, playlist: null, folderId: null });
   
   const [dragOverId, setDragOverId] = useState(null);
+  
+  // Dialog States
   const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false);
   const [isSubmittingPlaylist, setIsSubmittingPlaylist] = useState(false);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 
   const activeFolder = customFolders.find(f => f.id === isolatedFolderId);
   const unfolderedPlaylists = playlists.filter(p => !customFolders.some(f => f.playlistIds.includes(p.id)));
+  const unfolderedAlbums = (albums || []).filter(a => !customFolders.some(f => f.playlistIds.includes(a.id)));
+
+  const allItems = [...playlists, ...(albums || [])];
 
   useEffect(() => {
     if (token && playlists.length === 0) {
@@ -72,13 +76,6 @@ export default function Library() {
     } else setLoading(false);
   }, [token, playlists, setPlaylists]);
 
-  useEffect(() => {
-    // Keep for compatibility if other code uses it; no-op listener retained
-    const handleClickOutside = () => {};
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
-
   useEffect(() => { if (!activeFolder) setIsManaging(false); }, [activeFolder]);
 
   const toggleFolderExpand = (e, folderId) => {
@@ -86,14 +83,22 @@ export default function Library() {
     setExpandedFolders(prev => prev.includes(folderId) ? prev.filter(id => id !== folderId) : [...prev, folderId]);
   };
 
-  const handleMenuClick = (e, playlistId, parentFolderId = null) => {
+  const handleMenuClick = (e, item, parentFolderId = null) => {
     e.preventDefault();
     e.stopPropagation();
-    // Open the global context menu instead of an inline menu
+    const isAlbum = item.type === 'album';
     const rect = e.currentTarget?.getBoundingClientRect?.() || { left: e.pageX, top: e.pageY };
     const x = e.pageX || rect.left;
     const y = e.pageY || rect.top;
-    setContextMenu({ type: 'playlist', playlistId, parentFolderId, x, y });
+    
+    setContextMenu({ 
+      type: isAlbum ? 'album' : 'playlist', 
+      playlistId: isAlbum ? null : item.id, 
+      albumId: isAlbum ? item.id : null,
+      parentFolderId, 
+      x, 
+      y 
+    });
   };
 
   const handleFolderContextMenu = (e, folder) => {
@@ -113,19 +118,11 @@ export default function Library() {
     });
   };
 
-  const handleDeletePlaylist = (e, playlist) => {
-    e.stopPropagation();
-    setOpenMenuId(null);
-    setConfirmState({ open: true, type: 'playlist', playlist, folderId: null });
-  };
-
-  // --- CRITICAL DnD FIX ---
   const handleDragStart = (e, item) => {
     e.stopPropagation();
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', item.id);
     
-    // Defers the state update so React doesn't instantly re-render and kill the drag operation
     setTimeout(() => {
       setDraggedItem(item);
     }, 0);
@@ -135,7 +132,6 @@ export default function Library() {
     e.preventDefault(); 
     e.stopPropagation();
     
-    // FIX: Dynamically switch the drop effect so the browser removes the stop sign
     if (draggedItem?.type === 'track') {
       e.dataTransfer.dropEffect = 'copy';
     } else {
@@ -182,24 +178,21 @@ export default function Library() {
     setDragOverId(null);
     if (!draggedItem) return;
     if (draggedItem.type === 'folder' && draggedItem.id !== targetFolderId) reorderFolders(draggedItem.id, targetFolderId);
-    else if (draggedItem.type === 'playlist') addPlaylistToFolder(targetFolderId, draggedItem.id);
+    else if (draggedItem.type === 'playlist' || draggedItem.type === 'album') addPlaylistToFolder(targetFolderId, draggedItem.id);
     setDraggedItem(null);
   };
 
-  // NEW: Bulletproof Native Drop Handler
-  const handleDropOnPlaylist = async (e, targetPlaylistId, parentFolderId) => {
+  const handleDropOnItem = async (e, targetItemId, parentFolderId) => {
     e.preventDefault(); 
     e.stopPropagation();
     setDragOverId(null);
     
-    // 1. EXTRACT NATIVE BROWSER DATA
     const droppedUri = e.dataTransfer.getData('text/plain');
 
-    // 2. TRACK DROP (Bulletproof)
     if (droppedUri && droppedUri.includes('spotify:track:')) {
       try {
-        await addTracksToPlaylist(token, targetPlaylistId, [droppedUri]);
-        console.log('Successfully added track to playlist!');
+        await addTracksToPlaylist(token, targetItemId, [droppedUri]);
+        console.log('Successfully added track!');
       } catch (err) {
         console.error('Failed to drop track:', err);
       }
@@ -207,11 +200,10 @@ export default function Library() {
       return; 
     }
 
-    // 3. PLAYLIST REORDER DROP
     if (!draggedItem) return;
-    if (draggedItem.type === 'playlist' && parentFolderId) {
-      if (draggedItem.parentFolderId === parentFolderId && draggedItem.id !== targetPlaylistId) {
-        reorderPlaylistInFolder(parentFolderId, draggedItem.id, targetPlaylistId);
+    if ((draggedItem.type === 'playlist' || draggedItem.type === 'album') && parentFolderId) {
+      if (draggedItem.parentFolderId === parentFolderId && draggedItem.id !== targetItemId) {
+        reorderPlaylistInFolder(parentFolderId, draggedItem.id, targetItemId);
       } else if (draggedItem.parentFolderId !== parentFolderId) {
         addPlaylistToFolder(parentFolderId, draggedItem.id);
       }
@@ -220,7 +212,17 @@ export default function Library() {
     setDraggedItem(null);
   };
 
-  // --- GRID SIZING ENGINE ---
+  const handleDropOnRoot = (e) => {
+    e.preventDefault();
+    setDragOverId(null);
+    if (!draggedItem) return;
+
+    if ((draggedItem.type === 'playlist' || draggedItem.type === 'album') && draggedItem.parentFolderId) {
+      removePlaylistFromFolder(draggedItem.parentFolderId, draggedItem.id);
+    }
+    setDraggedItem(null);
+  };
+
   const getGridClass = () => {
     if (libraryGridSize === 'small') return 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-4';
     if (libraryGridSize === 'large') return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-8';
@@ -258,6 +260,17 @@ export default function Library() {
     }
   };
 
+  const handleCreateFolder = async ({ name }) => {
+    if (!name || !name.trim()) return;
+    setIsCreatingFolder(true);
+    try {
+      createFolder(name.trim());
+      setFolderDialogOpen(false);
+    } finally {
+      setIsCreatingFolder(false);
+    }
+  };
+
   const SizingControls = () => (
     <div className="flex items-center space-x-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 w-fit shrink-0">
       <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider mr-2">Size</span>
@@ -269,43 +282,49 @@ export default function Library() {
 
   if (loading) return <p className="text-neutral-400 animate-pulse text-lg">Loading your collection...</p>;
 
-  const PlaylistCard = ({ playlist, isSubItem = false, parentFolderId = null }) => {
-    const isDragTarget = dragOverId === playlist.id;
+  const ItemCard = ({ item, isSubItem = false, parentFolderId = null }) => {
+    const isDragTarget = dragOverId === item.id;
+    const isAlbum = item.type === 'album';
+
     return (
       <div 
         draggable="true" 
-        onDragStart={(e) => handleDragStart(e, { type: 'playlist', id: playlist.id, parentFolderId })}
-        onDragOver={(e) => handleDragOver(e, playlist.id)} 
+        onDragStart={(e) => handleDragStart(e, { type: isAlbum ? 'album' : 'playlist', id: item.id, parentFolderId })}
+        onDragOver={(e) => handleDragOver(e, item.id)} 
         onDragLeave={handleDragLeave} 
         onDragEnd={handleDragEnd} 
-        onDrop={(e) => handleDropOnPlaylist(e, playlist.id, parentFolderId)}
-        onClick={() => { setActivePlaylistId(playlist.id); setCurrentView('playlist'); }}
-        onContextMenu={(e) => { e.preventDefault(); handleMenuClick(e, playlist.id, parentFolderId); }}
+        onDrop={(e) => handleDropOnItem(e, item.id, parentFolderId)}
+        onClick={() => {
+          if (isAlbum) navigateToAlbum(item.id);
+          else { setActivePlaylistId(item.id); setCurrentView('playlist'); }
+        }}
+        onContextMenu={(e) => handleMenuClick(e, item, parentFolderId)}
         className={`p-4 rounded-xl hover:bg-neutral-800 transition-all duration-300 cursor-pointer group shadow-lg flex flex-col h-full relative cursor-grab active:cursor-grabbing ${isDragTarget ? 'ring-2 ring-[#f91362] bg-brand-gradient text-white/10 scale-[1.02]' : isSubItem ? 'bg-neutral-800/40 border border-neutral-700/30 hover:border-neutral-500/50' : 'bg-neutral-800/40'}`}
       >
-        <button type="button" onClick={(e) => handleMenuClick(e, playlist.id, parentFolderId)} onContextMenu={(e) => handleMenuClick(e, playlist.id, parentFolderId)} className="absolute top-6 right-6 z-10 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md">
+        <button type="button" onClick={(e) => handleMenuClick(e, item, parentFolderId)} className="absolute top-6 right-6 z-10 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md">
           <MoreVertical className="w-4 h-4" />
         </button>
         
-
         <div className="relative aspect-square w-full mb-4 rounded-md overflow-hidden bg-neutral-800 flex items-center justify-center shadow-md shrink-0 pointer-events-none">
-          {playlist.images?.length > 0 ? <img src={playlist.images[0].url} draggable="false" alt={playlist.name} className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300" /> : <span className="text-3xl">💿</span>}
+          {item.images?.length > 0 ? <img src={item.images[0].url} draggable="false" alt={item.name} className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300" /> : <span className="text-3xl">💿</span>}
         </div>
-        <h3 className="font-bold text-sm text-white truncate mb-1 pointer-events-none">{playlist.name}</h3>
-        <p className="text-xs text-neutral-400 truncate mt-auto pointer-events-none">By {playlist.owner.display_name}</p>
+        <h3 className="font-bold text-sm text-white truncate mb-1 pointer-events-none">{item.name}</h3>
+        <p className="text-xs text-neutral-400 truncate mt-auto pointer-events-none">
+          {isAlbum ? `Album • ${item.artists?.map(a => a.name).join(', ')}` : `By ${item.owner?.display_name || 'Spotify'}`}
+        </p>
       </div>
     );
   };
 
-  const ManageCard = ({ playlist, action, onClick }) => (
+  const ManageCard = ({ item, action, onClick }) => (
     <div onClick={onClick} className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border border-transparent flex flex-col h-full ${action === 'add' ? 'bg-neutral-800/20 hover:border-[#f91362]/50 hover:bg-brand-gradient text-white/10' : 'bg-neutral-800/40 hover:border-red-500/50 hover:bg-red-500/10'}`}>
       <div className="relative aspect-square w-full mb-4 rounded-md overflow-hidden bg-neutral-800 flex items-center justify-center shadow-md shrink-0">
-        {playlist.images?.length > 0 ? <img src={playlist.images[0].url} draggable="false" alt={playlist.name} className="object-cover w-full h-full opacity-60 group-hover:opacity-100 transition-opacity duration-300" /> : <span className="text-3xl opacity-60 group-hover:opacity-100">💿</span>}
+        {item.images?.length > 0 ? <img src={item.images[0].url} draggable="false" alt={item.name} className="object-cover w-full h-full opacity-60 group-hover:opacity-100 transition-opacity duration-300" /> : <span className="text-3xl opacity-60 group-hover:opacity-100">💿</span>}
         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
           {action === 'add' ? <Plus className="w-12 h-12 text-brand-gradient" /> : <Minus className="w-12 h-12 text-red-500" />}
         </div>
       </div>
-      <h3 className="font-bold text-sm text-white truncate mb-1">{playlist.name}</h3>
+      <h3 className="font-bold text-sm text-white truncate mb-1">{item.name}</h3>
     </div>
   );
 
@@ -332,7 +351,7 @@ export default function Library() {
                 <Folder className="w-8 h-8 text-brand-gradient fill-current mr-4" />
                 <div>
                   <h3 className="text-2xl font-extrabold text-white tracking-tight group-hover:text-green-400 transition-colors">{folder.name}</h3>
-                  <p className="text-sm text-neutral-400 font-medium">{folder.playlistIds.length} playlists inside</p>
+                  <p className="text-sm text-neutral-400 font-medium">{folder.playlistIds.length} items inside</p>
                 </div>
               </div>
               <button onClick={(e) => toggleFolderExpand(e, folder.id)} className="w-10 h-10 bg-black/40 hover:bg-black text-white rounded-full flex items-center justify-center transition-all">
@@ -343,11 +362,11 @@ export default function Library() {
             <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} className={`grid ${getGridClass()}`}>
               {folder.playlistIds.length === 0 && <p className="text-neutral-500 italic col-span-full py-4 text-center">Empty folder</p>}
               {folder.playlistIds.map((id) => {
-                const pl = playlists.find(p => p.id === id);
-                if (!pl) return null;
+                const item = allItems.find(p => p.id === id);
+                if (!item) return null;
                 return (
-                  <motion.div key={pl.id} variants={{ hidden: { opacity: 0, y: 30, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 300, damping: 24 } } }}>
-                    <PlaylistCard playlist={pl} isSubItem={true} parentFolderId={folder.id} />
+                  <motion.div key={item.id} variants={{ hidden: { opacity: 0, y: 30, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 300, damping: 24 } } }}>
+                    <ItemCard item={item} isSubItem={true} parentFolderId={folder.id} />
                   </motion.div>
                 );
               })}
@@ -366,29 +385,37 @@ export default function Library() {
             onDrop={(e) => handleDropOnFolder(e, folder.id)}
             onClick={() => setIsolatedFolderId(folder.id)} 
             onContextMenu={(e) => handleFolderContextMenu(e, folder)}
-            className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border relative flex flex-col h-full cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-brand-gradient text-white/10 border-[#f91362] scale-[1.02]' : 'bg-neutral-800/40 border-transparent hover:border-neutral-700 hover:bg-neutral-800/80'} ${draggedItem?.type === 'playlist' && !isDragTarget ? 'border-dashed border-[#f91362]/50 bg-brand-gradient text-white/5' : ''}`}
+            className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border relative flex flex-col h-full cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-brand-gradient text-white/10 border-[#f91362] scale-[1.02]' : 'bg-neutral-800/40 border-transparent hover:border-neutral-700 hover:bg-neutral-800/80'} ${(draggedItem?.type === 'playlist' || draggedItem?.type === 'album') && !isDragTarget ? 'border-dashed border-[#f91362]/50 bg-brand-gradient text-white/5' : ''}`}
           >
             <button onClick={(e) => toggleFolderExpand(e, folder.id)} className="absolute top-4 right-4 z-100 w-8 h-8 bg-black/40 hover:bg-black/80 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors" title="Expand Inline">
               <Maximize2 className="w-4 h-4 text-white transition-transform duration-300" />
             </button>
             <div className="aspect-square w-full mb-4 rounded-md shadow-md shrink-0 pointer-events-none">
-               <FolderStack folder={folder} playlists={playlists} />
+               <FolderStack folder={folder} items={allItems} />
             </div>
             <h3 className="font-bold text-sm text-white truncate mb-1 flex items-center pointer-events-none">
               <Folder className="w-4 h-4 mr-2 text-brand-gradient fill-current shrink-0" />
               <span className="truncate">{folder.name}</span>
             </h3>
-            <p className="text-xs text-neutral-400 truncate mt-auto pointer-events-none">{folder.playlistIds.length} playlists</p>
+            <p className="text-xs text-neutral-400 truncate mt-auto pointer-events-none">{folder.playlistIds.length} items</p>
           </div>
         );
       }
     });
 
-    unfolderedPlaylists.forEach((pl) => gridItems.push(<PlaylistCard key={pl.id} playlist={pl} />));
+    unfolderedPlaylists.forEach((pl) => gridItems.push(<ItemCard key={pl.id} item={pl} />));
+    unfolderedAlbums.forEach((album) => gridItems.push(<ItemCard key={album.id} item={album} />));
   }
 
   return (
-    <div className="animate-fade-in pb-12 overflow-hidden">
+    <div 
+      className="animate-fade-in pb-12 overflow-hidden min-h-[calc(100vh-200px)] flex flex-col"
+      onDragOver={(e) => { 
+        e.preventDefault(); 
+        if (draggedItem?.parentFolderId) e.dataTransfer.dropEffect = 'move'; 
+      }}
+      onDrop={handleDropOnRoot}
+    >
       {activeFolder ? (
         <div className="mb-8">
           <button onClick={() => setIsolatedFolderId(null)} className="flex items-center text-neutral-400 hover:text-white mb-6 transition-colors font-bold w-fit">
@@ -398,7 +425,7 @@ export default function Library() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-10 gap-4">
             <div className="flex items-center">
               <div className="w-16 h-16 bg-neutral-800 rounded-lg flex items-center justify-center mr-4 shadow-lg shrink-0 overflow-hidden">
-                <FolderStack folder={activeFolder} playlists={playlists} />
+                <FolderStack folder={activeFolder} items={allItems} />
               </div>
               <div className="min-w-0">
                 <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Folder</span>
@@ -417,22 +444,22 @@ export default function Library() {
             <div className="space-y-12 animate-fade-in">
                <div>
                 <h2 className="text-xl font-bold text-white mb-4">Click to Remove</h2>
-                {activeFolder.playlistIds.length === 0 && <p className="text-neutral-500 italic">No playlists in this folder.</p>}
+                {activeFolder.playlistIds.length === 0 && <p className="text-neutral-500 italic">No items in this folder.</p>}
                 <div className={`grid ${getGridClass()}`}>
                   {activeFolder.playlistIds.map(id => {
-                    const pl = playlists.find(p => p.id === id);
-                    if (!pl) return null;
-                    return <ManageCard key={pl.id} playlist={pl} action="remove" onClick={() => removePlaylistFromFolder(activeFolder.id, pl.id)} />;
+                    const item = allItems.find(p => p.id === id);
+                    if (!item) return null;
+                    return <ManageCard key={item.id} item={item} action="remove" onClick={() => removePlaylistFromFolder(activeFolder.id, item.id)} />;
                   })}
                 </div>
               </div>
               <hr className="border-white/10" />
               <div>
                 <h2 className="text-xl font-bold text-white mb-4">Click to Add</h2>
-                {unfolderedPlaylists.length === 0 && <p className="text-neutral-500 italic">No available playlists to add.</p>}
+                {(unfolderedPlaylists.length === 0 && unfolderedAlbums.length === 0) && <p className="text-neutral-500 italic">No available items to add.</p>}
                 <div className={`grid ${getGridClass()}`}>
-                  {unfolderedPlaylists.map(pl => (
-                    <ManageCard key={pl.id} playlist={pl} action="add" onClick={() => addPlaylistToFolder(activeFolder.id, pl.id)} />
+                  {[...unfolderedPlaylists, ...unfolderedAlbums].map(item => (
+                    <ManageCard key={item.id} item={item} action="add" onClick={() => addPlaylistToFolder(activeFolder.id, item.id)} />
                   ))}
                 </div>
               </div>
@@ -448,15 +475,15 @@ export default function Library() {
                 <div className="col-span-full py-12 flex flex-col items-center justify-center text-neutral-500 border-2 border-dashed border-neutral-800 rounded-xl">
                   <Folder className="w-12 h-12 mb-4 opacity-50" />
                   <p>This folder is empty.</p>
-                  <button onClick={() => setIsManaging(true)} className="mt-4 text-white font-bold hover:underline">Add Playlists</button>
+                  <button onClick={() => setIsManaging(true)} className="mt-4 text-white font-bold hover:underline">Add Items</button>
                 </div>
               )}
               {activeFolder.playlistIds.map((id) => {
-                const pl = playlists.find(p => p.id === id);
-                if (!pl) return null;
+                const item = allItems.find(p => p.id === id);
+                if (!item) return null;
                 return (
-                  <motion.div key={pl.id} variants={{ hidden: { opacity: 0, y: 30, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 300, damping: 24 } } }}>
-                    <PlaylistCard playlist={pl} parentFolderId={activeFolder.id} />
+                  <motion.div key={item.id} variants={{ hidden: { opacity: 0, y: 30, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 300, damping: 24 } } }}>
+                    <ItemCard item={item} parentFolderId={activeFolder.id} />
                   </motion.div>
                 );
               })}
@@ -471,8 +498,11 @@ export default function Library() {
               <p className="text-sm text-neutral-400 mt-1">Create playlists and organize your collection.</p>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => setPlaylistDialogOpen(true)} className="px-5 py-2 rounded-full bg-brand-gradient text-white text-black font-bold hover:bg-brand-gradient text-white transition-all">
-                Create Playlist
+              <button onClick={() => setFolderDialogOpen(true)} className="px-5 py-2 rounded-full border border-white/20 text-white font-bold hover:bg-white/10 transition-all flex items-center">
+                <FolderPlus className="w-4 h-4 mr-2" /> Folder
+              </button>
+              <button onClick={() => setPlaylistDialogOpen(true)} className="px-5 py-2 rounded-full bg-brand-gradient text-white text-black font-bold hover:bg-brand-gradient transition-all flex items-center">
+                <Plus className="w-4 h-4 mr-2" /> Playlist
               </button>
               <SizingControls />
             </div>
@@ -490,7 +520,14 @@ export default function Library() {
         onCancel={() => setPlaylistDialogOpen(false)}
         isSubmitting={isSubmittingPlaylist}
       />
-
+      <FolderFormDialog
+        open={folderDialogOpen}
+        title="Create folder"
+        submitLabel="Create"
+        onSubmit={handleCreateFolder}
+        onCancel={() => setFolderDialogOpen(false)}
+        isSubmitting={isCreatingFolder}
+      />
       <ConfirmDialog
         open={confirmState.open}
         title={confirmState.type === 'playlist' ? 'Delete Playlist' : 'Delete Folder'}

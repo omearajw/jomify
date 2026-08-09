@@ -11,9 +11,9 @@ export default function ContextMenu() {
   const { 
     contextMenu, setContextMenu, token, triggerQueueRefresh, 
     addManuallyQueuedTrack, injectOptimisticQueueItem, 
-    playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId, activePlaylistId
+    playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId, activePlaylistId,
+    albums, setAlbums, addPlaylistToFolder, removePlaylistFromFolder
   } = useUserStore();
-  const { addPlaylistToFolder, removePlaylistFromFolder } = useUserStore();
 
   const { deviceId } = usePlayerStore();
   const menuRef = useRef(null);
@@ -119,6 +119,33 @@ export default function ContextMenu() {
     }
 
     setConfirmFolderOpen(false);
+  };
+
+  const handleRemoveAlbum = async () => {
+    if (!token || !contextMenu.albumId) return;
+    try {
+      // 1. Delete from Spotify
+      await fetch(`https://api.spotify.com/v1/me/albums?ids=${contextMenu.albumId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // 2. Remove from global state
+      if (albums && setAlbums) {
+        setAlbums(albums.filter(a => a.id !== contextMenu.albumId));
+      }
+      
+      // 3. Purge from any custom folders it was dropped into
+      customFolders.forEach(f => {
+         if (f.playlistIds.includes(contextMenu.albumId)) {
+             removePlaylistFromFolder(f.id, contextMenu.albumId);
+         }
+      });
+      
+      setContextMenu(null);
+    } catch (err) {
+      console.error('Failed to remove album:', err);
+    }
   };
 
   return createPortal(
@@ -249,6 +276,54 @@ export default function ContextMenu() {
         </>
       )}
 
+      {(contextMenu?.type === 'album' || contextMenu?.albumId) && (
+        <>
+          <button
+            onClick={handleRemoveAlbum}
+            className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
+            <span>Remove from Library</span>
+          </button>
+
+          {contextMenu?.parentFolderId && (
+            <button
+              onClick={async () => {
+                try {
+                  removePlaylistFromFolder(contextMenu.parentFolderId, contextMenu.albumId);
+                } catch (err) {
+                  console.error('Failed to remove from folder', err);
+                } finally {
+                  setContextMenu(null);
+                }
+              }}
+              className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+            >
+              <Trash2 className="w-4 h-4 text-red-400" />
+              <span>Remove from folder</span>
+            </button>
+          )}
+
+          <div className="px-4 py-2 text-xs text-neutral-500 uppercase tracking-wider font-bold flex items-center"><FolderPlus className="w-3 h-3 mr-2" /> Move to...</div>
+          <div className="max-h-48 overflow-y-auto custom-scrollbar">
+            {customFolders.map(folder => (
+              <button
+                key={folder.id}
+                onClick={(e) => {
+                  e?.stopPropagation?.();
+                  addPlaylistToFolder(folder.id, contextMenu.albumId);
+                  setContextMenu(null);
+                }}
+                disabled={folder.id === contextMenu?.parentFolderId}
+                className="w-full text-left px-4 py-2 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors truncate"
+              >
+                {folder.name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
       {contextMenu?.type === 'folder' && folder && (
         <>
           <button
@@ -260,24 +335,7 @@ export default function ContextMenu() {
           </button>
         </>
       )}
-      {(contextMenu?.type === 'album' || contextMenu?.albumId) && (
-        <button
-          onClick={async () => {
-            if (!token || !(contextMenu?.albumId)) return setContextMenu(null);
-            try {
-              await saveAlbumToLibrary(token, contextMenu.albumId);
-            } catch (err) {
-              console.error('Failed to save album:', err);
-            } finally {
-              setContextMenu(null);
-            }
-          }}
-          className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
-        >
-          <ListPlus className="w-4 h-4 text-neutral-400" />
-          <span>Add album to Library</span>
-        </button>
-      )}
+      
       <ConfirmDialog
         open={confirmOpen}
         title="Delete Playlist"
