@@ -175,6 +175,11 @@ export const useUserStore = create(
         };
       }),
 
+      playlistSortSettings: {},
+      setPlaylistSortSettings: (playlistId, settings) => set((state) => ({
+        playlistSortSettings: { ...state.playlistSortSettings, [playlistId]: settings }
+      })),
+
       setProfile: (userData) => set({ profile: userData }),
       setPlaylists: (playlistData) => set({ playlists: playlistData }),
       setAlbums: (albumData) => set({ albums: albumData }),
@@ -237,7 +242,8 @@ export const useUserStore = create(
         libraryGridSize: state.libraryGridSize,
         pinnedItems: state.pinnedItems, // SAVES YOUR SANDBOX
         queueOrder: state.queueOrder,
-        manuallyQueuedTracks: state.manuallyQueuedTracks
+        manuallyQueuedTracks: state.manuallyQueuedTracks,
+        playlistSortSettings: state.playlistSortSettings
       }), 
     }
   )

@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useUserStore } from '../../store/userStore'; 
 import { usePlayerStore } from '../../store/playerStore';
-import { fetchPlaylistDetails, fetchMoreTracks, playPlaylistTrack, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists } from '../../services/spotify/api';
+import { fetchPlaylistDetails, playPlaylistTrack, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
-import { Clock3, Play, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Clock3, Play, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
 
@@ -11,44 +11,92 @@ import PlaylistFormDialog from '../../components/PlaylistFormDialog';
 const cleanString = (str) => {
   if (!str) return '';
   return str
-    .split(/[-(]/)[0] // Grab everything before a hyphen or parenthesis
+    .split(/[-(]/)[0] 
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, '') // Keep only alphanumeric characters
+    .replace(/[^a-z0-9]/g, '') 
     .trim();
 };
 
+// String hashing function
+const hashCode = (str) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return hash;
+};
+
+// Generates the subtle, grungy glass styles based on group adjacency
+const getCollaboratorStyle = (userId, isCollaborative, isFirst, isLast) => {
+  if (!isCollaborative || !userId) return {};
+  
+  // Multiply by the golden angle (137.508) to guarantee perfectly distinct colors for every user
+  const hash = Math.abs(hashCode(userId));
+  const hue = Math.round((hash * 137.508) % 360);
+
+  let shadow = [
+    `-12px 0px 24px -12px hsla(${hue}, 50%, 50%, 0.15)` // Very soft ambient left glow
+  ];
+
+  if (isFirst) {
+    shadow.push(`inset 0px 1px 0px hsla(${hue}, 100%, 60%, 0.25)`); // Barely-there top glass edge
+  }
+  if (isLast) {
+    shadow.push(`inset 0px -1px 0px hsla(${hue}, 50%, 60%, 0.3)`); // Barely-there bottom glass edge
+    shadow.push(`-12px 12px 24px -12px hsla(${hue}, 50%, 50%, 0.4)`); // Pooled bottom-left glow
+  }
+
+  // Calculate the continuous overlay glow that spreads THROUGH the group
+  let bgGradient = '';
+  
+  if (isFirst && isLast) {
+    // Standalone track
+    bgGradient = `radial-gradient(120% 150% at bottom left, hsla(${hue}, 100%, 60%, 0.12) 0%, transparent 60%)`;
+  } else if (isLast) {
+    // Source of the glow (strongest at the bottom of the group)
+    bgGradient = `radial-gradient(150% 200% at bottom left, hsla(${hue}, 100%, 60%, 0.18) 0%, hsla(${hue}, 100%, 60%, 0.05) 50%, transparent 100%)`;
+  } else if (isFirst) {
+    // Farthest from the source (fading out at the top of the group)
+    bgGradient = `radial-gradient(150% 200% at bottom left, hsla(${hue}, 100%, 60%, 0.04) 0%, transparent 80%)`;
+  } else {
+    // Middle of the group (light passing through)
+    bgGradient = `radial-gradient(150% 200% at bottom left, hsla(${hue}, 100%, 60%, 0.08) 0%, transparent 90%)`;
+  }
+
+  return {
+    '--track-hue': hue,
+    boxShadow: shadow.join(', '),
+    // backgroundImage renders over background-color, preserving your Tailwind hover effects
+    backgroundImage: bgGradient,
+    borderLeft: `1px solid hsla(${hue}, 100%, 60%, 0.15)`
+  };
+};
+
 export default function PlaylistView() {
-  const { token, updatePlaylistImage, playlists, activePlaylistId, setLikedTracks, setContextMenu, setDraggedItem, setPlaylists, navigateToArtist, navigateToAlbum } = useUserStore();
+  const { 
+    token, updatePlaylistImage, playlists, activePlaylistId, 
+    setLikedTracks, setContextMenu, setDraggedItem, setPlaylists, 
+    navigateToArtist, navigateToAlbum,
+    playlistSortSettings, setPlaylistSortSettings // Destructured from your updated store
+  } = useUserStore();
+  
   const { deviceId, playbackState } = usePlayerStore();
   const [playlist, setPlaylist] = useState(null);
   
-  // --- PER-PLAYLIST PERSISTENT SORTING & FILTERING STATES ---
-  const [playlistSortSettings, setPlaylistSortSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem('jomify_playlist_sort_settings');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  // --- COLLABORATOR STATES ---
+  const [collaborators, setCollaborators] = useState({});
+  const fetchedUserIds = useRef(new Set());
 
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
 
-  // Get current sort settings for active playlist (default to custom / asc)
-  const currentSort = playlistSortSettings[activePlaylistId] || { sortBy: 'custom', sortOrder: 'asc' };
+  // Get current sort settings safely from Zustand (default to custom / asc)
+  const currentSort = playlistSortSettings?.[activePlaylistId] || { sortBy: 'custom', sortOrder: 'asc' };
   const sortBy = currentSort.sortBy;
   const sortOrder = currentSort.sortOrder;
 
   const updateSortSettings = (newSortBy, newSortOrder) => {
     if (!activePlaylistId) return;
-    setPlaylistSortSettings(prev => {
-      const updated = {
-        ...prev,
-        [activePlaylistId]: { sortBy: newSortBy, sortOrder: newSortOrder }
-      };
-      localStorage.setItem('jomify_playlist_sort_settings', JSON.stringify(updated));
-      return updated;
-    });
+    setPlaylistSortSettings(activePlaylistId, { sortBy: newSortBy, sortOrder: newSortOrder });
   };
 
   const isFetchingMore = useRef(false);
@@ -74,7 +122,6 @@ export default function PlaylistView() {
 
   const isUnaddedSongsPlaylist = playlist?.name?.toLowerCase() === 'unadded songs';
 
-  // Fetch full user playlists when config modal opens
   useEffect(() => {
     if (configModalOpen && token) {
       fetchUserPlaylists(token).then((data) => {
@@ -205,9 +252,6 @@ export default function PlaylistView() {
         const updatedData = await fetchPlaylistDetails(token, activePlaylistId);
         setPlaylist(updatedData);
         checkLikesForChunk(updatedData.tracks.items);
-        if (updatedData.tracks.next && !isFetchingMore.current) {
-          loadRestOfTracks(updatedData.tracks.next);
-        }
       }, 1000);
 
     } catch (err) {
@@ -227,14 +271,19 @@ export default function PlaylistView() {
     }
   };
 
-  // --- DYNAMIC NON-BLOCKING INITIAL LOAD & BACKGROUND STREAMING ---
+  // --- INITIAL LOAD ---
   useEffect(() => {
     if (token && activePlaylistId) {
       setPlaylist(null); 
+      setCollaborators({});
+      fetchedUserIds.current.clear();
       isFetchingMore.current = false;
 
-      fetchPlaylistDetails(token, activePlaylistId)
-        .then((data) => {
+      fetch(`https://api.spotify.com/v1/playlists/${activePlaylistId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(async (data) => {
           setPlaylist(data);
           checkLikesForChunk(data.tracks.items);
 
@@ -244,16 +293,21 @@ export default function PlaylistView() {
         })
         .catch(console.error);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, activePlaylistId]); 
 
+  // --- BACKGROUND STREAMING ---
   const loadRestOfTracks = async (initialNextUrl) => {
     isFetchingMore.current = true;
     let nextUrl = initialNextUrl;
 
     while (nextUrl) {
       try {
-        const nextData = await fetchMoreTracks(token, nextUrl);
+        const res = await fetch(nextUrl, { headers: { Authorization: `Bearer ${token}` } });
+        const nextData = await res.json();
         
+        if (!nextData.items || nextData.items.length === 0) break;
+
         setPlaylist((prev) => {
           if (!prev) return prev;
           const existingIds = new Set(prev.tracks.items.map((it, idx) => `${it.track?.id}_${idx}`));
@@ -277,6 +331,50 @@ export default function PlaylistView() {
     }
     isFetchingMore.current = false;
   };
+
+  // --- DYNAMIC COLLABORATIVE DETECTOR ---
+  const isCollaborative = useMemo(() => {
+    if (!playlist) return false;
+    if (playlist.collaborative) return true;
+    
+    return playlist.tracks?.items?.some(
+      (item) => item.added_by?.id && item.added_by.id !== playlist.owner.id
+    );
+  }, [playlist]);
+
+  // --- COLLABORATOR HYDRATION ENGINE ---
+  useEffect(() => {
+    if (!token || !isCollaborative || !playlist.tracks.items) return;
+
+    const uniqueIds = [...new Set(playlist.tracks.items.map(i => i.added_by?.id).filter(Boolean))];
+    const idsToFetch = uniqueIds.filter(id => !fetchedUserIds.current.has(id));
+
+    if (idsToFetch.length === 0) return;
+
+    idsToFetch.forEach(id => fetchedUserIds.current.add(id));
+
+    const fetchCollaborators = async () => {
+      try {
+        const responses = await Promise.all(
+          idsToFetch.map(id => fetch(`https://api.spotify.com/v1/users/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()))
+        );
+        
+        setCollaborators(prev => {
+          const next = { ...prev };
+          responses.forEach(user => {
+            if (user && user.id) {
+              next[user.id] = user;
+            }
+          });
+          return next;
+        });
+      } catch (err) {
+        console.error('Failed to fetch collaborator profiles:', err);
+      }
+    };
+
+    fetchCollaborators();
+  }, [playlist?.tracks.items, isCollaborative, token]);
 
   const handleTrackSelect = (originalIndex) => {
     if (!token || !deviceId || !playlist) return;
@@ -372,6 +470,10 @@ export default function PlaylistView() {
     return <p className="text-neutral-400 animate-pulse text-lg mt-8">Loading playlist...</p>;
   }
 
+  const gridColumns = isCollaborative 
+    ? "grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_120px_140px_80px]" 
+    : "grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_140px_80px]";
+
   return (
     <div className="flex flex-col pb-8">
       {/* Playlist Header */}
@@ -383,7 +485,15 @@ export default function PlaylistView() {
             <div className="w-48 h-48 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded"> 🎵 </div>
           )}
           <div>
-            <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2">Playlist</p>
+            <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+              Playlist
+              {isCollaborative && (
+                <span className="bg-[var(--brand-mid)]/20 text-[var(--brand-mid)] border border-[var(--brand-mid)]/30 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 shadow-sm">
+                  <Users className="w-3 h-3" />
+                  Collaborative
+                </span>
+              )}
+            </p>
             <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tighter mb-4">{playlist.name}</h1>
             <p className="text-neutral-400 text-sm font-medium">
               {playlist.description && <span className="mr-2">{playlist.description} •</span>}
@@ -526,12 +636,13 @@ export default function PlaylistView() {
       </div>
 
       {/* Tracklist Header */}
-      <div className="grid grid-cols-[16px_48px_minmax(0,1fr)_minmax(0,1fr)_140px_80px] gap-4 px-4 py-2 border-b border-neutral-800 text-neutral-400 text-sm mb-4 items-center select-none">
+      <div className={`grid ${gridColumns} gap-4 px-4 py-2 border-b border-neutral-800 text-neutral-400 text-sm mb-4 items-center select-none`}>
         <span>#</span>
         <span />
         <span>Title</span>
         <span>Album</span>
         <span>Date Added</span>
+        {isCollaborative && <span>Added By</span>}
         <div className="flex justify-end pr-2"><Clock3 className="w-4 h-4" /></div>
       </div>
 
@@ -549,8 +660,8 @@ export default function PlaylistView() {
           isSubmitting={isUpdatingPlaylist}
         />
         {sortedTracks.map((item, index) => {
+          if (!item || !item.track) return null;
           const track = item.track;
-          if (!track) return null;
 
           const isCurrentTrack = currentPlayingTrack && (
             track.id === currentPlayingTrack.id || 
@@ -560,12 +671,54 @@ export default function PlaylistView() {
              track.artists?.[0]?.name === currentPlayingTrack.artists?.[0]?.name)
           );
 
+          // Advanced Group Adjacency Logic for the Seamless Glow Effect
+          const adderId = item.added_by?.id;
+          let isFirstInGroup = true;
+          let isLastInGroup = true;
+
+          if (isCollaborative) {
+            const prevItem = sortedTracks[index - 1];
+            const nextItem = sortedTracks[index + 1];
+            
+            const prevAdderId = prevItem?.track ? prevItem.added_by?.id : null;
+            const nextAdderId = nextItem?.track ? nextItem.added_by?.id : null;
+
+            isFirstInGroup = adderId !== prevAdderId;
+            isLastInGroup = adderId !== nextAdderId;
+          }
+
+          const collaboratorProfile = collaborators[adderId];
+
+          const bgHoverClass = isCollaborative 
+            ? 'bg-[hsla(var(--track-hue),40%,40%,0.02)] hover:bg-[hsla(var(--track-hue),40%,40%,0.06)] backdrop-blur-sm'
+            : 'hover:bg-neutral-800/50';
+
+          let radiusClass = 'rounded-md';
+          let marginClass = '';
+          
+          if (isCollaborative) {
+            if (isFirstInGroup && isLastInGroup) {
+              radiusClass = 'rounded-lg';
+              marginClass = 'my-1.5';
+            } else if (isFirstInGroup) {
+              radiusClass = 'rounded-t-lg rounded-b-none';
+              marginClass = 'mt-1.5';
+            } else if (isLastInGroup) {
+              radiusClass = 'rounded-b-lg rounded-t-none';
+              marginClass = 'mb-1.5';
+            } else {
+              radiusClass = 'rounded-none';
+              marginClass = '';
+            }
+          }
+
           return (
             <div 
               key={`${track.id}-${index}`} 
               onClick={() => handleTrackSelect(index)}
               onContextMenu={(e) => handleRightClick(e, track)}
-              className="grid grid-cols-[16px_48px_minmax(0,1fr)_minmax(0,1fr)_140px_80px] gap-4 px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer"
+              style={getCollaboratorStyle(adderId, isCollaborative, isFirstInGroup, isLastInGroup)}
+              className={`grid ${gridColumns} gap-4 px-4 py-3 group text-sm items-center transition-colors cursor-pointer ${bgHoverClass} ${radiusClass} ${marginClass}`}
             >
               <div className="text-neutral-400 w-4 h-4 flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
@@ -633,6 +786,22 @@ export default function PlaylistView() {
               <div className="text-neutral-400 text-xs truncate">
                 {formatDateAdded(item.added_at)}
               </div>
+
+              {/* Collborator Tag Column */}
+              {isCollaborative && (
+                <div className="flex items-center space-x-2 truncate pr-4" title={collaboratorProfile?.display_name || adderId}>
+                  {collaboratorProfile?.images?.[0]?.url ? (
+                    <img src={collaboratorProfile.images[0].url} className="w-6 h-6 rounded-full object-cover shrink-0" alt="" />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-neutral-700 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
+                      {(collaboratorProfile?.display_name || adderId || '?').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="text-neutral-400 text-xs truncate">
+                    {collaboratorProfile?.display_name || adderId}
+                  </span>
+                </div>
+              )}
               
               <div 
                 key={track.id}
