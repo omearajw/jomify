@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
-import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, saveAlbumToLibrary } from '../services/spotify/api';
+import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist } from '../services/spotify/api';
 import { ListPlus, Plus, ChevronRight, Folder, Trash2, FolderPlus, Pin, PinOff } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
 
 export default function ContextMenu() {
   const { 
     contextMenu, setContextMenu, token, triggerQueueRefresh, 
-    addManuallyQueuedTrack, injectOptimisticQueueItem, 
+    addManuallyQueuedTrack, 
     playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId, activePlaylistId,
     albums, setAlbums, addPlaylistToFolder, removePlaylistFromFolder,
     pinnedItems, togglePin
@@ -47,11 +47,13 @@ export default function ContextMenu() {
   const isPinned = canPin ? pinnedItems.some(i => i.id === activeId) : false;
 
   const handleAddToQueue = async () => {
-    if (!token || !deviceId || !contextMenu.track) return;
+    const track = contextMenu.track;
+    if (!token || !deviceId || !track) return;
+
     try {
       addManuallyQueuedTrack(contextMenu.track);
-      injectOptimisticQueueItem(contextMenu.track);
-      await addToQueue(token, deviceId, contextMenu.track.uri);
+      await addToQueue(token, deviceId, track.uri);
+
       setTimeout(() => triggerQueueRefresh(), 750);
       setContextMenu(null);
     } catch (err) {

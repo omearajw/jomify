@@ -27,6 +27,7 @@ function App() {
   const { setPlayer, setDeviceId, setPlaybackState } = usePlayerStore();
 
   const isAuthenticating = useRef(false); 
+  const hydratedPinnedIds = useRef(new Set());
 
   // --- STATS DRAWER STATE ---
   const [showStats, setShowStats] = useState(false);
@@ -123,6 +124,56 @@ function App() {
       }
     }
   }, [token, tokenExpiresAt, logout]);
+
+  // --- PINNED ITEMS HYDRATION ENGINE ---
+  useEffect(() => {
+    if (!token || pinnedItems.length === 0) return;
+
+    const hydratePinnedItems = async () => {
+      const currentPlaylists = useUserStore.getState().playlists;
+      const currentAlbums = useUserStore.getState().albums;
+
+      const missingPlaylists = pinnedItems.filter(p => p.type === 'playlist' && !currentPlaylists.some(pl => pl.id === p.id) && !hydratedPinnedIds.current.has(p.id));
+      const missingAlbums = pinnedItems.filter(p => p.type === 'album' && !currentAlbums.some(a => a.id === p.id) && !hydratedPinnedIds.current.has(p.id));
+
+      if (missingPlaylists.length === 0 && missingAlbums.length === 0) return;
+
+      missingPlaylists.forEach(p => hydratedPinnedIds.current.add(p.id));
+      missingAlbums.forEach(p => hydratedPinnedIds.current.add(p.id));
+
+      let newPlaylists = [];
+      if (missingPlaylists.length > 0) {
+        try {
+          const res = await Promise.all(
+            missingPlaylists.map(p => fetch(`https://api.spotify.com/v1/playlists/${p.id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()))
+          );
+          newPlaylists = res.filter(p => p && !p.error && p.id);
+        } catch (e) { 
+          console.error("Hydration failed for playlists", e); 
+        }
+      }
+
+      let newAlbums = [];
+      if (missingAlbums.length > 0) {
+        try {
+          const albumIds = missingAlbums.map(a => a.id).join(',');
+          const res = await fetch(`https://api.spotify.com/v1/albums?ids=${albumIds}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json());
+          if (res.albums) newAlbums = res.albums.filter(Boolean);
+        } catch (e) { 
+          console.error("Hydration failed for albums", e); 
+        }
+      }
+
+      if (newPlaylists.length > 0) {
+        setPlaylists([...currentPlaylists, ...newPlaylists]);
+      }
+      if (newAlbums.length > 0) {
+        useUserStore.getState().setAlbums([...currentAlbums, ...newAlbums]);
+      }
+    };
+
+    hydratePinnedItems();
+  }, [token, pinnedItems, setPlaylists]);
 
   // --- FETCH STATS ON DEMAND ---
   const toggleAndLoadStats = async () => {
@@ -231,7 +282,6 @@ function App() {
                       transition={{ duration: 0.4, ease: [0.04, 0.62, 0.23, 0.98] }}
                       className="w-full overflow-hidden"
                     >
-                      {/* Using padding-bottom here instead of margin on the motion.div allows the spacing to smoothly animate to 0 */}
                       <div className="pb-12 pt-2"> 
                         <div className="p-8 rounded-3xl bg-neutral-900/60 backdrop-blur-xl border border-white/10 shadow-2xl flex flex-col md:flex-row gap-8">
                           
@@ -301,7 +351,6 @@ function App() {
                           let item, onClick, imageNode, title, subtitle;
                           const count = pinnedItems.length;
 
-                          // Smoother dynamic scaling variables
                           let cardSizeClass = "w-48 p-4";
                           let titleSizeClass = "text-sm";
                           let subtitleSizeClass = "text-xs mt-1";
@@ -345,28 +394,20 @@ function App() {
                             subtitle = `Folder • ${item.playlistIds.length} items`;
                           }
 
-                          // Creating the aesthetic scatter layout parameters
                           const yOffset = count > 2 ? (i % 2 === 0 ? -15 : 15) : 0; 
-                          const delay = i * 0.1;
-                          const duration = 4 + (i % 3);
 
                           return (
                             <motion.div 
                               layout
                               key={`${pinned.type}-${pinned.id}`} 
                               initial={{ opacity: 0, scale: 0.8, y: 0 }}
-                              animate={{ 
-                                opacity: 1, 
-                                scale: 1, 
-                                y: count > 2 ? [yOffset, yOffset - 10, yOffset] : 0 
-                              }}
+                              animate={{ opacity: 1, scale: 1, y: yOffset }}
                               exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}
                               transition={{
                                 layout: { type: "spring", stiffness: 300, damping: 25 },
-                                opacity: { duration: 0.4 },
-                                y: count > 2 ? { duration, repeat: Infinity, ease: "easeInOut", delay } : {}
+                                opacity: { duration: 0.4 }
                               }}
-                              whileHover={{ scale: 1.03, y: count > 2 ? yOffset - 5 : -5 }}
+                              whileHover={{ scale: 1.03, y: yOffset - 5 }}
                               onClick={onClick} 
                               onContextMenu={(e) => {
                                 e.preventDefault();
@@ -384,7 +425,6 @@ function App() {
                             >
                               <div className="relative aspect-square w-full mb-5 rounded-2xl overflow-hidden bg-black/40 flex items-center justify-center shadow-inner border border-white/5">
                                 {imageNode}
-                                {/* Subtle inner glow for aesthetic flair */}
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-50 pointer-events-none" />
                               </div>
                               <div className="flex-1 flex flex-col justify-center items-center">

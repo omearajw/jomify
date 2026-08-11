@@ -258,6 +258,29 @@ export async function playSingleTrack(token, deviceId, trackUri) {
   }
 }
 
+export async function playTrackSequence(token, deviceId, uris, positionMs = 0) {
+  const uniqueUris = [...new Set((uris || []).filter(Boolean))];
+  if (uniqueUris.length === 0) return;
+
+  const url = "https://" + "api.spotify.com/v1/me/player/play?device_id=" + deviceId;
+
+  const response = await spotifyFetch(url, {
+    method: "PUT",
+    headers: {
+      "Authorization": "Bearer " + token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      uris: uniqueUris,
+      position_ms: positionMs
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to play ordered queue sequence");
+  }
+}
+
 export async function checkTracksLiked(token, trackIds) {
   if (!trackIds || trackIds.length === 0) return {};
   const results = {};

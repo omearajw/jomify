@@ -158,7 +158,13 @@ export const useUserStore = create(
       }),
 
       queueData: null,
-      setQueueData: (data) => set({ queueData: data }),
+      queueOrder: [],
+      setQueueOrder: (order) => set((state) => ({
+        queueOrder: typeof order === 'function' ? order(state.queueOrder) : order
+      })),
+      setQueueData: (data) => set((state) => ({
+        queueData: typeof data === 'function' ? data(state.queueData) : data
+      })),
       injectOptimisticQueueItem: (track) => set((state) => {
         if (!state.queueData) return state;
         return {
@@ -229,7 +235,9 @@ export const useUserStore = create(
         savedVolume: state.savedVolume,
         customFolders: state.customFolders, 
         libraryGridSize: state.libraryGridSize,
-        pinnedItems: state.pinnedItems // SAVES YOUR SANDBOX
+        pinnedItems: state.pinnedItems, // SAVES YOUR SANDBOX
+        queueOrder: state.queueOrder,
+        manuallyQueuedTracks: state.manuallyQueuedTracks
       }), 
     }
   )
