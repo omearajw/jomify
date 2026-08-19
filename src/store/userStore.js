@@ -21,6 +21,7 @@ export const useUserStore = create(
       contextMenu: null,
       isZenMode: false,
       savedVolume: 50,
+      stagedSeven: [],
       
       // --- CUSTOM FOLDER ENGINE ---
       customFolders: [], 
@@ -53,13 +54,20 @@ export const useUserStore = create(
         customFolders: state.customFolders.filter(f => f.id !== folderId),
         pinnedItems: state.pinnedItems.filter(p => p.id !== folderId) // Remove from pins if deleted
       })),
+
+      stagedSeven: [],
+      addStagedTrack: (track) => set((state) => {
+        if (state.stagedSeven.length >= 7) return state;
+        return { stagedSeven: [...state.stagedSeven, track] };
+      }),
       
-      addPlaylistToFolder: (folderId, playlistId) => set((state) => ({
-        customFolders: state.customFolders.map(f => {
-          if (f.id === folderId) return { ...f, playlistIds: [...new Set([...f.playlistIds, playlistId])] };
-          return { ...f, playlistIds: f.playlistIds.filter(id => id !== playlistId) };
-        })
+      removeStagedTrack: (uri) => set((state) => ({
+        stagedSeven: state.stagedSeven.filter(t => t.uri !== uri)
       })),
+
+      clearStagedTracks: () => set({ stagedSeven: [] }),
+
+      setStagedSeven: (tracks) => set({ stagedSeven: tracks }),
       
       removePlaylistFromFolder: (folderId, playlistId) => set((state) => ({
         customFolders: state.customFolders.map(f => 
@@ -243,7 +251,8 @@ export const useUserStore = create(
         pinnedItems: state.pinnedItems, // SAVES YOUR SANDBOX
         queueOrder: state.queueOrder,
         manuallyQueuedTracks: state.manuallyQueuedTracks,
-        playlistSortSettings: state.playlistSortSettings
+        playlistSortSettings: state.playlistSortSettings,
+        stagedSeven : state.stagedSeven
       }), 
     }
   )

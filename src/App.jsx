@@ -5,6 +5,7 @@ import { useUserStore } from './store/userStore';
 import MainLayout from './layouts/MainLayout';
 import Library from './views/Library/Library';
 import PlaylistView from './views/Library/PlaylistView';
+import PlaylistView_2 from './views/Library/PlaylistView_2';
 import LyricsView from './views/Lyrics/LyricsView';
 import { usePlayerStore } from './store/playerStore';
 import { initializeSpotifyPlayer } from './services/spotify/playback';
@@ -15,13 +16,16 @@ import LikedSongsView from './views/Library/LikedSongsView';
 import { BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// Moved outside the component to prevent useEffect dependency triggers
+const SEVEN_PLAYLIST_IDS = ['5kJPA0nczW9zoQs7jcQ5ok', '2KmKTCZFO9wofPRwqJ3y5F'];
+
 function App() {
   const { 
     token, refreshToken, tokenExpiresAt, logout, profile, 
     setToken, setRefreshToken, setProfile, setPlaylists, 
     currentView, setCurrentView,
     pinnedItems, playlists, albums, customFolders, 
-    setActivePlaylistId, navigateToAlbum, setContextMenu
+    activePlaylistId, setActivePlaylistId, navigateToAlbum, setContextMenu
   } = useUserStore();
   
   const { setPlayer, setDeviceId, setPlaybackState } = usePlayerStore();
@@ -29,9 +33,10 @@ function App() {
   const isAuthenticating = useRef(false); 
   const hydratedPinnedIds = useRef(new Set());
 
-  // --- STATS DRAWER STATE ---
+  // --- STATS & SEVENS STATE ---
   const [showStats, setShowStats] = useState(false);
   const [statsData, setStatsData] = useState({ tracks: [], artists: [], loading: false });
+  const [sevenTurns, setSevenTurns] = useState([]);
 
   // --- THE INFINITE SESSION HEARTBEAT ---
   useEffect(() => {
@@ -83,15 +88,17 @@ function App() {
     }
   }, [token, setToken]);
 
+  // --- INITIAL DATA FETCH (WITH RACE-CONDITION SAFE MERGING) ---
   useEffect(() => {
     if (token && !useUserStore.getState().albums.length) {
       fetchUserAlbums(token)
-        .then((albums) => {
-          useUserStore.getState().setAlbums(albums);
+        .then((albumsData) => {
+          const current = useUserStore.getState().albums;
+          const fetchedIds = new Set(albumsData.map(a => a.id));
+          const preserved = current.filter(a => !fetchedIds.has(a.id)); // Keep hydrated items
+          useUserStore.getState().setAlbums([...albumsData, ...preserved]);
         })
-        .catch((error) => {
-          console.error("Unable to preload albums:", error);
-        });
+        .catch((error) => console.error("Unable to preload albums:", error));
     }
   }, [token]);
 
@@ -107,11 +114,12 @@ function App() {
     if (token && !useUserStore.getState().playlists.length) {
       fetchUserPlaylists(token)
         .then((data) => {
-          setPlaylists(data.items);
+          const current = useUserStore.getState().playlists;
+          const fetchedIds = new Set(data.items.map(p => p.id));
+          const preserved = current.filter(p => !fetchedIds.has(p.id)); // Keep hydrated items
+          setPlaylists([...data.items, ...preserved]);
         })
-        .catch((error) => {
-          console.error("Unable to preload playlists:", error);
-        });
+        .catch((error) => console.error("Unable to preload playlists:", error));
     }
   }, [token, setPlaylists]);
 
@@ -125,7 +133,7 @@ function App() {
     }
   }, [token, tokenExpiresAt, logout]);
 
-  // --- PINNED ITEMS HYDRATION ENGINE ---
+  // --- PINNED ITEMS HYDRATION ENGINE (RACE-CONDITION SAFE) ---
   useEffect(() => {
     if (!token || pinnedItems.length === 0) return;
 
@@ -164,16 +172,64 @@ function App() {
         }
       }
 
+      // Merge hydrated data securely without overwriting the main load
       if (newPlaylists.length > 0) {
-        setPlaylists([...currentPlaylists, ...newPlaylists]);
+        const current = useUserStore.getState().playlists;
+        const newIds = new Set(newPlaylists.map(p => p.id));
+        const filtered = current.filter(p => !newIds.has(p.id));
+        setPlaylists([...filtered, ...newPlaylists]);
       }
       if (newAlbums.length > 0) {
-        useUserStore.getState().setAlbums([...currentAlbums, ...newAlbums]);
+        const current = useUserStore.getState().albums;
+        const newIds = new Set(newAlbums.map(a => a.id));
+        const filtered = current.filter(a => !newIds.has(a.id));
+        useUserStore.getState().setAlbums([...filtered, ...newAlbums]);
       }
     };
 
     hydratePinnedItems();
   }, [token, pinnedItems, setPlaylists]);
+
+  // --- SEVENS TURN CHECKER (HIGH-SPEED OFFSET METHOD) ---
+  useEffect(() => {
+    if (!token || !profile) return;
+    
+    const checkSevens = async () => {
+      const turns = [];
+      for (const id of SEVEN_PLAYLIST_IDS) {
+        try {
+          // 1. Fetch only metadata and total track count (super lightweight)
+          const res = await fetch(`https://api.spotify.com/v1/playlists/${id}?fields=id,name,images,tracks.total`, { 
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await res.json();
+          
+          if (data.tracks && data.tracks.total > 0) {
+            // 2. Fetch EXACTLY the last track to check who added it
+            const offset = data.tracks.total - 1;
+            const trackRes = await fetch(`https://api.spotify.com/v1/playlists/${id}/tracks?limit=1&offset=${offset}`, { 
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            const trackData = await trackRes.json();
+            const lastAdderId = trackData.items[0]?.added_by?.id;
+            
+            // If the last person to add a track WAS NOT you, it's your turn!
+            if (lastAdderId && lastAdderId !== profile.id) {
+              turns.push(data);
+            }
+          } else if (data.tracks && data.tracks.total === 0) {
+            // Empty playlist - ready for the first drop
+            turns.push(data);
+          }
+        } catch (e) {
+          console.error(`Failed to check sevens status for ${id}`, e);
+        }
+      }
+      setSevenTurns(turns);
+    };
+
+    checkSevens();
+  }, [token, profile]);
 
   // --- FETCH STATS ON DEMAND ---
   const toggleAndLoadStats = async () => {
@@ -184,7 +240,6 @@ function App() {
     
     setShowStats(true);
     
-    // Don't refetch if we already have the data this session
     if (statsData.tracks.length > 0) return;
 
     setStatsData(prev => ({ ...prev, loading: true }));
@@ -337,7 +392,35 @@ function App() {
                   )}
                 </AnimatePresence>
 
-                {/* 3. The Custom Floating Pinned Sandbox (Dynamically Scaled) */}
+                {/* 3. Sevens Turn Alerts */}
+                {sevenTurns.length > 0 && (
+                  <div className="w-full flex flex-col gap-4 mb-10 mt-2">
+                    {sevenTurns.map(playlist => (
+                      <div 
+                        key={playlist.id}
+                        onClick={() => { setActivePlaylistId(playlist.id); setCurrentView('playlist'); }}
+                        className="w-full bg-brand-gradient/10 border border-[var(--brand-mid)]/30 rounded-2xl p-4 flex items-center justify-between shadow-[0_0_30px_rgba(249,19,98,0.15)] cursor-pointer hover:bg-brand-gradient/20 transition-all group"
+                      >
+                        <div className="flex items-center gap-5">
+                          {playlist.images?.[0]?.url ? (
+                            <img src={playlist.images[0].url} className="w-14 h-14 rounded shadow-md object-cover" alt="" />
+                          ) : (
+                            <div className="w-14 h-14 rounded bg-black/40 flex items-center justify-center text-xl">🎵</div>
+                          )}
+                          <div>
+                            <h3 className="text-white font-bold text-lg md:text-xl">It's your turn in {playlist.name}!</h3>
+                            <p className="text-[var(--brand-light)] font-medium text-xs md:text-sm">Your collaborator just finished their drop. Click to open the workspace.</p>
+                          </div>
+                        </div>
+                        <button className="bg-brand-gradient text-white px-5 py-2 rounded-full text-sm font-bold shadow-brand-glow group-hover:scale-105 transition-transform hidden sm:block">
+                          Open Workspace
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 4. The Custom Floating Pinned Sandbox (Dynamically Scaled) */}
                 <div className="w-full pt-4">
                   {pinnedItems.length === 0 ? (
                     <div className="w-full border-2 border-dashed border-white/10 rounded-2xl p-12 flex flex-col items-center justify-center text-neutral-500 bg-neutral-900/20 backdrop-blur-sm">
@@ -447,7 +530,11 @@ function App() {
             )}
 
             {currentView === 'library' && <Library />}
-            {currentView === 'playlist' && <PlaylistView />}
+            {currentView === 'playlist' && (
+              SEVEN_PLAYLIST_IDS.includes(activePlaylistId) 
+                ? <PlaylistView_2 /> 
+                : <PlaylistView />
+            )}
             {currentView === 'browse' && <Browse />}
             {currentView === 'artist' && <Artist />}
             {currentView === 'album' && <Album />}
