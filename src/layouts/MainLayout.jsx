@@ -55,7 +55,7 @@ export default function MainLayout({ children }) {
           </div>
           
           {/* Main Content Area */}
-          <div className="px-8 pb-8 pt-2">
+          <div className="px-8 pb-4 pt-2">
             {children}
           </div>
         </main>

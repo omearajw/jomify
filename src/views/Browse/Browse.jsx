@@ -429,7 +429,7 @@ export default function Browse() {
         <Search className="absolute left-4 top-3.5 w-5 h-5 text-neutral-500" />
         <input 
           type="text"
-          placeholder="Search songs, artists, or albums..."
+          placeholder="Search songs, artists, albums, or playlists..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="w-full bg-neutral-800 border-none rounded-full py-3 pl-12 pr-6 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f91362] transition-all"

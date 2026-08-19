@@ -292,7 +292,7 @@ function App() {
         {profile ? (
           <>
             {currentView === 'home' && (
-              <div className="flex flex-col items-start relative z-10 w-full max-w-[1600px] pb-12 animate-fade-in">
+              <div className="flex flex-col items-start relative z-10 w-full max-w-[1600px] animate-fade-in">
                 
                 {/* 1. Header & Stats Drawer Toggle */}
                 <div className="flex items-center space-x-6 mb-12 w-full">
@@ -394,7 +394,7 @@ function App() {
 
                 {/* 3. Sevens Turn Alerts */}
                 {sevenTurns.length > 0 && (
-                  <div className="w-full flex flex-col gap-4 mb-10 mt-2">
+                  <div className="w-full flex flex-col gap-4 mb-5 mt-2">
                     {sevenTurns.map(playlist => (
                       <div 
                         key={playlist.id}
@@ -428,7 +428,7 @@ function App() {
                       <p className="font-medium text-lg text-white text-center">Right-click playlists or albums to pin them to your home page.</p>
                     </div>
                   ) : (
-                    <motion.div layout className="flex flex-wrap justify-center items-center gap-8 md:gap-14 py-8 px-4">
+                    <motion.div layout className="flex flex-wrap justify-center items-center gap-8 md:gap-14 py-0 px-4">
                       <AnimatePresence mode="popLayout">
                         {pinnedItems.map((pinned, i) => {
                           let item, onClick, imageNode, title, subtitle;

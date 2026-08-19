@@ -204,8 +204,8 @@ const turnIndicator = useMemo(() => {
     const otherUsername = otherCollaborator?.display_name || otherCollaborator?.id || otherId || 'Collaborator';
 
     // If you went last, it's their turn. If they went last, it's yours.
-    if (lastAdderId === profile?.id) return `Next 7: ${otherUsername}`;
-    return `Next 7: ${yourUsername}`;
+    if (lastAdderId === profile?.id) return `Next up: ${otherUsername}`;
+    return `Next up: ${yourUsername}`;
   }, [playlist, profile, collaborators]);
 
   const mainPlaylistUris = useMemo(() => {
@@ -289,7 +289,7 @@ const turnIndicator = useMemo(() => {
           {/* PANE 1: MAIN PLAYLIST */}
           <div className="flex flex-col h-full bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl min-h-0">
             <div className="p-4 border-b border-neutral-800 bg-black/20 shrink-0">
-              <h2 className="font-bold text-white tracking-wide">#{playlist.name}</h2>
+              <h2 className="font-bold text-white tracking-wide">{playlist.name}</h2>
               <p className="text-xs text-neutral-500">{playlist.tracks.total} total tracks</p>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
@@ -522,7 +522,7 @@ const turnIndicator = useMemo(() => {
           )}
           <div>
             <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-              Collaborative Sequence
+              The Seven
             </p>
             <h1 className="text-5xl font-extrabold text-white tracking-tighter mb-2">{playlist.name}</h1>
             <p className="text-neutral-400 text-sm font-medium">
