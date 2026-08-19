@@ -135,7 +135,6 @@ export const useUserStore = create(
         profile: null, 
         playlists: [],
         albums: [],
-        pinnedItems: [],
         currentView: 'home',
         viewHistory: [],
         activeFolderId: null
