@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { fetchUserPlaylists, addTracksToPlaylist, unfollowPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../../services/spotify/api';
 import { Heart, Folder, Maximize2, ChevronLeft, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2 } from 'lucide-react';
@@ -54,6 +54,9 @@ export default function Library() {
   const [confirmState, setConfirmState] = useState({ open: false, type: null, playlist: null, folderId: null });
   
   const [dragOverId, setDragOverId] = useState(null);
+  const [isTouchDragging, setIsTouchDragging] = useState(false);
+  const touchDragItemRef = useRef(null);
+  const touchPendingRef = useRef(null);
   
   // Dialog States
   const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false);
@@ -118,14 +121,119 @@ export default function Library() {
     });
   };
 
+  const clearDragState = () => {
+    setDraggedItem(null);
+    setDragOverId(null);
+    setIsTouchDragging(false);
+    touchDragItemRef.current = null;
+    touchPendingRef.current = null;
+  };
+
+  const resolveDropAction = (item, dropTarget) => {
+    if (!item || !dropTarget) return;
+
+    if (dropTarget.kind === 'folder') {
+      if (item.type === 'folder' && item.id !== dropTarget.id) {
+        reorderFolders(item.id, dropTarget.id);
+      } else if (item.type === 'playlist' || item.type === 'album') {
+        addPlaylistToFolder(dropTarget.id, item.id);
+      }
+      return;
+    }
+
+    if (dropTarget.kind === 'item') {
+      if ((item.type !== 'playlist' && item.type !== 'album') || !dropTarget.parentFolderId) return;
+
+      if (item.parentFolderId === dropTarget.parentFolderId && item.id !== dropTarget.id) {
+        reorderPlaylistInFolder(dropTarget.parentFolderId, item.id, dropTarget.id);
+      } else if (item.parentFolderId !== dropTarget.parentFolderId) {
+        addPlaylistToFolder(dropTarget.parentFolderId, item.id);
+      }
+      return;
+    }
+
+    if (
+      dropTarget.kind === 'root' &&
+      (item.type === 'playlist' || item.type === 'album') &&
+      item.parentFolderId
+    ) {
+      removePlaylistFromFolder(item.parentFolderId, item.id);
+    }
+  };
+
+  const getDropTargetFromPoint = (x, y) => {
+    const dropElement = document.elementFromPoint(x, y)?.closest('[data-drop-kind]');
+    if (!dropElement) return { kind: 'root' };
+
+    const kind = dropElement.getAttribute('data-drop-kind');
+    if (kind === 'folder') {
+      return { kind: 'folder', id: dropElement.getAttribute('data-drop-id') };
+    }
+    if (kind === 'item') {
+      return {
+        kind: 'item',
+        id: dropElement.getAttribute('data-drop-id'),
+        parentFolderId: dropElement.getAttribute('data-parent-folder-id') || null
+      };
+    }
+    return { kind: 'root' };
+  };
+
+  const handleTouchDragStart = (e, item) => {
+    if (!e.touches?.length) return;
+    touchPendingRef.current = {
+      item,
+      startX: e.touches[0].clientX,
+      startY: e.touches[0].clientY
+    };
+  };
+
+  const handleTouchDragMove = (e) => {
+    if (!e.touches?.length) return;
+
+    if (!touchDragItemRef.current && touchPendingRef.current) {
+      const dx = e.touches[0].clientX - touchPendingRef.current.startX;
+      const dy = e.touches[0].clientY - touchPendingRef.current.startY;
+      if (Math.hypot(dx, dy) < 10) return;
+
+      touchDragItemRef.current = touchPendingRef.current.item;
+      setDraggedItem(touchPendingRef.current.item);
+      setIsTouchDragging(true);
+      setDragOverId(touchPendingRef.current.item.id);
+    }
+
+    if (!touchDragItemRef.current) return;
+    e.preventDefault();
+
+    const target = getDropTargetFromPoint(e.touches[0].clientX, e.touches[0].clientY);
+    if (target.kind === 'root') {
+      if (dragOverId !== null) setDragOverId(null);
+      return;
+    }
+    if (target.id && dragOverId !== target.id) {
+      setDragOverId(target.id);
+    }
+  };
+
+  const handleTouchDragEnd = (e) => {
+    if (!touchDragItemRef.current || !e.changedTouches?.length) {
+      touchPendingRef.current = null;
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+
+    const item = touchDragItemRef.current;
+    const target = getDropTargetFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+    resolveDropAction(item, target);
+    clearDragState();
+  };
+
   const handleDragStart = (e, item) => {
     e.stopPropagation();
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', item.id);
-    
-    setTimeout(() => {
-      setDraggedItem(item);
-    }, 0);
+    setDraggedItem(item);
   };
 
   const handleDragOver = (e, id) => { 
@@ -170,16 +278,14 @@ export default function Library() {
     }
   };
 
-  const handleDragLeave = () => setDragOverId(null);
-  const handleDragEnd = () => { setDraggedItem(null); setDragOverId(null); };
+  const handleDragLeave = () => {};
+  const handleDragEnd = () => clearDragState();
 
   const handleDropOnFolder = (e, targetFolderId) => {
     e.preventDefault(); e.stopPropagation();
     setDragOverId(null);
-    if (!draggedItem) return;
-    if (draggedItem.type === 'folder' && draggedItem.id !== targetFolderId) reorderFolders(draggedItem.id, targetFolderId);
-    else if (draggedItem.type === 'playlist' || draggedItem.type === 'album') addPlaylistToFolder(targetFolderId, draggedItem.id);
-    setDraggedItem(null);
+    resolveDropAction(draggedItem, { kind: 'folder', id: targetFolderId });
+    clearDragState();
   };
 
   const handleDropOnItem = async (e, targetItemId, parentFolderId) => {
@@ -200,27 +306,15 @@ export default function Library() {
       return; 
     }
 
-    if (!draggedItem) return;
-    if ((draggedItem.type === 'playlist' || draggedItem.type === 'album') && parentFolderId) {
-      if (draggedItem.parentFolderId === parentFolderId && draggedItem.id !== targetItemId) {
-        reorderPlaylistInFolder(parentFolderId, draggedItem.id, targetItemId);
-      } else if (draggedItem.parentFolderId !== parentFolderId) {
-        addPlaylistToFolder(parentFolderId, draggedItem.id);
-      }
-    }
-    
-    setDraggedItem(null);
+    resolveDropAction(draggedItem, { kind: 'item', id: targetItemId, parentFolderId });
+    clearDragState();
   };
 
   const handleDropOnRoot = (e) => {
     e.preventDefault();
     setDragOverId(null);
-    if (!draggedItem) return;
-
-    if ((draggedItem.type === 'playlist' || draggedItem.type === 'album') && draggedItem.parentFolderId) {
-      removePlaylistFromFolder(draggedItem.parentFolderId, draggedItem.id);
-    }
-    setDraggedItem(null);
+    resolveDropAction(draggedItem, { kind: 'root' });
+    clearDragState();
   };
 
   // Responsive Grid Logic Base
@@ -291,12 +385,20 @@ export default function Library() {
     return (
       <div 
         draggable="true" 
+        data-drop-kind="item"
+        data-drop-id={item.id}
+        data-parent-folder-id={parentFolderId || ''}
         onDragStart={(e) => handleDragStart(e, { type: isAlbum ? 'album' : 'playlist', id: item.id, parentFolderId })}
         onDragOver={(e) => handleDragOver(e, item.id)} 
         onDragLeave={handleDragLeave} 
         onDragEnd={handleDragEnd} 
         onDrop={(e) => handleDropOnItem(e, item.id, parentFolderId)}
+        onTouchStart={(e) => handleTouchDragStart(e, { type: isAlbum ? 'album' : 'playlist', id: item.id, parentFolderId })}
+        onTouchMove={handleTouchDragMove}
+        onTouchEnd={handleTouchDragEnd}
+        onTouchCancel={handleDragEnd}
         onClick={() => {
+          if (isTouchDragging) return;
           if (isAlbum) navigateToAlbum(item.id);
           else { setActivePlaylistId(item.id); setCurrentView('playlist'); }
         }}
@@ -380,11 +482,17 @@ export default function Library() {
           <div 
             key={`lib-folder-${folder.id}`} 
             draggable="true" 
+            data-drop-kind="folder"
+            data-drop-id={folder.id}
             onDragStart={(e) => handleDragStart(e, { type: 'folder', id: folder.id })}
             onDragOver={(e) => handleDragOver(e, folder.id)} 
             onDragLeave={handleDragLeave}
             onDragEnd={handleDragEnd} 
             onDrop={(e) => handleDropOnFolder(e, folder.id)}
+            onTouchStart={(e) => handleTouchDragStart(e, { type: 'folder', id: folder.id })}
+            onTouchMove={handleTouchDragMove}
+            onTouchEnd={handleTouchDragEnd}
+            onTouchCancel={handleDragEnd}
             onClick={() => setIsolatedFolderId(folder.id)} 
             onContextMenu={(e) => handleFolderContextMenu(e, folder)}
             className={`p-2.5 sm:p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border relative flex flex-col h-full cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-brand-gradient text-white/10 border-[#f91362] scale-[1.02]' : 'bg-neutral-800/40 border-transparent hover:border-neutral-700 hover:bg-neutral-800/80'} ${(draggedItem?.type === 'playlist' || draggedItem?.type === 'album') && !isDragTarget ? 'border-dashed border-[#f91362]/50 bg-brand-gradient text-white/5' : ''}`}
@@ -411,12 +519,16 @@ export default function Library() {
 
   return (
     <div 
+      data-drop-kind="root"
       className="animate-fade-in pb-8 sm:pb-12 overflow-hidden min-h-[calc(100vh-200px)] flex flex-col"
       onDragOver={(e) => { 
         e.preventDefault(); 
         if (draggedItem?.parentFolderId) e.dataTransfer.dropEffect = 'move'; 
       }}
       onDrop={handleDropOnRoot}
+      onTouchMove={handleTouchDragMove}
+      onTouchEnd={handleTouchDragEnd}
+      onTouchCancel={handleDragEnd}
     >
       {activeFolder ? (
         <div className="mb-6 sm:mb-8">
