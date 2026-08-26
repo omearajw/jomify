@@ -69,6 +69,13 @@ export const useUserStore = create(
 
       setStagedSeven: (tracks) => set({ stagedSeven: tracks }),
       
+      addPlaylistToFolder: (folderId, playlistId) => set((state) => ({
+        customFolders: state.customFolders.map(f => {
+          if (f.id === folderId) return { ...f, playlistIds: [...new Set([...f.playlistIds, playlistId])] };
+          return { ...f, playlistIds: f.playlistIds.filter(id => id !== playlistId) };
+        })
+      })),
+
       removePlaylistFromFolder: (folderId, playlistId) => set((state) => ({
         customFolders: state.customFolders.map(f => 
           f.id === folderId ? { ...f, playlistIds: f.playlistIds.filter(id => id !== playlistId) } : f
