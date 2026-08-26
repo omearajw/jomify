@@ -55,6 +55,7 @@ export default function Library() {
   
   const [dragOverId, setDragOverId] = useState(null);
   const [isTouchDragging, setIsTouchDragging] = useState(false);
+  const dragItemRef = useRef(null);
   const touchDragItemRef = useRef(null);
   const touchPendingRef = useRef(null);
   
@@ -125,8 +126,15 @@ export default function Library() {
     setDraggedItem(null);
     setDragOverId(null);
     setIsTouchDragging(false);
+    dragItemRef.current = null;
     touchDragItemRef.current = null;
     touchPendingRef.current = null;
+  };
+
+  const getActiveDraggedItem = () => dragItemRef.current || touchDragItemRef.current || draggedItem;
+
+  const safelyPreventDefault = (e) => {
+    if (e?.cancelable) e.preventDefault();
   };
 
   const resolveDropAction = (item, dropTarget) => {
@@ -203,7 +211,7 @@ export default function Library() {
     }
 
     if (!touchDragItemRef.current) return;
-    e.preventDefault();
+    safelyPreventDefault(e);
 
     const target = getDropTargetFromPoint(e.touches[0].clientX, e.touches[0].clientY);
     if (target.kind === 'root') {
@@ -220,7 +228,7 @@ export default function Library() {
       touchPendingRef.current = null;
       return;
     }
-    e.preventDefault();
+    safelyPreventDefault(e);
     e.stopPropagation();
 
     const item = touchDragItemRef.current;
@@ -233,14 +241,16 @@ export default function Library() {
     e.stopPropagation();
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', item.id);
-    setDraggedItem(item);
+    e.dataTransfer.setData('application/x-jomify-item', JSON.stringify(item));
+    dragItemRef.current = item;
   };
 
   const handleDragOver = (e, id) => { 
     e.preventDefault(); 
     e.stopPropagation();
+    const activeDraggedItem = getActiveDraggedItem();
     
-    if (draggedItem?.type === 'track') {
+    if (activeDraggedItem?.type === 'track') {
       e.dataTransfer.dropEffect = 'copy';
     } else {
       e.dataTransfer.dropEffect = 'move';
@@ -284,7 +294,15 @@ export default function Library() {
   const handleDropOnFolder = (e, targetFolderId) => {
     e.preventDefault(); e.stopPropagation();
     setDragOverId(null);
-    resolveDropAction(draggedItem, { kind: 'folder', id: targetFolderId });
+    let activeDraggedItem = getActiveDraggedItem();
+    if (!activeDraggedItem) {
+      try {
+        activeDraggedItem = JSON.parse(e.dataTransfer.getData('application/x-jomify-item') || 'null');
+      } catch {
+        activeDraggedItem = null;
+      }
+    }
+    resolveDropAction(activeDraggedItem, { kind: 'folder', id: targetFolderId });
     clearDragState();
   };
 
@@ -306,14 +324,31 @@ export default function Library() {
       return; 
     }
 
-    resolveDropAction(draggedItem, { kind: 'item', id: targetItemId, parentFolderId });
+    let activeDraggedItem = getActiveDraggedItem();
+    if (!activeDraggedItem) {
+      try {
+        activeDraggedItem = JSON.parse(e.dataTransfer.getData('application/x-jomify-item') || 'null');
+      } catch {
+        activeDraggedItem = null;
+      }
+    }
+
+    resolveDropAction(activeDraggedItem, { kind: 'item', id: targetItemId, parentFolderId });
     clearDragState();
   };
 
   const handleDropOnRoot = (e) => {
     e.preventDefault();
     setDragOverId(null);
-    resolveDropAction(draggedItem, { kind: 'root' });
+    let activeDraggedItem = getActiveDraggedItem();
+    if (!activeDraggedItem) {
+      try {
+        activeDraggedItem = JSON.parse(e.dataTransfer.getData('application/x-jomify-item') || 'null');
+      } catch {
+        activeDraggedItem = null;
+      }
+    }
+    resolveDropAction(activeDraggedItem, { kind: 'root' });
     clearDragState();
   };
 
@@ -521,9 +556,10 @@ export default function Library() {
     <div 
       data-drop-kind="root"
       className="animate-fade-in pb-8 sm:pb-12 overflow-hidden min-h-[calc(100vh-200px)] flex flex-col"
+      style={isTouchDragging ? { touchAction: 'none' } : undefined}
       onDragOver={(e) => { 
         e.preventDefault(); 
-        if (draggedItem?.parentFolderId) e.dataTransfer.dropEffect = 'move'; 
+        if (getActiveDraggedItem()?.parentFolderId) e.dataTransfer.dropEffect = 'move'; 
       }}
       onDrop={handleDropOnRoot}
       onTouchMove={handleTouchDragMove}

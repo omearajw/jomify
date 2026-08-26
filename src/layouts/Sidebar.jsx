@@ -33,6 +33,7 @@ export default function Sidebar({ onClose }) {
   const [expandedFolders, setExpandedFolders] = useState([]);
   const [dragOverId, setDragOverId] = useState(null);
   const [isTouchDragging, setIsTouchDragging] = useState(false);
+  const dragItemRef = useRef(null);
   const touchDragItemRef = useRef(null);
   const touchPendingRef = useRef(null);
   const [showCreatePlaylistDialog, setShowCreatePlaylistDialog] = useState(false);
@@ -94,8 +95,15 @@ export default function Sidebar({ onClose }) {
     setDraggedItem(null);
     setDragOverId(null);
     setIsTouchDragging(false);
+    dragItemRef.current = null;
     touchDragItemRef.current = null;
     touchPendingRef.current = null;
+  };
+
+  const getActiveDraggedItem = () => dragItemRef.current || touchDragItemRef.current || draggedItem;
+
+  const safelyPreventDefault = (e) => {
+    if (e?.cancelable) e.preventDefault();
   };
 
   const resolveDropAction = (item, dropTarget) => {
@@ -169,7 +177,7 @@ export default function Sidebar({ onClose }) {
     }
 
     if (!touchDragItemRef.current) return;
-    e.preventDefault();
+    safelyPreventDefault(e);
 
     const target = getDropTargetFromPoint(e.touches[0].clientX, e.touches[0].clientY);
     if (target.kind === 'root') {
@@ -186,7 +194,7 @@ export default function Sidebar({ onClose }) {
       touchPendingRef.current = null;
       return;
     }
-    e.preventDefault();
+    safelyPreventDefault(e);
     e.stopPropagation();
 
     const item = touchDragItemRef.current;
@@ -199,14 +207,16 @@ export default function Sidebar({ onClose }) {
     e.stopPropagation();
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', item.id);
-    setDraggedItem(item);
+    e.dataTransfer.setData('application/x-jomify-item', JSON.stringify(item));
+    dragItemRef.current = item;
   };
 
   const handleDragOver = (e, id) => { 
     e.preventDefault(); 
     e.stopPropagation();
+    const activeDraggedItem = getActiveDraggedItem();
     
-    if (draggedItem?.type === 'track') {
+    if (activeDraggedItem?.type === 'track') {
       e.dataTransfer.dropEffect = 'copy';
     } else {
       e.dataTransfer.dropEffect = 'move';
@@ -221,7 +231,15 @@ export default function Sidebar({ onClose }) {
   const handleDropOnFolder = (e, targetFolderId) => {
     e.preventDefault(); e.stopPropagation();
     setDragOverId(null);
-    resolveDropAction(draggedItem, { kind: 'folder', id: targetFolderId });
+    let activeDraggedItem = getActiveDraggedItem();
+    if (!activeDraggedItem) {
+      try {
+        activeDraggedItem = JSON.parse(e.dataTransfer.getData('application/x-jomify-item') || 'null');
+      } catch {
+        activeDraggedItem = null;
+      }
+    }
+    resolveDropAction(activeDraggedItem, { kind: 'folder', id: targetFolderId });
     clearDragState();
   };
 
@@ -242,14 +260,31 @@ export default function Sidebar({ onClose }) {
       return;
     }
 
-    resolveDropAction(draggedItem, { kind: 'item', id: targetPlaylistId, parentFolderId });
+    let activeDraggedItem = getActiveDraggedItem();
+    if (!activeDraggedItem) {
+      try {
+        activeDraggedItem = JSON.parse(e.dataTransfer.getData('application/x-jomify-item') || 'null');
+      } catch {
+        activeDraggedItem = null;
+      }
+    }
+
+    resolveDropAction(activeDraggedItem, { kind: 'item', id: targetPlaylistId, parentFolderId });
     clearDragState();
   };
 
   const handleDropOnRoot = (e) => {
     e.preventDefault();
     setDragOverId(null);
-    resolveDropAction(draggedItem, { kind: 'root' });
+    let activeDraggedItem = getActiveDraggedItem();
+    if (!activeDraggedItem) {
+      try {
+        activeDraggedItem = JSON.parse(e.dataTransfer.getData('application/x-jomify-item') || 'null');
+      } catch {
+        activeDraggedItem = null;
+      }
+    }
+    resolveDropAction(activeDraggedItem, { kind: 'root' });
     clearDragState();
   };
 
@@ -283,9 +318,10 @@ export default function Sidebar({ onClose }) {
       <div 
         data-drop-kind="root"
         className="flex-1 overflow-y-auto pr-2 -mr-2 space-y-1 custom-scrollbar text-sm font-medium"
+        style={isTouchDragging ? { touchAction: 'none' } : undefined}
         onDragOver={(e) => { 
           e.preventDefault(); 
-          if (draggedItem?.parentFolderId) e.dataTransfer.dropEffect = 'move'; 
+          if (getActiveDraggedItem()?.parentFolderId) e.dataTransfer.dropEffect = 'move'; 
         }}
         onDrop={handleDropOnRoot}
         onTouchMove={handleTouchDragMove}
