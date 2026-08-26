@@ -30,43 +30,35 @@ const hashCode = (str) => {
 const getCollaboratorStyle = (userId, isCollaborative, isFirst, isLast) => {
   if (!isCollaborative || !userId) return {};
   
-  // Multiply by the golden angle (137.508) to guarantee perfectly distinct colors for every user
   const hash = Math.abs(hashCode(userId));
   const hue = Math.round((hash * 137.508) % 360);
 
   let shadow = [
-    `-12px 0px 24px -12px hsla(${hue}, 50%, 50%, 0.15)` // Very soft ambient left glow
+    `-12px 0px 24px -12px hsla(${hue}, 50%, 50%, 0.15)`
   ];
 
   if (isFirst) {
-    shadow.push(`inset 0px 1px 0px hsla(${hue}, 100%, 60%, 0.25)`); // Barely-there top glass edge
+    shadow.push(`inset 0px 1px 0px hsla(${hue}, 100%, 60%, 0.25)`);
   }
   if (isLast) {
-    shadow.push(`inset 0px -1px 0px hsla(${hue}, 50%, 60%, 0.3)`); // Barely-there bottom glass edge
-    shadow.push(`-12px 12px 24px -12px hsla(${hue}, 50%, 50%, 0.4)`); // Pooled bottom-left glow
+    shadow.push(`inset 0px -1px 0px hsla(${hue}, 50%, 60%, 0.3)`);
+    shadow.push(`-12px 12px 24px -12px hsla(${hue}, 50%, 50%, 0.4)`);
   }
 
-  // Calculate the continuous overlay glow that spreads THROUGH the group
   let bgGradient = '';
-  
   if (isFirst && isLast) {
-    // Standalone track
     bgGradient = `radial-gradient(120% 150% at bottom left, hsla(${hue}, 100%, 60%, 0.12) 0%, transparent 60%)`;
   } else if (isLast) {
-    // Source of the glow (strongest at the bottom of the group)
     bgGradient = `radial-gradient(150% 200% at bottom left, hsla(${hue}, 100%, 60%, 0.18) 0%, hsla(${hue}, 100%, 60%, 0.05) 50%, transparent 100%)`;
   } else if (isFirst) {
-    // Farthest from the source (fading out at the top of the group)
     bgGradient = `radial-gradient(150% 200% at bottom left, hsla(${hue}, 100%, 60%, 0.04) 0%, transparent 80%)`;
   } else {
-    // Middle of the group (light passing through)
     bgGradient = `radial-gradient(150% 200% at bottom left, hsla(${hue}, 100%, 60%, 0.08) 0%, transparent 90%)`;
   }
 
   return {
     '--track-hue': hue,
     boxShadow: shadow.join(', '),
-    // backgroundImage renders over background-color, preserving your Tailwind hover effects
     backgroundImage: bgGradient,
     borderLeft: `1px solid hsla(${hue}, 100%, 60%, 0.15)`
   };
@@ -77,7 +69,7 @@ export default function PlaylistView() {
     token, updatePlaylistImage, playlists, activePlaylistId, 
     setLikedTracks, setContextMenu, setDraggedItem, setPlaylists, 
     navigateToArtist, navigateToAlbum,
-    playlistSortSettings, setPlaylistSortSettings // Destructured from your updated store
+    playlistSortSettings, setPlaylistSortSettings
   } = useUserStore();
   
   const { deviceId, playbackState } = usePlayerStore();
@@ -89,7 +81,7 @@ export default function PlaylistView() {
 
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
 
-  // Get current sort settings safely from Zustand (default to custom / asc)
+  // Get current sort settings safely from Zustand
   const currentSort = playlistSortSettings?.[activePlaylistId] || { sortBy: 'custom', sortOrder: 'asc' };
   const sortBy = currentSort.sortBy;
   const sortOrder = currentSort.sortOrder;
@@ -418,8 +410,8 @@ export default function PlaylistView() {
     e.preventDefault();
     setContextMenu({
       type: 'track',
-      x: e.clientX,
-      y: e.clientY,
+      x: e.clientX || (e.touches && e.touches[0].clientX),
+      y: e.clientY || (e.touches && e.touches[0].clientY),
       track: track,
       sourcePlaylistId: activePlaylistId
     });
@@ -467,25 +459,28 @@ export default function PlaylistView() {
   }, [playlist, sortBy, sortOrder]);
 
   if (!playlist) {
-    return <p className="text-neutral-400 animate-pulse text-lg mt-8">Loading playlist...</p>;
+    return <p className="text-neutral-400 animate-pulse text-sm md:text-lg mt-8 px-4">Loading playlist...</p>;
   }
 
+  // Responsive Grid Logic: 
+  // On mobile (default): Image, Title, Like
+  // On desktop (md:): Expand back out to the full 7-column spreadsheet
   const gridColumns = isCollaborative 
-    ? "grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_120px_140px_80px]" 
-    : "grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_140px_80px]";
+    ? "grid-cols-[40px_minmax(0,1fr)_32px] md:grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_120px_140px_80px]" 
+    : "grid-cols-[40px_minmax(0,1fr)_32px] md:grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_140px_80px]";
 
   return (
     <div className="flex flex-col pb-8">
-      {/* Playlist Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-8 mt-4 select-none gap-6">
-        <div className="flex items-end space-x-6">
+      {/* Playlist Header (Stacked on Mobile, Row on Desktop) */}
+      <div className="flex flex-col md:flex-row items-center md:items-end justify-between mb-6 md:mb-8 mt-2 md:mt-4 select-none gap-4 md:gap-6 text-center md:text-left">
+        <div className="flex flex-col md:flex-row items-center md:items-end w-full gap-4 md:gap-6">
           {playlist.images?.length > 0 ? (
-            <img src={playlist.images[0].url} alt={playlist.name} className="w-48 h-48 shadow-2xl shadow-black/50 rounded" />
+            <img src={playlist.images[0].url} alt={playlist.name} className="w-40 h-40 md:w-48 md:h-48 shadow-2xl shadow-black/50 rounded-lg object-cover shrink-0" />
           ) : (
-            <div className="w-48 h-48 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded"> 🎵 </div>
+            <div className="w-40 h-40 md:w-48 md:h-48 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded-lg shrink-0"> 🎵 </div>
           )}
-          <div>
-            <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+          <div className="flex flex-col items-center md:items-start min-w-0 w-full">
+            <p className="text-[10px] md:text-xs font-bold text-neutral-400 uppercase tracking-widest mb-1 md:mb-2 flex items-center justify-center md:justify-start gap-2">
               Playlist
               {isCollaborative && (
                 <span className="bg-[var(--brand-mid)]/20 text-[var(--brand-mid)] border border-[var(--brand-mid)]/30 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 shadow-sm">
@@ -494,40 +489,42 @@ export default function PlaylistView() {
                 </span>
               )}
             </p>
-            <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tighter mb-4">{playlist.name}</h1>
-            <p className="text-neutral-400 text-sm font-medium">
-              {playlist.description && <span className="mr-2">{playlist.description} •</span>}
+            <h1 className="text-3xl sm:text-5xl md:text-7xl font-extrabold text-white tracking-tighter mb-2 md:mb-4 truncate max-w-full w-full">{playlist.name}</h1>
+            <p className="text-neutral-400 text-xs md:text-sm font-medium px-4 md:px-0">
+              {playlist.description && <span className="mr-2 hidden md:inline">{playlist.description} •</span>}
               {playlist.owner.display_name} • {playlist.tracks.total} songs
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 md:gap-3 w-full md:w-auto mt-2 md:mt-0">
           {isUnaddedSongsPlaylist && (
             <>
               <button
                 type="button"
                 onClick={() => setConfigModalOpen(true)}
                 disabled={isSyncing}
-                className="flex items-center gap-2 rounded-full bg-neutral-800 border border-neutral-700 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-700 transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 rounded-full bg-neutral-800 border border-neutral-700 px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-semibold text-white hover:bg-neutral-700 transition-colors disabled:opacity-50"
               >
-                <ListFilter className="w-4 h-4" />
-                Select Playlists ({selectedCheckPlaylistIds.length})
+                <ListFilter className="w-3 h-3 md:w-4 md:h-4" />
+                Playlists ({selectedCheckPlaylistIds.length})
               </button>
               <button
                 type="button"
                 onClick={runUnaddedSongsSync}
                 disabled={isSyncing}
-                className="flex items-center gap-2 rounded-full bg-brand-gradient px-4 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-brand-glow disabled:opacity-50"
+                className="flex items-center gap-2 rounded-full bg-brand-gradient px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-brand-glow disabled:opacity-50"
               >
-                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                {isSyncing ? (syncStatusText || 'Syncing...') : 'Run Unadded Check'}
+                <RefreshCw className={`w-3 h-3 md:w-4 md:h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? (syncStatusText || 'Syncing...') : 'Run Check'}
               </button>
             </>
           )}
           <button
             type="button"
             onClick={() => setEditDialogOpen(true)}
-            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors"
+            className="rounded-full bg-white px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-semibold text-black hover:bg-neutral-200 transition-colors"
           >
             Edit playlist
           </button>
@@ -537,9 +534,9 @@ export default function PlaylistView() {
       {/* Check Playlists Selection Modal */}
       {configModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl flex flex-col max-h-[80vh]">
-            <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
-              <h3 className="text-xl font-bold text-white">Select Playlists to Check Against</h3>
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-lg p-5 md:p-6 shadow-2xl flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between pb-3 md:pb-4 border-b border-neutral-800">
+              <h3 className="text-lg md:text-xl font-bold text-white">Select Playlists to Check Against</h3>
               <button 
                 onClick={() => setConfigModalOpen(false)}
                 className="text-neutral-400 hover:text-white transition-colors"
@@ -547,7 +544,7 @@ export default function PlaylistView() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-sm text-neutral-400 py-3">
+            <p className="text-xs md:text-sm text-neutral-400 py-3">
               Choose which playlists Jomify should verify your liked songs against when running the Unadded Check.
             </p>
             <div className="flex-1 overflow-y-auto space-y-2 pr-2 my-2">
@@ -557,27 +554,27 @@ export default function PlaylistView() {
                   <div
                     key={p.id}
                     onClick={() => togglePlaylistSelection(p.id)}
-                    className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-white/10 border-white/20 text-white' : 'bg-neutral-800/40 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}
+                    className={`flex items-center justify-between p-2.5 md:p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-white/10 border-white/20 text-white' : 'bg-neutral-800/40 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}
                   >
                     <div className="flex items-center space-x-3 truncate">
                       {p.images?.[0]?.url ? (
-                        <img src={p.images[0].url} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                        <img src={p.images[0].url} alt="" className="w-8 h-8 md:w-10 md:h-10 rounded object-cover flex-shrink-0" />
                       ) : (
-                        <div className="w-10 h-10 rounded bg-neutral-800 flex items-center justify-center text-xs flex-shrink-0">🎵</div>
+                        <div className="w-8 h-8 md:w-10 md:h-10 rounded bg-neutral-800 flex items-center justify-center text-[10px] flex-shrink-0">🎵</div>
                       )}
-                      <span className="font-medium truncate">{p.name}</span>
+                      <span className="font-medium text-sm truncate">{p.name}</span>
                     </div>
-                    <div className={`w-5 h-5 rounded flex items-center justify-center border ${isSelected ? 'bg-[var(--brand-mid)] border-[var(--brand-mid)] text-white' : 'border-neutral-600'}`}>
-                      {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    <div className={`w-4 h-4 md:w-5 md:h-5 rounded flex items-center justify-center border ${isSelected ? 'bg-[var(--brand-mid)] border-[var(--brand-mid)] text-white' : 'border-neutral-600'}`}>
+                      {isSelected && <Check className="w-3 h-3 md:w-3.5 md:h-3.5 stroke-[3]" />}
                     </div>
                   </div>
                 );
               })}
             </div>
-            <div className="pt-4 border-t border-neutral-800 flex justify-end">
+            <div className="pt-3 md:pt-4 border-t border-neutral-800 flex justify-end">
               <button
                 onClick={() => setConfigModalOpen(false)}
-                className="rounded-full bg-white px-6 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors"
+                className="rounded-full bg-white px-5 md:px-6 py-1.5 md:py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors"
               >
                 Done
               </button>
@@ -587,23 +584,23 @@ export default function PlaylistView() {
       )}
 
       {/* FILTER & SORT CONTROLS BAR */}
-      <div className="flex items-center justify-end mb-4 px-4 select-none">
+      <div className="flex items-center justify-end mb-4 px-2 md:px-4 select-none">
         <div className="relative">
           <button
             onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
-            className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors"
+            className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 px-3 md:px-4 py-1.5 md:py-2 rounded-xl text-xs md:text-sm font-medium text-white transition-colors"
           >
-            <ArrowUpDown className="w-4 h-4 text-neutral-400" />
-            <span>Sort by: <strong className="text-white capitalize">{sortBy.replace('_', ' ')}</strong> ({sortOrder.toUpperCase()})</span>
+            <ArrowUpDown className="w-3 h-3 md:w-4 md:h-4 text-neutral-400" />
+            <span>Sort: <strong className="text-white capitalize">{sortBy.replace('_', ' ')}</strong></span>
           </button>
 
           {sortDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl z-30 p-2 flex flex-col space-y-1">
+            <div className="absolute right-0 mt-2 w-48 md:w-56 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl z-30 p-2 flex flex-col space-y-1">
               {[
                 { id: 'custom', label: 'Custom Order' },
-                { id: 'title', label: 'Alphabetical (Title)' },
-                { id: 'artist', label: 'Alphabetical (Artist)' },
-                { id: 'album', label: 'Alphabetical (Album)' },
+                { id: 'title', label: 'Title' },
+                { id: 'artist', label: 'Artist' },
+                { id: 'album', label: 'Album' },
                 { id: 'date_added', label: 'Date Added' },
               ].map((option) => (
                 <button
@@ -612,10 +609,10 @@ export default function PlaylistView() {
                     updateSortSettings(option.id, sortOrder);
                     setSortDropdownOpen(false);
                   }}
-                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm text-left transition-colors ${sortBy === option.id ? 'bg-white/10 text-white font-semibold' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs md:text-sm text-left transition-colors ${sortBy === option.id ? 'bg-white/10 text-white font-semibold' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
                 >
                   <span>{option.label}</span>
-                  {sortBy === option.id && <Check className="w-4 h-4 text-[var(--brand-mid)]" />}
+                  {sortBy === option.id && <Check className="w-3 h-3 md:w-4 md:h-4 text-[var(--brand-mid)]" />}
                 </button>
               ))}
 
@@ -623,11 +620,11 @@ export default function PlaylistView() {
 
               <button
                 onClick={() => updateSortSettings(sortBy, sortOrder === 'asc' ? 'desc' : 'asc')}
-                className="flex items-center justify-between px-3 py-2 rounded-xl text-sm text-neutral-300 hover:bg-neutral-800 transition-colors"
+                className="flex items-center justify-between px-3 py-2 rounded-xl text-xs md:text-sm text-neutral-300 hover:bg-neutral-800 transition-colors"
               >
                 <span>Direction</span>
-                <span className="flex items-center gap-1 text-xs font-bold uppercase text-[var(--brand-mid)]">
-                  {sortOrder === 'asc' ? <><ArrowUp className="w-3.5 h-3.5" /> Ascending</> : <><ArrowDown className="w-3.5 h-3.5" /> Descending</>}
+                <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-[var(--brand-mid)]">
+                  {sortOrder === 'asc' ? <><ArrowUp className="w-3 h-3" /> Asc</> : <><ArrowDown className="w-3 h-3" /> Desc</>}
                 </span>
               </button>
             </div>
@@ -635,8 +632,8 @@ export default function PlaylistView() {
         </div>
       </div>
 
-      {/* Tracklist Header */}
-      <div className={`grid ${gridColumns} gap-4 px-4 py-2 border-b border-neutral-800 text-neutral-400 text-sm mb-4 items-center select-none`}>
+      {/* Tracklist Header (Hidden completely on mobile) */}
+      <div className={`hidden md:grid ${gridColumns} gap-4 px-4 py-2 border-b border-neutral-800 text-neutral-400 text-sm mb-4 items-center select-none`}>
         <span>#</span>
         <span />
         <span>Title</span>
@@ -671,7 +668,6 @@ export default function PlaylistView() {
              track.artists?.[0]?.name === currentPlayingTrack.artists?.[0]?.name)
           );
 
-          // Advanced Group Adjacency Logic for the Seamless Glow Effect
           const adderId = item.added_by?.id;
           let isFirstInGroup = true;
           let isLastInGroup = true;
@@ -717,10 +713,18 @@ export default function PlaylistView() {
               key={`${track.id}-${index}`} 
               onClick={() => handleTrackSelect(index)}
               onContextMenu={(e) => handleRightClick(e, track)}
+              // Context menu handles Long Press automatically via typical mobile browser behavior, 
+              // but you can safely hold down on a track to pin/unpin/queue it on mobile.
+              onTouchStart={(e) => {
+                // Optional: Store touch start time to fire custom long press if needed
+                // Currently relying on standard mobile "hold to right click" emulation
+              }}
               style={getCollaboratorStyle(adderId, isCollaborative, isFirstInGroup, isLastInGroup)}
-              className={`grid ${gridColumns} gap-4 px-4 py-3 group text-sm items-center transition-colors cursor-pointer ${bgHoverClass} ${radiusClass} ${marginClass}`}
+              className={`grid ${gridColumns} gap-3 md:gap-4 px-2 md:px-4 py-2 md:py-3 group text-sm items-center transition-colors cursor-pointer ${bgHoverClass} ${radiusClass} ${marginClass}`}
             >
-              <div className="text-neutral-400 w-4 h-4 flex items-center justify-center">
+              
+              {/* Desktop Only: Number/Play Column */}
+              <div className="hidden md:flex text-neutral-400 w-4 h-4 items-center justify-center shrink-0">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
                   <span className="text-brand-gradient font-bold animate-pulse">🔊</span>
                 ) : (
@@ -733,16 +737,26 @@ export default function PlaylistView() {
                 )}
               </div>
               
-              <div className="w-12 h-12 rounded-md overflow-hidden flex-shrink-0">
+              {/* Universal: Album Art */}
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-md overflow-hidden flex-shrink-0 relative">
                 {track.album?.images?.[0]?.url ? (
                   <img src={track.album.images[0].url} alt={track.name} className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full bg-neutral-800 flex items-center justify-center">🎵</div>
+                  <div className="w-full h-full bg-neutral-800 flex items-center justify-center text-xs md:text-sm">🎵</div>
                 )}
+                {/* Mobile: Overlay Play Icon if playing */}
+                <div className={`absolute inset-0 bg-black/50 md:hidden flex items-center justify-center ${isCurrentTrack ? 'opacity-100' : 'opacity-0'}`}>
+                   {isCurrentTrack && !isCurrentTrackPaused ? (
+                      <span className="text-brand-gradient font-bold text-[10px] animate-pulse">🔊</span>
+                   ) : isCurrentTrack ? (
+                      <Play className="w-3.5 h-3.5 text-white fill-current ml-0.5" />
+                   ) : null}
+                </div>
               </div>
 
-              <div className="flex flex-col truncate pr-4">
-                <span className={`font-medium truncate ${isCurrentTrack ? 'text-brand-gradient' : 'text-white'}`}>
+              {/* Universal: Title & Artist */}
+              <div className="flex flex-col truncate pr-1 md:pr-4 min-w-0">
+                <span className={`font-semibold md:font-medium text-sm truncate ${isCurrentTrack ? 'text-brand-gradient' : 'text-white'}`}>
                   {track.name}
                 </span>
                 <div className="text-neutral-400 text-xs truncate flex items-center gap-1">
@@ -752,9 +766,7 @@ export default function PlaylistView() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (artist.id) {
-                            navigateToArtist(artist.id);
-                          }
+                          if (artist.id) navigateToArtist(artist.id);
                         }}
                         className="hover:underline hover:text-white transition-colors text-left truncate"
                       >
@@ -766,7 +778,8 @@ export default function PlaylistView() {
                 </div>
               </div>
               
-              <div className="truncate pr-4">
+              {/* Desktop Only: Album Column */}
+              <div className="hidden md:block truncate pr-4">
                 {track.album?.id ? (
                   <button
                     type="button"
@@ -783,13 +796,14 @@ export default function PlaylistView() {
                 )}
               </div>
 
-              <div className="text-neutral-400 text-xs truncate">
+              {/* Desktop Only: Date Added */}
+              <div className="hidden md:block text-neutral-400 text-xs truncate">
                 {formatDateAdded(item.added_at)}
               </div>
 
-              {/* Collborator Tag Column */}
+              {/* Desktop Only: Collaborator Tag Column */}
               {isCollaborative && (
-                <div className="flex items-center space-x-2 truncate pr-4" title={collaboratorProfile?.display_name || adderId}>
+                <div className="hidden md:flex items-center space-x-2 truncate pr-4" title={collaboratorProfile?.display_name || adderId}>
                   {collaboratorProfile?.images?.[0]?.url ? (
                     <img src={collaboratorProfile.images[0].url} className="w-6 h-6 rounded-full object-cover shrink-0" alt="" />
                   ) : (
@@ -803,6 +817,7 @@ export default function PlaylistView() {
                 </div>
               )}
               
+              {/* Universal: Action Buttons (Like / Time) */}
               <div 
                 key={track.id}
                 draggable="true"
@@ -813,24 +828,17 @@ export default function PlaylistView() {
                   setTimeout(() => setDraggedItem({ type: 'track', uri: track.uri }), 0);
                 }}
                 onDragEnd={() => setDraggedItem(null)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setContextMenu({ 
-                    type: 'track',
-                    x: e.pageX, 
-                    y: e.pageY, 
-                    track: track, 
-                    sourcePlaylistId: activePlaylistId 
-                  }); 
-                }}
-                className="flex items-center justify-between gap-4 w-full h-full"
+                className="flex items-center justify-end md:justify-between gap-2 md:gap-4 w-full h-full"
               >
-                <div className="flex items-center space-x-4">
+                <div className="flex items-center">
                     <LikeButton trackId={track.id} />
                 </div>
-                <span className="text-neutral-400 w-8 text-right">{formatTime(track.duration_ms)}</span>
+                {/* Desktop Only: Track Time */}
+                <span className="hidden md:block text-neutral-400 w-8 text-right text-xs">
+                  {formatTime(track.duration_ms)}
+                </span>
               </div>
+
             </div>
           );
         })}

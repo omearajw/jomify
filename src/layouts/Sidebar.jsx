@@ -20,7 +20,8 @@ const TAGLINES = [
   "Spotify... shitify"
 ];
 
-export default function Sidebar() {
+// Added onClose prop
+export default function Sidebar({ onClose }) {
   const { 
     token, profile, currentView, setCurrentView, logout, playlists, albums, activePlaylistId, navigateToAlbum,
     setActivePlaylistId, customFolders, createFolder,
@@ -80,6 +81,7 @@ export default function Sidebar() {
       setPlaylists([...playlists, newPlaylist]);
       setActivePlaylistId(newPlaylist.id);
       setCurrentView('playlist');
+      onClose?.(); // Close mobile sidebar after creation
     } catch (err) {
       console.error('Sidebar playlist creation failed:', err);
     }
@@ -146,13 +148,11 @@ export default function Sidebar() {
     setDraggedItem(null);
   };
 
-  // NEW: Catch items dropped into the empty space of the sidebar to remove them from folders
   const handleDropOnRoot = (e) => {
     e.preventDefault();
     setDragOverId(null);
     if (!draggedItem) return;
 
-    // Only unfolder if it's an item that actually came from a folder
     if ((draggedItem.type === 'playlist' || draggedItem.type === 'album') && draggedItem.parentFolderId) {
       removePlaylistFromFolder(draggedItem.parentFolderId, draggedItem.id);
     }
@@ -175,8 +175,8 @@ export default function Sidebar() {
           const isActive = currentView === item.id;
           return (
             <button
-              key={item.id}
-              onClick={() => { setIsolatedFolderId(null); setCurrentView(item.id); }}
+              key={`nav-${item.id}`}
+              onClick={() => { setIsolatedFolderId(null); setCurrentView(item.id); onClose?.(); }}
               className={`flex items-center space-x-4 transition-colors duration-200 text-left ${isActive ? 'text-white font-bold' : 'text-neutral-400 hover:text-white'}`}
             >
               <Icon className={`w-6 h-6 ${isActive ? 'text-[var(--brand-mid)]' : 'text-neutral-400'}`} />
@@ -204,7 +204,7 @@ export default function Sidebar() {
               <Folder className="w-5 h-5 mr-2 text-brand-gradient fill-current" /> {activeFolder.name}
             </h3>
             <div className="space-y-1 pl-2">
-              {activeFolder.playlistIds.map(id => {
+              {activeFolder.playlistIds.map((id, idx) => {
                 const item = playlists.find(p => p.id === id) || (albums && albums.find(a => a.id === id));
                 if (!item) return null;
                 const isAlbum = item.type === 'album';
@@ -212,7 +212,7 @@ export default function Sidebar() {
                 
                 return (
                   <button 
-                    key={item.id} 
+                    key={`active-folder-${id}-${idx}`} 
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, { type: isAlbum ? 'album' : 'playlist', id: item.id, parentFolderId: activeFolder.id })}
                     onDragOver={(e) => handleDragOver(e, item.id)}
@@ -226,11 +226,12 @@ export default function Sidebar() {
                     onClick={() => {
                       if (isAlbum) navigateToAlbum(item.id);
                       else { setActivePlaylistId(item.id); setCurrentView('playlist'); }
+                      onClose?.();
                     }}
                     className={`w-full text-left px-2 py-1.5 transition-colors flex items-center group cursor-grab active:cursor-grabbing rounded-md ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white'}`}
                   >
                     <div className="w-6 h-6 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
-                      {item.images?.[0]?.url ? <img src={item.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
+                      {item.images?.[0]?.url ? <img src={item.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">🎵</span>}
                     </div>
                     <span className="truncate pointer-events-none">{item.name}</span>
                   </button>
@@ -248,12 +249,12 @@ export default function Sidebar() {
               </div>
             </div>
 
-            {customFolders.map(folder => {
+            {customFolders.map((folder, folderIdx) => {
               const isExpanded = expandedFolders.includes(folder.id);
               const isDragTarget = dragOverId === folder.id;
               
               return (
-                <div key={folder.id} className="flex flex-col">
+                <div key={`folder-${folder.id}-${folderIdx}`} className="flex flex-col">
                   <div 
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, { type: 'folder', id: folder.id })}
@@ -281,14 +282,14 @@ export default function Sidebar() {
                   
                   {isExpanded && (
                     <div className="pl-9 pr-2 space-y-1 mt-1 mb-2">
-                      {folder.playlistIds.map(id => {
+                      {folder.playlistIds.map((id, idx) => {
                         const item = playlists.find(p => p.id === id) || (albums && albums.find(a => a.id === id));
                         if (!item) return null;
                         const isAlbum = item.type === 'album';
                         const isSubDragTarget = dragOverId === item.id;
                         return (
                           <button 
-                            key={item.id}
+                            key={`folder-${folder.id}-item-${item.id}-${idx}`}
                             draggable="true"
                             onDragStart={(e) => handleDragStart(e, { type: isAlbum ? 'album' : 'playlist', id: item.id, parentFolderId: folder.id })}
                             onDragOver={(e) => handleDragOver(e, item.id)}
@@ -302,11 +303,12 @@ export default function Sidebar() {
                             onClick={() => {
                               if (isAlbum) navigateToAlbum(item.id);
                               else { setActivePlaylistId(item.id); setCurrentView('playlist'); }
+                              onClose?.();
                             }}
                             className={`w-full text-left py-1.5 transition-colors flex items-center group cursor-grab active:cursor-grabbing rounded ${isSubDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white px-2 -ml-2' : 'text-neutral-400 hover:text-white'}`}
                           >
                             <div className="w-6 h-6 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
-                              {item.images?.[0]?.url ? <img src={item.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
+                              {item.images?.[0]?.url ? <img src={item.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">🎵</span>}
                             </div>
                             <span className="truncate pointer-events-none">{item.name}</span>
                           </button>
@@ -319,11 +321,11 @@ export default function Sidebar() {
             })}
 
             <div className="pt-2 space-y-1">
-              {unfolderedPlaylists.map(pl => {
+              {unfolderedPlaylists.map((pl, idx) => {
                 const isDragTarget = dragOverId === pl.id; 
                 return (
                   <button 
-                    key={pl.id}
+                    key={`unfoldered-pl-${pl.id}-${idx}`}
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, { type: 'playlist', id: pl.id, parentFolderId: null })}
                     onDragOver={(e) => handleDragOver(e, pl.id)}
@@ -334,22 +336,22 @@ export default function Sidebar() {
                       e.preventDefault(); e.stopPropagation();
                       setContextMenu({ type: 'playlist', playlistId: pl.id, parentFolderId: null, x: e.pageX, y: e.pageY });
                     }}
-                    onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); }}
+                    onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); onClose?.(); }}
                     className={`w-full text-left px-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
                   >
                     <div className="w-8 h-8 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
-                      {pl.images?.[0]?.url ? <img src={pl.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
+                      {pl.images?.[0]?.url ? <img src={pl.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">🎵</span>}
                     </div>
                     <span className="truncate pointer-events-none">{pl.name}</span>
                   </button>
                 );
               })}
 
-              {unfolderedAlbums.map(album => {
+              {unfolderedAlbums.map((album, idx) => {
                 const isDragTarget = dragOverId === album.id;
                 return (
                   <button 
-                    key={album.id}
+                    key={`unfoldered-al-${album.id}-${idx}`}
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, { type: 'album', id: album.id, parentFolderId: null })}
                     onDragOver={(e) => handleDragOver(e, album.id)}
@@ -360,11 +362,11 @@ export default function Sidebar() {
                       e.preventDefault(); e.stopPropagation();
                       setContextMenu({ type: 'album', albumId: album.id, parentFolderId: null, x: e.pageX, y: e.pageY });
                     }}
-                    onClick={() => navigateToAlbum(album.id)}
+                    onClick={() => { navigateToAlbum(album.id); onClose?.(); }}
                     className={`w-full text-left px-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
                   >
                     <div className="w-8 h-8 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
-                      {album.images?.[0]?.url ? <img src={album.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
+                      {album.images?.[0]?.url ? <img src={album.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">🎵</span>}
                     </div>
                     <span className="truncate pointer-events-none">{album.name}</span>
                   </button>
