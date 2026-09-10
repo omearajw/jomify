@@ -5,6 +5,8 @@ import { formatTime } from '../utils/formatTime';
 import { checkTracksLiked } from '../services/spotify/api';
 import { useUserStore } from '../store/userStore';
 import LikeButton from '../components/LikeButton';
+import TrackArtists from '../components/TrackArtists';
+import { idFromUri } from '../utils/spotifyUri';
 import { toggleShuffleState } from '../services/spotify/api';
 
 export default function PlayerBar() {
@@ -12,7 +14,7 @@ export default function PlayerBar() {
   const { 
     token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack, 
     toggleZenMode, savedVolume, setSavedVolume,
-    currentView, setCurrentView, goBack
+    currentView, setCurrentView, goBack, navigateToAlbum
   } = useUserStore();
 
   const [progressMs, setProgressMs] = useState(0);
@@ -105,29 +107,47 @@ export default function PlayerBar() {
     }
   };
 
+  // The SDK hands us URIs, not ids, so resolve the album here once
+  const albumId = idFromUri(currentTrack?.album?.uri, 'album');
+  const albumArt = currentTrack?.album?.images?.[0]?.url ? (
+    <img
+      src={currentTrack.album.images[0].url}
+      alt={currentTrack.name}
+      className="w-14 h-14 rounded shadow-md object-cover"
+    />
+  ) : (
+    <div className="w-14 h-14 bg-neutral-800 rounded flex items-center justify-center text-neutral-500 shadow-md">
+      🎵
+    </div>
+  );
+
   return (
     <div className="h-24 bg-black/60 backdrop-blur-xl border-t border-white/5 flex items-center justify-between px-6 text-white select-none relative z-10">
-      
-      <div className="flex items-center space-x-4 w-1/3">
-        {currentTrack?.album?.images?.[0]?.url ? (
-          <img 
-            src={currentTrack.album.images[0].url} 
-            alt={currentTrack.name} 
-            className="w-14 h-14 rounded shadow-md object-cover"
-          />
+
+      <div className="flex items-center space-x-4 w-1/3 min-w-0">
+        {albumId ? (
+          <button
+            type="button"
+            onClick={() => navigateToAlbum(albumId)}
+            title={currentTrack.album.name ? `Go to ${currentTrack.album.name}` : 'Go to album'}
+            className="shrink-0 rounded hover:opacity-80 hover:scale-105 transition-all"
+          >
+            {albumArt}
+          </button>
         ) : (
-          <div className="w-14 h-14 bg-neutral-800 rounded flex items-center justify-center text-neutral-500 shadow-md">
-            🎵
-          </div>
+          <div className="shrink-0">{albumArt}</div>
         )}
-        <div className="truncate pr-4">
+        <div className="truncate pr-4 min-w-0">
           <h4 className="text-sm font-bold text-white truncate">
-            {currentTrack ? currentTrack.name : 'No Track Playing'}
+            {currentTrack ? currentTrack.name : 'Nothing playing'}
           </h4>
-          <p className="text-xs text-neutral-400 truncate">
-            {currentTrack ? currentTrack.artists.map(a => a.name).join(', ') : 'Unknown Artist'}
-          </p>
-          <LikeButton trackId={currentTrack?.id} />
+          {currentTrack && (
+            <TrackArtists
+              artists={currentTrack.artists}
+              className="text-xs text-neutral-400 truncate block"
+            />
+          )}
+          {currentTrack?.id && <LikeButton trackId={currentTrack.id} />}
         </div>
       </div>
 

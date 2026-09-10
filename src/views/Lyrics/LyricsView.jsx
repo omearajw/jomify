@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { usePlayerStore } from '../../store/playerStore';
 import { Mic2, AlertCircle, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import TrackArtists from '../../components/TrackArtists';
 
 // --- LRC TIME PARSER ---
 const parseLrc = (lrcString) => {
@@ -309,9 +310,12 @@ export default function LyricsView() {
             <h1 className="text-3xl font-extrabold text-white tracking-tighter drop-shadow-lg truncate max-w-xl">
               {currentTrack.name}
             </h1>
-            <p className="text-sm text-[var(--brand-mid)] font-bold tracking-widest uppercase mt-1 drop-shadow-md">
-              {currentTrack.artists.map(a => a.name).join(', ')}
-            </p>
+            {/* The header container is pointer-events-none so it doesn't block the lyrics; re-enable just the names */}
+            <TrackArtists
+              artists={currentTrack.artists}
+              className="block text-sm text-[var(--brand-mid)] font-bold tracking-widest uppercase mt-1 drop-shadow-md pointer-events-auto"
+              linkClassName="hover:underline hover:text-white transition-colors"
+            />
           </div>
         </div>
         
