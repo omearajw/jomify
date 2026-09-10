@@ -179,18 +179,18 @@ function App() {
     }
   }, [token, tokenExpiresAt, logout]);
 
-  // --- PINNED + FOLDER ITEM HYDRATION ENGINE (RACE-CONDITION SAFE) ---
-  // Resolves ids the main library load didn't return: pinned playlists/albums you follow but
-  // don't own, and -- newly -- anything sitting in a folder. Folder items carry no type, so
-  // unknown ids are tried as albums in one batched call first, and whatever that doesn't
-  // account for is fetched as a playlist. Every render site does `if (!item) return null`, so
-  // an unresolved id simply vanishes from the UI; this is what stops that being permanent.
+  // --- PINNED ITEM HYDRATION ENGINE (RACE-CONDITION SAFE) ---
+  // Resolves PINNED playlists/albums the main library load didn't return (something you pinned
+  // without following). Deliberately NOT folder contents: fetchUserPlaylists and fetchUserAlbums
+  // paginate the whole library, so a folder id that isn't in it is one you have since
+  // unfollowed or removed. Fetching those by id "resurrects" them -- Spotify still serves the
+  // object -- which put unfollowed playlists back into the list next to their re-created
+  // namesakes and showed up as duplicates. Stale folder ids simply render nothing.
   useEffect(() => {
     if (!token) return;
 
     const pinnedTargets = pinnedItems.filter(p => p.type === 'playlist' || p.type === 'album');
-    const folderItemIds = [...new Set(customFolders.flatMap(f => f.playlistIds || []))];
-    if (pinnedTargets.length === 0 && folderItemIds.length === 0) return;
+    if (pinnedTargets.length === 0) return;
 
     const hydrate = async () => {
       const currentPlaylists = useUserStore.getState().playlists;
@@ -200,39 +200,29 @@ function App() {
 
       const missingPlaylists = pinnedTargets.filter(p => p.type === 'playlist' && isNew(p.id)).map(p => p.id);
       const missingAlbums = pinnedTargets.filter(p => p.type === 'album' && isNew(p.id)).map(p => p.id);
-      const typed = new Set([...missingPlaylists, ...missingAlbums]);
-      const unknown = folderItemIds.filter(id => isNew(id) && !typed.has(id));
 
-      if (missingPlaylists.length === 0 && missingAlbums.length === 0 && unknown.length === 0) return;
+      if (missingPlaylists.length === 0 && missingAlbums.length === 0) return;
 
-      [...missingPlaylists, ...missingAlbums, ...unknown].forEach(id => hydratedPinnedIds.current.add(id));
+      [...missingPlaylists, ...missingAlbums].forEach(id => hydratedPinnedIds.current.add(id));
 
       const headers = { Authorization: `Bearer ${token}` };
 
-      // Albums first: /v1/albums?ids= takes up to 20 and returns null for ids that aren't
-      // albums, which is exactly how we learn which unknown folder items are playlists instead.
+      // /v1/albums?ids= takes up to 20 per call
       let newAlbums = [];
-      const foundAlbumIds = new Set();
-      const albumCandidates = [...missingAlbums, ...unknown];
-      for (let i = 0; i < albumCandidates.length; i += 20) {
-        const chunk = albumCandidates.slice(i, i + 20);
+      for (let i = 0; i < missingAlbums.length; i += 20) {
+        const chunk = missingAlbums.slice(i, i + 20);
         try {
           const res = await spotifyFetch(`https://api.spotify.com/v1/albums?ids=${chunk.join(',')}`, { headers });
           if (!res.ok) continue;
           const data = await res.json();
-          (data.albums || []).forEach((album) => {
-            if (album?.id) {
-              newAlbums.push(album);
-              foundAlbumIds.add(album.id);
-            }
-          });
+          (data.albums || []).forEach((album) => { if (album?.id) newAlbums.push(album); });
         } catch (e) {
           console.error("Hydration failed for albums", e);
         }
       }
 
       let newPlaylists = [];
-      const playlistCandidates = [...missingPlaylists, ...unknown.filter(id => !foundAlbumIds.has(id))];
+      const playlistCandidates = missingPlaylists;
       if (playlistCandidates.length > 0) {
         try {
           const res = await Promise.all(
@@ -264,7 +254,7 @@ function App() {
     };
 
     hydrate();
-  }, [token, pinnedItems, customFolders, setPlaylists]);
+  }, [token, pinnedItems, setPlaylists]);
 
   // --- SEVENS TURN CHECKER (HIGH-SPEED OFFSET METHOD) ---
   // Only active Sevens are polled. A finished Seven is still cross-referenced for duplicate

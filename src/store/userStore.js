@@ -8,6 +8,17 @@ import { markFolderDeleted } from '../sync/meta';
 // that iterates customFolders keeps working unchanged.
 const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : 1);
 
+// Keeps the first occurrence of each id, preserving order
+const uniqueById = (items) => {
+  if (!Array.isArray(items)) return [];
+  const seen = new Set();
+  return items.filter((item) => {
+    if (!item?.id || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+};
+
 // One place that knows what a history frame looks like. Capped so bouncing between two views
 // all afternoon doesn't grow the stack without bound.
 const HISTORY_CAP = 50;
@@ -350,8 +361,12 @@ export const useUserStore = create(
       })),
 
       setProfile: (userData) => set({ profile: userData }),
-      setPlaylists: (playlistData) => set({ playlists: playlistData }),
-      setAlbums: (albumData) => set({ albums: albumData }),
+      // Both de-duplicate by id at the door. Several async loaders merge into these lists
+      // (the initial fetch, pinned-item hydration, playlist creation) and a duplicate entry
+      // renders as a duplicate card with a duplicate React key. Making it impossible here is
+      // cheaper than making every merge site perfect.
+      setPlaylists: (playlistData) => set({ playlists: uniqueById(playlistData) }),
+      setAlbums: (albumData) => set({ albums: uniqueById(albumData) }),
       setActivePlaylistId: (id) => set({ activePlaylistId: id }),
       setLikedTracks: (updates) => set((state) => ({ likedTracks: { ...state.likedTracks, ...updates } })),
       setApiCooldown: (timestamp) => set({ apiCooldownUntil: timestamp }),
