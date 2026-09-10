@@ -1,6 +1,6 @@
 import { applyCors } from './_lib/cors.js';
 import { resolveUserId, AuthError } from './_lib/auth.js';
-import { redis, KEYS, BACKUP_DEPTH } from './_lib/redis.js';
+import { redis, KEYS, BACKUP_DEPTH, RedisConfigError } from './_lib/redis.js';
 import {
   mergeSyncDoc,
   clampFutureTimestamps,
@@ -113,8 +113,23 @@ export default async function handler(req, res) {
       return res.status(err.status).json({ error: err.message });
     }
 
+    // A misconfigured database is a permanent, fixable problem, not a transient one. Saying so
+    // explicitly -- including which expected variable names are present, never their values --
+    // turns an opaque 503 into something diagnosable from the browser console.
+    if (err instanceof RedisConfigError) {
+      console.error('Sync misconfigured:', err.message, err.detail);
+      return res.status(503).json({
+        error: err.message,
+        configuration: err.detail
+      });
+    }
+
     console.error('Sync handler failed:', err);
     res.setHeader('Retry-After', '30');
-    return res.status(503).json({ error: 'Sync is temporarily unavailable' });
+    return res.status(503).json({
+      error: 'Sync is temporarily unavailable',
+      // The message only ever describes the failure, never carries credentials
+      detail: err?.message ?? null
+    });
   }
 }
