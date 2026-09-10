@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { playSingleTrack, checkTracksLiked } from '../../services/spotify/api';
+import { playSingleTrack, checkTracksLiked, spotifyFetch } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Play } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
@@ -19,27 +19,34 @@ export default function Artist() {
   const [topTracks, setTopTracks] = useState([]);
   const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const currentPlayingTrack = playbackState?.track_window?.current_track;
 
   useEffect(() => {
     if (!token || !currentArtistId) return;
+    let cancelled = false;
 
     const fetchArtistData = async () => {
       try {
         setLoading(true);
-        // Fetch artist details
-        const artistRes = await fetch(`https://api.spotify.com/v1/artists/${currentArtistId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        setError('');
+        const headers = { Authorization: `Bearer ${token}` };
+
+        // Artist details. An error payload is truthy, so without this check a 404 rendered a
+        // header full of `undefined` instead of "not found".
+        const artistRes = await spotifyFetch(`https://api.spotify.com/v1/artists/${currentArtistId}`, { headers });
+        if (!artistRes.ok) {
+          throw new Error(artistRes.status === 404 ? 'Artist not found' : `Spotify returned ${artistRes.status}`);
+        }
         const artistData = await artistRes.json();
+        if (cancelled) return;
         setArtist(artistData);
 
-        // Fetch artist's top tracks
-        const tracksRes = await fetch(`https://api.spotify.com/v1/artists/${currentArtistId}/top-tracks?market=US`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const tracksData = await tracksRes.json();
+        // Top tracks in the listener's own market, not a hardcoded US one
+        const tracksRes = await spotifyFetch(`https://api.spotify.com/v1/artists/${currentArtistId}/top-tracks?market=from_token`, { headers });
+        const tracksData = tracksRes.ok ? await tracksRes.json() : { tracks: [] };
+        if (cancelled) return;
         setTopTracks(tracksData.tracks || []);
 
         // Check liked status
@@ -50,20 +57,34 @@ export default function Artist() {
           }
         }
 
-        // Fetch artist's albums
-        const albumsRes = await fetch(`https://api.spotify.com/v1/artists/${currentArtistId}/albums?limit=20`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const albumsData = await albumsRes.json();
-        setAlbums(albumsData.items || []);
-      } catch (error) {
-        console.error('Failed to fetch artist data:', error);
+        // Albums and singles, every page. Without include_groups the single page of 20 filled
+        // up with compilations and "appears on" entries, so prolific artists showed a
+        // near-random subset of their own records.
+        const collected = [];
+        let nextUrl = `https://api.spotify.com/v1/artists/${currentArtistId}/albums?include_groups=album,single&limit=50&market=from_token`;
+        let pages = 0;
+        while (nextUrl && pages < 6) {
+          const res = await spotifyFetch(nextUrl, { headers });
+          if (!res.ok) break;
+          const data = await res.json();
+          collected.push(...(data.items || []));
+          nextUrl = data.next;
+          pages += 1;
+        }
+        if (cancelled) return;
+        setAlbums(collected);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Failed to fetch artist data:', err);
+        setArtist(null);
+        setError(err.message || 'Failed to load artist');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchArtistData();
+    return () => { cancelled = true; };
   }, [token, currentArtistId, setLikedTracks]);
 
   const handleTrackPlay = (trackUri) => {
@@ -84,7 +105,7 @@ export default function Artist() {
   if (!artist) {
     return (
       <div className="flex flex-col pb-8">
-        <p className="text-neutral-400">Artist not found</p>
+        <p className="text-neutral-400">{error || 'Artist not found'}</p>
       </div>
     );
   }

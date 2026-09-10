@@ -1,7 +1,9 @@
 import { useUserStore } from '../../store/userStore';
 
 // THE NETWORK INTERCEPTOR
-async function spotifyFetch(url, options) {
+// Exported so that every Spotify call in the app goes through it. Calls that bypassed it kept
+// hammering the API during a 429 cooldown and never read Retry-After, deepening the ban.
+export async function spotifyFetch(url, options) {
   const store = useUserStore.getState();
   
   // 1. If we are in timeout, block the request before it even leaves the browser
@@ -346,23 +348,43 @@ export async function toggleShuffleState(token, deviceId, state) {
   });
 }
 
-export async function playLikedSongsQueue(token, deviceId, allUris, startIndex) {
+export async function playLikedSongsQueue(token, deviceId, allUris, startIndex, userId) {
   const url = "https://" + "api.spotify.com/v1/me/player/play?device_id=" + deviceId;
-  
-  // Grab up to 100 tracks starting from the clicked song to respect API limits
+  const headers = {
+    "Authorization": "Bearer " + token,
+    "Content-Type": "application/json"
+  };
+
+  // Preferred: play Liked Songs as a CONTEXT, the way Spotify's own clients do. That gives
+  // playback over the whole library and shuffle across all of it, instead of a 100-track
+  // window that stops dead. The collection URI isn't formally documented, so if Spotify
+  // rejects it we fall through to the old behaviour rather than failing.
+  if (userId && allUris[startIndex]) {
+    const response = await spotifyFetch(url, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        context_uri: `spotify:user:${userId}:collection`,
+        offset: { uri: allUris[startIndex] }
+      })
+    });
+    if (response.ok) return;
+    console.warn(`Liked Songs context rejected (${response.status}); falling back to a 100-track window.`);
+  }
+
+  // Fallback: up to 100 tracks starting from the clicked song
   const uriChunk = allUris.slice(startIndex, startIndex + 100);
 
-  await spotifyFetch(url, {
+  const response = await spotifyFetch(url, {
     method: "PUT",
-    headers: {
-      "Authorization": "Bearer " + token,
-      "Content-Type": "application/json"
-    },
+    headers,
     body: JSON.stringify({
       uris: uriChunk,
       offset: { position: 0 } // Start at the beginning of our sliced chunk
     })
   });
+
+  if (!response.ok) throw new Error("Failed to play Liked Songs");
 }
 
 // Fetches the entire upcoming queue

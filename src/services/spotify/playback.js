@@ -1,4 +1,5 @@
 import { useUserStore } from '../../store/userStore';
+import { spotifyFetch } from './api';
 
 export function initializeSpotifyPlayer(token, storeActions) {
   const { setPlayer, setDeviceId, setPlaybackState } = storeActions;
@@ -60,7 +61,7 @@ export function initializeSpotifyPlayer(token, storeActions) {
 async function transferPlayback(deviceId, activeToken) {
   const url = "https://" + "api.spotify.com/v1/me/player";
   
-  await fetch(url, {
+  await spotifyFetch(url, {
     method: 'PUT',
     headers: {
       'Authorization': "Bearer " + activeToken,

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { playSingleTrack, checkTracksLiked } from '../../services/spotify/api';
+import { playSingleTrack, checkTracksLiked, fetchMoreTracks, spotifyFetch } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Play } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
@@ -18,38 +18,60 @@ export default function Album() {
   const [album, setAlbum] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const currentPlayingTrack = playbackState?.track_window?.current_track;
 
   useEffect(() => {
     if (!token || !currentAlbumId) return;
+    let cancelled = false;
 
     const fetchAlbumData = async () => {
       try {
         setLoading(true);
-        // Fetch album details
-        const albumRes = await fetch(`https://api.spotify.com/v1/albums/${currentAlbumId}`, {
+        setError('');
+
+        // An error payload is truthy, so without this check a 404 rendered a header full of
+        // `undefined` instead of "not found".
+        const albumRes = await spotifyFetch(`https://api.spotify.com/v1/albums/${currentAlbumId}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        if (!albumRes.ok) {
+          throw new Error(albumRes.status === 404 ? 'Album not found' : `Spotify returned ${albumRes.status}`);
+        }
         const albumData = await albumRes.json();
+        if (cancelled) return;
         setAlbum(albumData);
-        setTracks(albumData.tracks?.items || []);
+
+        // The album object carries the first 50 tracks; long compilations and deluxe editions
+        // have more, and used to be silently truncated.
+        const allTracks = [...(albumData.tracks?.items || [])];
+        let nextUrl = albumData.tracks?.next;
+        while (nextUrl) {
+          const page = await fetchMoreTracks(token, nextUrl);
+          allTracks.push(...(page.items || []));
+          nextUrl = page.next;
+        }
+        if (cancelled) return;
+        setTracks(allTracks);
 
         // Check liked status
-        if (albumData.tracks?.items) {
-          const ids = albumData.tracks.items.map(track => track.id).filter(Boolean);
-          if (ids.length > 0) {
-            checkTracksLiked(token, ids).then(setLikedTracks).catch(console.error);
-          }
+        const ids = allTracks.map(track => track.id).filter(Boolean);
+        if (ids.length > 0) {
+          checkTracksLiked(token, ids).then(setLikedTracks).catch(console.error);
         }
-      } catch (error) {
-        console.error('Failed to fetch album data:', error);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Failed to fetch album data:', err);
+        setAlbum(null);
+        setError(err.message || 'Failed to load album');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchAlbumData();
+    return () => { cancelled = true; };
   }, [token, currentAlbumId, setLikedTracks]);
 
   const handleTrackPlay = (trackUri) => {
@@ -75,7 +97,7 @@ export default function Album() {
   if (!album) {
     return (
       <div className="flex flex-col pb-8">
-        <p className="text-neutral-400">Album not found</p>
+        <p className="text-neutral-400">{error || 'Album not found'}</p>
       </div>
     );
   }

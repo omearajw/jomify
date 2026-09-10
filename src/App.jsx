@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { redirectToAuthCodeFlow, getAccessToken, refreshAccessToken } from './services/spotify/auth';
-import { fetchUserProfile, fetchUserPlaylists, fetchUserAlbums } from './services/spotify/api';
+import { fetchUserProfile, fetchUserPlaylists, fetchUserAlbums, spotifyFetch } from './services/spotify/api';
 import { useUserStore } from './store/userStore';
 import MainLayout from './layouts/MainLayout';
 import Library from './views/Library/Library';
@@ -219,7 +219,7 @@ function App() {
       for (let i = 0; i < albumCandidates.length; i += 20) {
         const chunk = albumCandidates.slice(i, i + 20);
         try {
-          const res = await fetch(`https://api.spotify.com/v1/albums?ids=${chunk.join(',')}`, { headers });
+          const res = await spotifyFetch(`https://api.spotify.com/v1/albums?ids=${chunk.join(',')}`, { headers });
           if (!res.ok) continue;
           const data = await res.json();
           (data.albums || []).forEach((album) => {
@@ -239,7 +239,7 @@ function App() {
         try {
           const res = await Promise.all(
             playlistCandidates.map(id =>
-              fetch(`https://api.spotify.com/v1/playlists/${id}`, { headers })
+              spotifyFetch(`https://api.spotify.com/v1/playlists/${id}`, { headers })
                 .then(r => (r.ok ? r.json() : null))
                 .catch(() => null)
             )
@@ -286,7 +286,7 @@ function App() {
         const id = seven.playlistId;
         try {
           // 1. Fetch only metadata and total track count (super lightweight)
-          const res = await fetch(`https://api.spotify.com/v1/playlists/${id}?fields=id,name,images,tracks.total`, { 
+          const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${id}?fields=id,name,images,tracks.total`, { 
             headers: { Authorization: `Bearer ${token}` }
           });
           const data = await res.json();
@@ -295,7 +295,7 @@ function App() {
             data.partnerName = seven.partnerName || null;
             // 2. Fetch EXACTLY the last track to check who added it
             const offset = data.tracks.total - 1;
-            const trackRes = await fetch(`https://api.spotify.com/v1/playlists/${id}/tracks?limit=1&offset=${offset}`, { 
+            const trackRes = await spotifyFetch(`https://api.spotify.com/v1/playlists/${id}/tracks?limit=1&offset=${offset}`, { 
               headers: { Authorization: `Bearer ${token}` }
             });
             const trackData = await trackRes.json();
@@ -335,8 +335,8 @@ function App() {
     try {
       const headers = { Authorization: `Bearer ${token}` };
       const [tracksRes, artistsRes] = await Promise.all([
-        fetch('https://api.spotify.com/v1/me/top/tracks?time_range=short_term&limit=5', { headers }),
-        fetch('https://api.spotify.com/v1/me/top/artists?time_range=short_term&limit=5', { headers })
+        spotifyFetch('https://api.spotify.com/v1/me/top/tracks?time_range=short_term&limit=5', { headers }),
+        spotifyFetch('https://api.spotify.com/v1/me/top/artists?time_range=short_term&limit=5', { headers })
       ]);
       
       const tracks = await tracksRes.json();

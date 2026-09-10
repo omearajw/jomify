@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useUserStore } from '../../store/userStore'; 
 import { usePlayerStore } from '../../store/playerStore';
-import { fetchPlaylistDetails, playPlaylistTrack, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists } from '../../services/spotify/api';
+import { fetchPlaylistDetails, playPlaylistTrack, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Clock3, Play, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
@@ -140,7 +140,7 @@ export default function PlaylistView() {
     let items = [];
     let url = initialUrl;
     while (url) {
-      const res = await fetch(url, {
+      const res = await spotifyFetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) {
@@ -204,7 +204,7 @@ export default function PlaylistView() {
         setSyncStatusText(`Removing ${tracksToRemove.length} sorted/unliked tracks...`);
         for (let i = 0; i < tracksToRemove.length; i += 100) {
           const chunk = tracksToRemove.slice(i, i + 100);
-          const res = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
+          const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
             method: 'DELETE',
             headers: {
               Authorization: `Bearer ${token}`,
@@ -239,7 +239,7 @@ export default function PlaylistView() {
         setSyncStatusText(`Adding ${newUnaddedUris.length} new unadded songs...`);
         for (let i = 0; i < newUnaddedUris.length; i += 100) {
           const batch = newUnaddedUris.slice(i, i + 100);
-          const res = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
+          const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${token}`,
@@ -289,7 +289,7 @@ export default function PlaylistView() {
       fetchedUserIds.current.clear();
       isFetchingMore.current = false;
 
-      fetch(`https://api.spotify.com/v1/playlists/${activePlaylistId}`, {
+      spotifyFetch(`https://api.spotify.com/v1/playlists/${activePlaylistId}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -313,7 +313,7 @@ export default function PlaylistView() {
 
     while (nextUrl) {
       try {
-        const res = await fetch(nextUrl, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await spotifyFetch(nextUrl, { headers: { Authorization: `Bearer ${token}` } });
         const nextData = await res.json();
         
         if (!nextData.items || nextData.items.length === 0) break;
@@ -366,7 +366,7 @@ export default function PlaylistView() {
     const fetchCollaborators = async () => {
       try {
         const responses = await Promise.all(
-          idsToFetch.map(id => fetch(`https://api.spotify.com/v1/users/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()))
+          idsToFetch.map(id => spotifyFetch(`https://api.spotify.com/v1/users/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()))
         );
         
         setCollaborators(prev => {
