@@ -127,20 +127,36 @@ export async function updatePlaylist(token, playlistId, { name, description = un
 }
 
 export async function fetchUserAlbums(token) {
-  const response = await spotifyFetch('https://api.spotify.com/v1/me/albums', {
-    method: 'GET',
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  const data = await response.json();
+  // Paginate like fetchUserPlaylists does. A single unpaginated call returns Spotify's default
+  // page of 20, and because folder rendering drops any id it can't resolve, every saved album
+  // past the 20th that lived in a folder simply vanished from the sidebar and library.
+  let allAlbums = [];
+  let nextUrl = 'https://api.spotify.com/v1/me/albums?limit=50';
+
+  while (nextUrl) {
+    const response = await spotifyFetch(nextUrl, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!response.ok) throw new Error('Failed to fetch saved albums');
+
+    const data = await response.json();
+    allAlbums = [...allAlbums, ...(data.items || [])];
+    nextUrl = data.next;
+  }
+
   // Map them to match a consistent structure (id, name, images, type)
-  return data.items.map(item => ({
-    id: item.album.id,
-    name: item.album.name,
-    images: item.album.images,
-    artists: item.album.artists,
-    type: 'album',
-    total_tracks: item.album.total_tracks
-  }));
+  return allAlbums
+    .filter(item => item?.album?.id)
+    .map(item => ({
+      id: item.album.id,
+      name: item.album.name,
+      images: item.album.images,
+      artists: item.album.artists,
+      type: 'album',
+      total_tracks: item.album.total_tracks
+    }));
 }
 
 async function blobToBase64(blob) {

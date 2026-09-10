@@ -19,7 +19,15 @@ export function initializeSpotifyPlayer(token, storeActions) {
     player.addListener('ready', ({ device_id }) => {
       console.log('🎧 Jomify Audio Engine Ready! Device ID:', device_id);
       setDeviceId(device_id);
-      
+
+      // Apply the persisted volume. The SDK starts at its own default regardless of what the
+      // slider shows, so without this the slider reads e.g. 20 while audio plays at 50%. The
+      // cubic curve must match PlayerBar's handleVolumeChange exactly.
+      const savedVolume = useUserStore.getState().savedVolume;
+      if (typeof savedVolume === 'number') {
+        player.setVolume(Math.pow(savedVolume / 100, 3)).catch(console.error);
+      }
+
       // Auto-transfer playback to this browser
       // We also pull the fresh token here just to be safe
       transferPlayback(device_id, useUserStore.getState().token).catch(console.error);

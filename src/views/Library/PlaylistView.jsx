@@ -133,17 +133,24 @@ export default function PlaylistView() {
     );
   };
 
-  const fetchAllPages = async (initialUrl) => {
+  // Every page must load or the whole sync aborts. This function feeds a destructive
+  // reconciliation: if the liked-songs fetch quietly returned [] on a 429, every track in the
+  // playlist would read as "not liked" and be deleted. Throwing here is what prevents that.
+  const fetchAllPages = async (initialUrl, label) => {
     let items = [];
     let url = initialUrl;
     while (url) {
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await res.json();
-      if (data.items) {
-        items.push(...data.items);
+      if (!res.ok) {
+        throw new Error(`Couldn't load ${label} (Spotify returned ${res.status}). Nothing was changed.`);
       }
+      const data = await res.json();
+      if (!Array.isArray(data.items)) {
+        throw new Error(`Unexpected response while loading ${label}. Nothing was changed.`);
+      }
+      items.push(...data.items);
       url = data.next;
     }
     return items;
@@ -155,13 +162,13 @@ export default function PlaylistView() {
     setSyncStatusText('Fetching all liked songs...');
 
     try {
-      const allLikedSongs = await fetchAllPages('https://api.spotify.com/v1/me/tracks?limit=50');
+      const allLikedSongs = await fetchAllPages('https://api.spotify.com/v1/me/tracks?limit=50', 'your liked songs');
 
       setSyncStatusText('Scanning check playlists...');
 
       const playlistTrackIds = new Set();
       for (const checkId of selectedCheckPlaylistIds) {
-        const checkTracks = await fetchAllPages(`https://api.spotify.com/v1/playlists/${checkId}/tracks?limit=100`);
+        const checkTracks = await fetchAllPages(`https://api.spotify.com/v1/playlists/${checkId}/tracks?limit=100`, 'a check playlist');
         for (const item of checkTracks) {
           if (item.track && item.track.id) {
             const cleanedName = cleanString(item.track.name);
@@ -173,7 +180,7 @@ export default function PlaylistView() {
 
       setSyncStatusText('Scanning current Unadded Songs playlist...');
 
-      const currentUnaddedTracks = await fetchAllPages(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks?limit=100`);
+      const currentUnaddedTracks = await fetchAllPages(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks?limit=100`, 'this playlist');
 
       const likedSongIdsMap = new Set(allLikedSongs.map(item => item.track?.id).filter(Boolean));
       const currentUnaddedTrackIds = new Set(currentUnaddedTracks.map(item => item.track?.id).filter(Boolean));
@@ -197,7 +204,7 @@ export default function PlaylistView() {
         setSyncStatusText(`Removing ${tracksToRemove.length} sorted/unliked tracks...`);
         for (let i = 0; i < tracksToRemove.length; i += 100) {
           const chunk = tracksToRemove.slice(i, i + 100);
-          await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
+          const res = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
             method: 'DELETE',
             headers: {
               Authorization: `Bearer ${token}`,
@@ -205,6 +212,9 @@ export default function PlaylistView() {
             },
             body: JSON.stringify({ tracks: chunk })
           });
+          if (!res.ok) {
+            throw new Error(`Removing tracks failed partway (Spotify returned ${res.status}). Re-run the check to finish.`);
+          }
         }
       }
 
@@ -229,7 +239,7 @@ export default function PlaylistView() {
         setSyncStatusText(`Adding ${newUnaddedUris.length} new unadded songs...`);
         for (let i = 0; i < newUnaddedUris.length; i += 100) {
           const batch = newUnaddedUris.slice(i, i + 100);
-          await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
+          const res = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${token}`,
@@ -237,6 +247,9 @@ export default function PlaylistView() {
             },
             body: JSON.stringify({ uris: batch })
           });
+          if (!res.ok) {
+            throw new Error(`Adding tracks failed partway (Spotify returned ${res.status}). Re-run the check to finish.`);
+          }
         }
       }
 
@@ -251,11 +264,13 @@ export default function PlaylistView() {
 
     } catch (err) {
       console.error('Error running unadded songs sync:', err);
-      setSyncStatusText('Sync failed. Check console.');
+      // The thrown messages say what failed and whether anything changed -- show them, and
+      // leave them up long enough to actually read.
+      setSyncStatusText(err?.message || 'Sync failed. Nothing was changed.');
       setTimeout(() => {
         setIsSyncing(false);
         setSyncStatusText('');
-      }, 2000);
+      }, 6000);
     }
   };
 
@@ -511,8 +526,11 @@ export default function PlaylistView() {
               <button
                 type="button"
                 onClick={runUnaddedSongsSync}
-                disabled={isSyncing}
-                className="flex items-center gap-2 rounded-full bg-brand-gradient px-4 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-brand-glow disabled:opacity-50"
+                // With no check playlists selected, every liked song would count as "unadded"
+                // and be pushed into this playlist.
+                disabled={isSyncing || selectedCheckPlaylistIds.length === 0}
+                title={selectedCheckPlaylistIds.length === 0 ? 'Select at least one playlist to check against first' : undefined}
+                className="flex items-center gap-2 rounded-full bg-brand-gradient px-4 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-brand-glow disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                 {isSyncing ? (syncStatusText || 'Syncing...') : 'Run Unadded Check'}

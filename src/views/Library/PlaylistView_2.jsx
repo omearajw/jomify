@@ -1,15 +1,25 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useUserStore } from '../../store/userStore'; 
 import { usePlayerStore } from '../../store/playerStore';
-import { fetchPlaylistDetails, playPlaylistTrack, fetchUserPlaylists, fetchSevenTrackMeta } from '../../services/spotify/api';
+import { fetchPlaylistDetails, fetchMoreTracks, addTracksToPlaylist, playPlaylistTrack, fetchSevenTrackMeta } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Play, X, LayoutPanelLeft, ArrowRight, Loader2, Disc3 } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 
-const cleanString = (str) => {
-  if (!str) return '';
-  return str.split(/[-(]/)[0].toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-};
+// A playlist with every page of tracks, not just the first 100. fetchMoreTracks goes through
+// the rate-limit interceptor and throws on a bad page, so a failure surfaces instead of
+// silently truncating the list.
+async function fetchEntirePlaylist(token, playlistId) {
+  const data = await fetchPlaylistDetails(token, playlistId);
+  let allItems = [...data.tracks.items];
+  let nextUrl = data.tracks.next;
+  while (nextUrl) {
+    const nextData = await fetchMoreTracks(token, nextUrl);
+    allItems = [...allItems, ...(nextData.items || [])];
+    nextUrl = nextData.next;
+  }
+  return { ...data, tracks: { ...data.tracks, items: allItems } };
+}
 
 const hashCode = (str) => {
   let hash = 0;
@@ -73,6 +83,7 @@ export default function PlaylistView_2() {
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   const [poolPlaylist, setPoolPlaylist] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [publishError, setPublishError] = useState('');
 
   // This Seven's configuration: who it's with, whether it's still running, and which
   // playlist we draft candidate tracks from. Each Seven keeps its own pool.
@@ -105,18 +116,8 @@ export default function PlaylistView_2() {
   // --- FETCH MAIN PLAYLIST ---
   useEffect(() => {
     if (token && activePlaylistId) {
-      fetchPlaylistDetails(token, activePlaylistId)
-        .then(async (data) => {
-          let allItems = [...data.tracks.items];
-          let nextUrl = data.tracks.next;
-          while (nextUrl) {
-            const res = await fetch(nextUrl, { headers: { Authorization: `Bearer ${token}` } });
-            const nextData = await res.json();
-            allItems = [...allItems, ...nextData.items];
-            nextUrl = nextData.next;
-          }
-          setPlaylist({ ...data, tracks: { ...data.tracks, items: allItems } });
-        })
+      fetchEntirePlaylist(token, activePlaylistId)
+        .then(setPlaylist)
         .catch(console.error);
     }
   }, [token, activePlaylistId]);
@@ -124,18 +125,8 @@ export default function PlaylistView_2() {
   // --- FETCH POOL PLAYLIST ---
   useEffect(() => {
     if (token && poolPlaylistId && isWorkspaceOpen) {
-      fetchPlaylistDetails(token, poolPlaylistId)
-        .then(async (data) => {
-          let allItems = [...data.tracks.items];
-          let nextUrl = data.tracks.next;
-          while (nextUrl) {
-            const res = await fetch(nextUrl, { headers: { Authorization: `Bearer ${token}` } });
-            const nextData = await res.json();
-            allItems = [...allItems, ...nextData.items];
-            nextUrl = nextData.next;
-          }
-          setPoolPlaylist({ ...data, tracks: { ...data.tracks, items: allItems } });
-        })
+      fetchEntirePlaylist(token, poolPlaylistId)
+        .then(setPoolPlaylist)
         .catch(console.error);
     }
   }, [token, poolPlaylistId, isWorkspaceOpen]);
@@ -284,22 +275,23 @@ const turnIndicator = useMemo(() => {
   // --- PUBLISH HANDLER ---
   const handlePublishSeven = async () => {
     if (stagedSeven.length !== 7 || !token || !activePlaylistId) return;
+    setPublishError('');
     setIsPublishing(true);
     try {
       const uris = [...stagedSeven].reverse().map(t => t.uri);
-      
-      await fetch(`https://api.spotify.com/v1/playlists/${activePlaylistId}/tracks`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uris })
-      });
-      
-      const updatedData = await fetchPlaylistDetails(token, activePlaylistId);
-      setPlaylist(updatedData);
+
+      // addTracksToPlaylist throws on a non-2xx response. The draft is only cleared once
+      // Spotify has confirmed the tracks landed -- it's persisted state, and losing seven
+      // carefully chosen tracks to a transient error is exactly the wrong outcome.
+      await addTracksToPlaylist(token, activePlaylistId, uris);
+
+      // Reload every page, not just the first 100, so the view doesn't lose older batches
+      setPlaylist(await fetchEntirePlaylist(token, activePlaylistId));
       clearStagedTracks();
       setIsWorkspaceOpen(false);
     } catch (err) {
       console.error("Failed to publish 7", err);
+      setPublishError("Couldn't publish -- Spotify rejected the request. Your seven tracks are still staged.");
     } finally {
       setIsPublishing(false);
     }
@@ -408,9 +400,13 @@ const turnIndicator = useMemo(() => {
           {/* PANE 2: 7UP STAGING AREA (DRAG & DROP, PERFECT FLEX-FIT) */}
           <div className="flex flex-col h-full bg-brand-gradient/10 border border-[var(--brand-mid)]/30 rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(249,19,98,0.1)] relative min-h-0">
             <div className="p-4 border-b border-[var(--brand-mid)]/20 bg-black/40 flex justify-between items-center shrink-0">
-              <div>
+              <div className="min-w-0">
                 <h2 className="font-bold text-white tracking-wide text-brand-gradient">7up Staging</h2>
-                <p className="text-xs text-[var(--brand-light)]">{stagedSeven.length}/7 Selected</p>
+                {publishError ? (
+                  <p className="text-xs text-red-400 font-medium leading-snug">{publishError}</p>
+                ) : (
+                  <p className="text-xs text-[var(--brand-light)]">{stagedSeven.length}/7 Selected</p>
+                )}
               </div>
               <button 
                 disabled={stagedSeven.length !== 7 || isPublishing}

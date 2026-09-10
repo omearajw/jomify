@@ -5,6 +5,8 @@
   --brand-start: #ff8e44;
   --brand-mid: #f91362;
   --brand-end: #35126a;
+  /* A soft tint for secondary text sitting on brand-coloured surfaces */
+  --brand-light: #ffa3c4;
 }
 
 @layer base {
