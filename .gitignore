@@ -32,3 +32,5 @@ Jomify-Icon.psd
 features.txt
 
 *.f0
+
+.env*

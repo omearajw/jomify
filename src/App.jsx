@@ -13,11 +13,13 @@ import Browse from './views/Browse/Browse';
 import Artist from './views/Artist/Artist';
 import Album from './views/Album/Album';
 import LikedSongsView from './views/Library/LikedSongsView';
+import SevensSettings from './views/Sevens/SevensSettings';
 import { BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// Moved outside the component to prevent useEffect dependency triggers
-const SEVEN_PLAYLIST_IDS = ['5kJPA0nczW9zoQs7jcQ5ok', '2KmKTCZFO9wofPRwqJ3y5F'];
+// The Sevens these used to be hardcoded as. They are migrated into the configurable
+// `sevens` store on first run and are never read again afterwards.
+const LEGACY_SEVEN_PLAYLIST_IDS = ['5kJPA0nczW9zoQs7jcQ5ok', '2KmKTCZFO9wofPRwqJ3y5F'];
 
 function App() {
   const { 
@@ -25,7 +27,8 @@ function App() {
     setToken, setRefreshToken, setProfile, setPlaylists, 
     currentView, setCurrentView,
     pinnedItems, playlists, albums, customFolders, 
-    activePlaylistId, setActivePlaylistId, navigateToAlbum, setContextMenu
+    activePlaylistId, setActivePlaylistId, navigateToAlbum, setContextMenu,
+    sevens, seedLegacySevens
   } = useUserStore();
   
   const { setPlayer, setDeviceId, setPlaybackState } = usePlayerStore();
@@ -37,6 +40,13 @@ function App() {
   const [showStats, setShowStats] = useState(false);
   const [statsData, setStatsData] = useState({ tracks: [], artists: [], loading: false });
   const [sevenTurns, setSevenTurns] = useState([]);
+
+  // --- ONE-TIME MIGRATION OF THE OLD HARDCODED SEVENS ---
+  useEffect(() => {
+    // The pool playlist used to be a single global localStorage key shared by every Seven
+    const legacyPool = localStorage.getItem('jomify_pool_playlist_id') || '';
+    seedLegacySevens(LEGACY_SEVEN_PLAYLIST_IDS, legacyPool);
+  }, [seedLegacySevens]);
 
   // --- THE INFINITE SESSION HEARTBEAT ---
   useEffect(() => {
@@ -191,12 +201,21 @@ function App() {
   }, [token, pinnedItems, setPlaylists]);
 
   // --- SEVENS TURN CHECKER (HIGH-SPEED OFFSET METHOD) ---
+  // Only active Sevens are polled. A finished Seven is still cross-referenced for duplicate
+  // tracks inside the workspace, but it must never nag you that it is your turn.
   useEffect(() => {
     if (!token || !profile) return;
-    
+
+    const activeSevens = sevens.filter(s => s.active);
+    if (activeSevens.length === 0) {
+      setSevenTurns([]);
+      return;
+    }
+
     const checkSevens = async () => {
       const turns = [];
-      for (const id of SEVEN_PLAYLIST_IDS) {
+      for (const seven of activeSevens) {
+        const id = seven.playlistId;
         try {
           // 1. Fetch only metadata and total track count (super lightweight)
           const res = await fetch(`https://api.spotify.com/v1/playlists/${id}?fields=id,name,images,tracks.total`, { 
@@ -205,6 +224,7 @@ function App() {
           const data = await res.json();
           
           if (data.tracks && data.tracks.total > 0) {
+            data.partnerName = seven.partnerName || null;
             // 2. Fetch EXACTLY the last track to check who added it
             const offset = data.tracks.total - 1;
             const trackRes = await fetch(`https://api.spotify.com/v1/playlists/${id}/tracks?limit=1&offset=${offset}`, { 
@@ -219,6 +239,7 @@ function App() {
             }
           } else if (data.tracks && data.tracks.total === 0) {
             // Empty playlist - ready for the first drop
+            data.partnerName = seven.partnerName || null;
             turns.push(data);
           }
         } catch (e) {
@@ -229,7 +250,7 @@ function App() {
     };
 
     checkSevens();
-  }, [token, profile]);
+  }, [token, profile, sevens]);
 
   // --- FETCH STATS ON DEMAND ---
   const toggleAndLoadStats = async () => {
@@ -409,7 +430,9 @@ function App() {
                           )}
                           <div>
                             <h3 className="text-white font-bold text-lg md:text-xl">It's your turn in {playlist.name}!</h3>
-                            <p className="text-[var(--brand-light)] font-medium text-xs md:text-sm">Your collaborator just finished their drop. Click to open the workspace.</p>
+                            <p className="text-[var(--brand-light)] font-medium text-xs md:text-sm">
+                              {playlist.partnerName ? `${playlist.partnerName} just finished their drop.` : 'Your collaborator just finished their drop.'} Click to open the workspace.
+                            </p>
                           </div>
                         </div>
                         <button className="bg-brand-gradient text-white px-5 py-2 rounded-full text-sm font-bold shadow-brand-glow group-hover:scale-105 transition-transform hidden sm:block">
@@ -531,7 +554,7 @@ function App() {
 
             {currentView === 'library' && <Library />}
             {currentView === 'playlist' && (
-              SEVEN_PLAYLIST_IDS.includes(activePlaylistId) 
+              sevens.some(s => s.playlistId === activePlaylistId)
                 ? <PlaylistView_2 /> 
                 : <PlaylistView />
             )}
@@ -540,6 +563,7 @@ function App() {
             {currentView === 'album' && <Album />}
             {currentView === 'liked-songs' && <LikedSongsView />}
             {currentView === 'lyrics' && <LyricsView />}
+            {currentView === 'sevens' && <SevensSettings />}
           </>
         ) : (
           <div className="flex items-center justify-center h-full relative z-10">

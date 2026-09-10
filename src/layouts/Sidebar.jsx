@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Home, Library, Disc3, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus, FolderPlus } from 'lucide-react';
+import { Home, Library, Disc3, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus, FolderPlus, Users } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { addTracksToPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../services/spotify/api';
 import PlaylistFormDialog from '../components/PlaylistFormDialog';
@@ -163,6 +163,7 @@ export default function Sidebar() {
     { id: 'home', label: 'Home', icon: Home },
     { id: 'browse', label: 'Browse', icon: Disc3 },
     { id: 'library', label: 'Your Library', icon: Library },
+    { id: 'sevens', label: 'Sevens', icon: Users },
   ];
 
   return (

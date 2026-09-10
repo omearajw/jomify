@@ -416,3 +416,64 @@ export async function saveAlbumToLibrary(token, albumId) {
 
   if (!response.ok) throw new Error('Failed to save album to library');
 }
+// ==========================================
+// THE SEVENS ENGINE
+// ==========================================
+
+// Pulls every track of a Seven with just the fields the Sevens engine needs.
+// Using `fields` keeps these payloads tiny, which matters because we cross-reference
+// several playlists at once whenever the workspace opens.
+export async function fetchSevenTrackMeta(token, playlistId) {
+  const fields = "next,items(added_by(id),track(uri,name,artists(name)))";
+  let url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100&fields=${encodeURIComponent(fields)}`;
+  const items = [];
+
+  while (url) {
+    const response = await spotifyFetch(url, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch Seven track metadata");
+    const data = await response.json();
+
+    (data.items || []).forEach((item) => {
+      if (!item?.track?.uri) return;
+      items.push({
+        uri: item.track.uri,
+        name: item.track.name,
+        artists: (item.track.artists || []).map(a => a.name),
+        addedById: item.added_by?.id || null
+      });
+    });
+
+    url = data.next;
+  }
+
+  return items;
+}
+
+export async function fetchSpotifyUser(token, userId) {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/users/${encodeURIComponent(userId)}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  if (!response.ok) throw new Error("Failed to fetch Spotify user");
+  return await response.json();
+}
+
+// Works out who a Seven is *with*: everyone who has ever added a track except you.
+// Returns the candidates in order of how many tracks they contributed, so the most
+// likely partner is first.
+export function detectPartnerCandidates(trackMeta, myUserId) {
+  const counts = new Map();
+  trackMeta.forEach(({ addedById }) => {
+    if (!addedById || addedById === myUserId) return;
+    counts.set(addedById, (counts.get(addedById) || 0) + 1);
+  });
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, count]) => ({ id, count }));
+}

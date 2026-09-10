@@ -46,8 +46,56 @@ export const useUserStore = create(
         }
       }),
 
+      // --- THE SEVENS ENGINE ---
+      // Each entry: { playlistId, partnerId, partnerName, partnerLocked, active, poolPlaylistId }
+      // `active` false means the Seven is finished: it is still cross-referenced for duplicate
+      // tracks, but it never prompts you that it is your turn.
+      sevens: [],
+      sevensSeeded: false,
+
+      addSeven: (playlistId) => set((state) => {
+        if (!playlistId || state.sevens.some(s => s.playlistId === playlistId)) return state;
+        return {
+          sevens: [...state.sevens, {
+            playlistId,
+            partnerId: null,
+            partnerName: null,
+            partnerLocked: false,
+            active: true,
+            poolPlaylistId: ''
+          }]
+        };
+      }),
+
+      removeSeven: (playlistId) => set((state) => ({
+        sevens: state.sevens.filter(s => s.playlistId !== playlistId)
+      })),
+
+      updateSeven: (playlistId, patch) => set((state) => ({
+        sevens: state.sevens.map(s => s.playlistId === playlistId ? { ...s, ...patch } : s)
+      })),
+
+      // One-time migration for the Sevens that used to be hardcoded in App.jsx
+      seedLegacySevens: (legacyIds, legacyPoolPlaylistId) => set((state) => {
+        if (state.sevensSeeded) return state;
+        const existing = new Set(state.sevens.map(s => s.playlistId));
+        const seeded = legacyIds
+          .filter(id => !existing.has(id))
+          .map(id => ({
+            playlistId: id,
+            partnerId: null,
+            partnerName: null,
+            partnerLocked: false,
+            active: true,
+            poolPlaylistId: legacyPoolPlaylistId || ''
+          }));
+        return { sevens: [...state.sevens, ...seeded], sevensSeeded: true };
+      }),
+
       createFolder: (name) => set((state) => ({ 
-        customFolders: [...state.customFolders, { id: `folder-${Date.now()}`, name, playlistIds: [] }] 
+        // The random suffix matters: Date.now() alone collides when two folders are created
+        // in the same millisecond, and colliding ids make every folder action hit both.
+        customFolders: [...state.customFolders, { id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name, playlistIds: [] }] 
       })),
       
       deleteFolder: (folderId) => set((state) => ({ 
@@ -55,7 +103,6 @@ export const useUserStore = create(
         pinnedItems: state.pinnedItems.filter(p => p.id !== folderId) // Remove from pins if deleted
       })),
 
-      stagedSeven: [],
       addStagedTrack: (track) => set((state) => {
         if (state.stagedSeven.length >= 7) return state;
         return { stagedSeven: [...state.stagedSeven, track] };
@@ -69,6 +116,15 @@ export const useUserStore = create(
 
       setStagedSeven: (tracks) => set({ stagedSeven: tracks }),
       
+      addPlaylistToFolder: (folderId, playlistId) => set((state) => ({
+        customFolders: state.customFolders.map(f => {
+          // Drop the item from any folder it already lives in so it never appears twice
+          const withoutItem = { ...f, playlistIds: f.playlistIds.filter(id => id !== playlistId) };
+          if (f.id !== folderId) return withoutItem;
+          return { ...withoutItem, playlistIds: [...withoutItem.playlistIds, playlistId] };
+        })
+      })),
+
       removePlaylistFromFolder: (folderId, playlistId) => set((state) => ({
         customFolders: state.customFolders.map(f => 
           f.id === folderId ? { ...f, playlistIds: f.playlistIds.filter(id => id !== playlistId) } : f
@@ -251,7 +307,9 @@ export const useUserStore = create(
         queueOrder: state.queueOrder,
         manuallyQueuedTracks: state.manuallyQueuedTracks,
         playlistSortSettings: state.playlistSortSettings,
-        stagedSeven : state.stagedSeven
+        stagedSeven : state.stagedSeven,
+        sevens: state.sevens,
+        sevensSeeded: state.sevensSeeded
       }), 
     }
   )

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useUserStore } from '../../store/userStore'; 
 import { usePlayerStore } from '../../store/playerStore';
-import { fetchPlaylistDetails, playPlaylistTrack, fetchUserPlaylists } from '../../services/spotify/api';
+import { fetchPlaylistDetails, playPlaylistTrack, fetchUserPlaylists, fetchSevenTrackMeta } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Play, X, LayoutPanelLeft, ArrowRight, Loader2, Disc3 } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
@@ -63,7 +63,7 @@ export default function PlaylistView_2() {
   const { 
     token, activePlaylistId, playlists, profile,
     stagedSeven, addStagedTrack, removeStagedTrack, clearStagedTracks, setStagedSeven,
-    navigateToArtist, navigateToAlbum
+    navigateToArtist, navigateToAlbum, sevens, updateSeven
   } = useUserStore();
   
   const { deviceId, playbackState } = usePlayerStore();
@@ -71,9 +71,23 @@ export default function PlaylistView_2() {
   
   // Workspace States
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
-  const [poolPlaylistId, setPoolPlaylistId] = useState(() => localStorage.getItem('jomify_pool_playlist_id') || '');
   const [poolPlaylist, setPoolPlaylist] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
+
+  // This Seven's configuration: who it's with, whether it's still running, and which
+  // playlist we draft candidate tracks from. Each Seven keeps its own pool.
+  const thisSeven = useMemo(
+    () => sevens.find(s => s.playlistId === activePlaylistId) || null,
+    [sevens, activePlaylistId]
+  );
+  const poolPlaylistId = thisSeven?.poolPlaylistId || '';
+  const setPoolPlaylistId = (id) => {
+    if (activePlaylistId) updateSeven(activePlaylistId, { poolPlaylistId: id });
+  };
+
+  // Tracks already sent to THIS partner on any of your other Sevens with them.
+  // Tagged with the partner it was gathered for so it is never read against a different one.
+  const [crossSevenHistory, setCrossSevenHistory] = useState({ partnerId: null, matches: {} });
   
   // Drag & Drop State
   const [draggedIdx, setDraggedIdx] = useState(null);
@@ -110,7 +124,6 @@ export default function PlaylistView_2() {
   // --- FETCH POOL PLAYLIST ---
   useEffect(() => {
     if (token && poolPlaylistId && isWorkspaceOpen) {
-      localStorage.setItem('jomify_pool_playlist_id', poolPlaylistId);
       fetchPlaylistDetails(token, poolPlaylistId)
         .then(async (data) => {
           let allItems = [...data.tracks.items];
@@ -160,6 +173,61 @@ export default function PlaylistView_2() {
 
     fetchCollaborators();
   }, [playlist?.tracks.items, token]);
+
+  // --- CROSS-SEVEN DUPLICATE ENGINE ---
+  // Sevens with different people are completely independent: a track you gave one person is
+  // fair game for another. So we only cross-reference the OTHER Sevens that share this one's
+  // partner. Finished Sevens still count -- a track you sent them two years ago is still a
+  // repeat -- so we deliberately do not filter on `active` here.
+  const partnerSevens = useMemo(() => {
+    if (!thisSeven?.partnerId) return [];
+    return sevens.filter(s => s.playlistId !== activePlaylistId && s.partnerId === thisSeven.partnerId);
+  }, [sevens, thisSeven, activePlaylistId]);
+
+  useEffect(() => {
+    if (!token || !isWorkspaceOpen || partnerSevens.length === 0) return;
+
+    const partnerId = thisSeven?.partnerId || null;
+    let cancelled = false;
+
+    const knownPlaylists = useUserStore.getState().playlists;
+
+    Promise.all(
+      partnerSevens.map(async (seven) => ({
+        name: knownPlaylists.find(p => p.id === seven.playlistId)?.name || 'another Seven',
+        meta: await fetchSevenTrackMeta(token, seven.playlistId).catch(() => [])
+      }))
+    )
+      .then((results) => {
+        if (cancelled) return;
+        const matches = {};
+        results.forEach(({ name, meta }) => {
+          meta.forEach(({ uri }) => {
+            if (uri && !matches[uri]) matches[uri] = { playlistName: name };
+          });
+        });
+        setCrossSevenHistory({ partnerId, matches });
+      })
+      .catch((err) => {
+        console.error('Cross-Seven duplicate check failed:', err);
+        // Still mark the check as settled so the pane stops showing a spinner forever
+        if (!cancelled) setCrossSevenHistory({ partnerId, matches: {} });
+      });
+
+    return () => { cancelled = true; };
+  }, [token, isWorkspaceOpen, partnerSevens, thisSeven?.partnerId]);
+
+  const isCheckingHistory = partnerSevens.length > 0 && crossSevenHistory.partnerId !== thisSeven?.partnerId;
+
+  const crossSevenMatches = useMemo(() => {
+    if (!thisSeven?.partnerId || crossSevenHistory.partnerId !== thisSeven.partnerId) return {};
+    return crossSevenHistory.matches;
+  }, [crossSevenHistory, thisSeven?.partnerId]);
+
+  const partnerDisplayName = useMemo(() => {
+    if (!thisSeven?.partnerId) return null;
+    return collaborators[thisSeven.partnerId]?.display_name || thisSeven.partnerName || thisSeven.partnerId;
+  }, [thisSeven, collaborators]);
 
   // --- DYNAMIC BATCH CHUNKING (GROUP BY USER) ---
   const chunks = useMemo(() => {
@@ -442,6 +510,21 @@ const turnIndicator = useMemo(() => {
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
+
+              {/* Why tracks below might be dimmed */}
+              {!thisSeven?.partnerId ? (
+                <p className="text-[11px] font-medium text-amber-400/80 leading-snug">
+                  No partner set for this Seven, so tracks you've already sent them elsewhere can't be flagged. Set one in Sevens settings.
+                </p>
+              ) : isCheckingHistory ? (
+                <p className="text-[11px] font-medium text-neutral-500 flex items-center gap-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Checking what you've already sent {partnerDisplayName}…
+                </p>
+              ) : partnerSevens.length > 0 ? (
+                <p className="text-[11px] font-medium text-neutral-500 leading-snug">
+                  Cross-checked against {partnerSevens.length} other Seven{partnerSevens.length === 1 ? '' : 's'} with {partnerDisplayName}.
+                </p>
+              ) : null}
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {!poolPlaylistId ? (
@@ -456,8 +539,12 @@ const turnIndicator = useMemo(() => {
                   const isDuplicate = mainPlaylistUris.has(item.track.uri);
                   const isStaged = stagedSeven.some(t => t.uri === item.track.uri);
                   const isCurrentTrack = currentPlayingTrack && (item.track.uri === currentPlayingTrack.uri);
+                  // Already given to this same partner on one of your other Sevens. Not blocked --
+                  // just pushed into the background, with the reason spelled out on the row.
+                  const sentBefore = !isDuplicate ? crossSevenMatches[item.track.uri] : null;
                   
                   let stateClasses = "hover:bg-white/5 cursor-pointer";
+                  if (sentBefore) stateClasses = "opacity-40 hover:opacity-100 hover:bg-white/5 cursor-pointer";
                   if (isDuplicate) stateClasses = "border border-red-500/50 bg-red-500/10 cursor-not-allowed opacity-50";
                   if (isStaged) stateClasses = "opacity-30 cursor-not-allowed bg-black/50";
 
@@ -491,6 +578,11 @@ const turnIndicator = useMemo(() => {
                           {item.track.name}
                         </span>
                         <span className="text-xs text-neutral-500 truncate">{item.track.artists.map(a => a.name).join(', ')}</span>
+                        {sentBefore && (
+                          <span className="text-[10px] font-medium text-amber-400/90 truncate">
+                            Already sent to {partnerDisplayName} in {sentBefore.playlistName}
+                          </span>
+                        )}
                       </div>
                       {isDuplicate && <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest px-2 shrink-0">Used</span>}
                       {isStaged && <span className="text-[10px] font-bold text-[var(--brand-mid)] uppercase tracking-widest px-2 shrink-0">Staged</span>}
