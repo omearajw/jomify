@@ -111,14 +111,11 @@ export default function PlaylistView() {
   const [syncStatusText, setSyncStatusText] = useState('');
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [userPlaylists, setUserPlaylists] = useState([]);
-  const [selectedCheckPlaylistIds, setSelectedCheckPlaylistIds] = useState(() => {
-    try {
-      const saved = localStorage.getItem('jomify_unadded_check_playlists');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  // This list used to live in its own localStorage key, which made it the one piece of real user
+  // config that cross-device sync would have missed. It now rides along in the store like
+  // everything else.
+  const selectedCheckPlaylistIds = useUserStore((s) => s.unaddedCheckPlaylists);
+  const setUnaddedCheckPlaylists = useUserStore((s) => s.setUnaddedCheckPlaylists);
 
   const isUnaddedSongsPlaylist = playlist?.name?.toLowerCase() === 'unadded songs';
 
@@ -131,11 +128,9 @@ export default function PlaylistView() {
   }, [configModalOpen, token]);
 
   const togglePlaylistSelection = (id) => {
-    setSelectedCheckPlaylistIds(prev => {
-      const updated = prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id];
-      localStorage.setItem('jomify_unadded_check_playlists', JSON.stringify(updated));
-      return updated;
-    });
+    setUnaddedCheckPlaylists(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
   };
 
   const fetchAllPages = async (initialUrl) => {

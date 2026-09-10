@@ -10,11 +10,13 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "test:merge": "node scripts/merge-cases.mjs",
     "preview": "vite preview",
     "build-app": "vite build && electron-builder -w"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.1",
+    "@upstash/redis": "^1.38.4",
     "autoprefixer": "^10.5.0",
     "express": "^4.21.0",
     "framer-motion": "^12.40.0",

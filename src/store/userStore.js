@@ -1,8 +1,15 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, subscribeWithSelector } from 'zustand/middleware';
+import { markFolderDeleted } from '../sync/meta';
+
+// Folders carry a sparse numeric `order` rather than relying on array position, so that a
+// reorder on one device touches exactly one folder and can be merged without disturbing
+// concurrent edits to the others. The array is kept sorted by it, so every existing render site
+// that iterates customFolders keeps working unchanged.
+const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : 1);
 
 export const useUserStore = create(
-  persist(
+  subscribeWithSelector(persist(
     (set) => ({
       token: null,
       refreshToken: null,
@@ -92,16 +99,34 @@ export const useUserStore = create(
         return { sevens: [...state.sevens, ...seeded], sevensSeeded: true };
       }),
 
-      createFolder: (name) => set((state) => ({ 
-        // The random suffix matters: Date.now() alone collides when two folders are created
-        // in the same millisecond, and colliding ids make every folder action hit both.
-        customFolders: [...state.customFolders, { id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name, playlistIds: [] }] 
-      })),
-      
-      deleteFolder: (folderId) => set((state) => ({ 
-        customFolders: state.customFolders.filter(f => f.id !== folderId),
-        pinnedItems: state.pinnedItems.filter(p => p.id !== folderId) // Remove from pins if deleted
-      })),
+      createFolder: (name) => set((state) => {
+        const highestOrder = state.customFolders.reduce((max, f) => Math.max(max, f.order ?? 0), 0);
+        return {
+          customFolders: [...state.customFolders, {
+            // The random suffix matters: Date.now() alone collides when two folders are created
+            // in the same millisecond, and colliding ids make every folder action hit both.
+            // It doubles as the sync id, so it must also be unique across devices.
+            id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            name,
+            playlistIds: [],
+            parentId: null,      // reserved for nested folders; the UI is flat for now
+            order: highestOrder + 1000
+          }]
+        };
+      }),
+
+      deleteFolder: (folderId) => {
+        // THE ONLY TOMBSTONE MINT SITE IN THE APP. This is also the only code path anywhere that
+        // removes a folder from customFolders, which is what lets the sync layer record deletions
+        // explicitly instead of inferring them from a diff. Inference is the one way a false
+        // tombstone could arise, and a false tombstone is the one bug that could delete real
+        // folders on every device at once.
+        markFolderDeleted(folderId);
+        set((state) => ({
+          customFolders: state.customFolders.filter(f => f.id !== folderId),
+          pinnedItems: state.pinnedItems.filter(p => p.id !== folderId) // Remove from pins if deleted
+        }));
+      },
 
       addStagedTrack: (track) => set((state) => {
         if (state.stagedSeven.length >= 7) return state;
@@ -143,13 +168,32 @@ export const useUserStore = create(
       })),
 
       reorderFolders: (dragId, dropId) => set((state) => {
-        const newFolders = [...state.customFolders];
+        const newFolders = [...state.customFolders].sort(byOrder);
         const dragIndex = newFolders.findIndex(f => f.id === dragId);
         const dropIndex = newFolders.findIndex(f => f.id === dropId);
-        if (dragIndex === -1 || dropIndex === -1) return state;
-        
+        if (dragIndex === -1 || dropIndex === -1 || dragIndex === dropIndex) return state;
+
         const [draggedItem] = newFolders.splice(dragIndex, 1);
         newFolders.splice(dropIndex, 0, draggedItem);
+
+        // Give the moved folder an order between its new neighbours, so this reorder is a change
+        // to one folder rather than a rewrite of the whole list.
+        const before = newFolders[dropIndex - 1];
+        const after = newFolders[dropIndex + 1];
+        let order;
+        if (!before) order = (after?.order ?? 1000) - 1000;
+        else if (!after) order = (before.order ?? 0) + 1000;
+        else order = ((before.order ?? 0) + (after.order ?? 0)) / 2;
+
+        newFolders[dropIndex] = { ...draggedItem, order };
+
+        // If repeated midpoints have squeezed the gaps shut, renumber. Rare, and treated as an
+        // ordinary edit to every folder.
+        const collapsed = newFolders.some((f, i) => i > 0 && Math.abs(f.order - newFolders[i - 1].order) < 0.001);
+        if (collapsed) {
+          return { customFolders: newFolders.map((f, i) => ({ ...f, order: (i + 1) * 1000 })) };
+        }
+
         return { customFolders: newFolders };
       }),
 
@@ -184,16 +228,31 @@ export const useUserStore = create(
         refreshToken: newRefreshToken
       }),
 
-      logout: () => set({ 
-        token: null, 
+      // Soft by default. logout() fires involuntarily when a token refresh fails or expires, and
+      // wiping folders on a transient network blip is exactly the bug commit ea508a9 fixed. Only
+      // a deliberate "Disconnect Account" passes { hard: true }, and the caller is responsible
+      // for confirming the data is safely on the server first.
+      logout: ({ hard = false } = {}) => set({
+        token: null,
         refreshToken: null,
-        tokenExpiresAt: null, 
-        profile: null, 
+        tokenExpiresAt: null,
+        profile: null,
         playlists: [],
         albums: [],
         currentView: 'home',
         viewHistory: [],
-        activeFolderId: null
+        activeFolderId: null,
+        ...(hard ? {
+          customFolders: [],
+          pinnedItems: [],
+          sevens: [],
+          sevensSeeded: false,
+          stagedSeven: [],
+          playlistSortSettings: {},
+          unaddedCheckPlaylists: [],
+          likedTracks: {},
+          manuallyQueuedTracks: []
+        } : {})
       }),
 
       queueRefreshTrigger: 0,
@@ -241,6 +300,13 @@ export const useUserStore = create(
       playlistSortSettings: {},
       setPlaylistSortSettings: (playlistId, settings) => set((state) => ({
         playlistSortSettings: { ...state.playlistSortSettings, [playlistId]: settings }
+      })),
+
+      // The "unadded songs" cross-check list. This used to live in its own localStorage key,
+      // which meant it was the one piece of real user config the sync layer would have missed.
+      unaddedCheckPlaylists: [],
+      setUnaddedCheckPlaylists: (ids) => set((state) => ({
+        unaddedCheckPlaylists: typeof ids === 'function' ? ids(state.unaddedCheckPlaylists) : ids
       })),
 
       setProfile: (userData) => set({ profile: userData }),
@@ -296,12 +362,43 @@ export const useUserStore = create(
     }),
     {
       name: 'jomify-storage',
-      partialize: (state) => ({ 
-        token: state.token, 
+      version: 1,
+
+      // Zustand treats state stored without a version as version 0, so this runs exactly once on
+      // an existing install. It only ever ADDS fields -- nothing here can remove a folder.
+      migrate: (persisted, fromVersion) => {
+        if (!persisted || fromVersion >= 1) return persisted;
+
+        const folders = Array.isArray(persisted.customFolders) ? persisted.customFolders : [];
+
+        // Array position becomes an explicit sort key, preserving today's visual order exactly
+        const customFolders = folders.map((folder, index) => ({
+          ...folder,
+          parentId: folder.parentId ?? null,
+          order: typeof folder.order === 'number' ? folder.order : (index + 1) * 1000
+        }));
+
+        // Adopt the list that used to live in its own localStorage key. The old key is left in
+        // place, unread, as a rollback path for one release.
+        let unaddedCheckPlaylists = persisted.unaddedCheckPlaylists ?? [];
+        if (!Array.isArray(unaddedCheckPlaylists) || unaddedCheckPlaylists.length === 0) {
+          try {
+            const legacy = localStorage.getItem('jomify_unadded_check_playlists');
+            if (legacy) unaddedCheckPlaylists = JSON.parse(legacy) ?? [];
+          } catch {
+            unaddedCheckPlaylists = [];
+          }
+        }
+
+        return { ...persisted, customFolders, unaddedCheckPlaylists };
+      },
+
+      partialize: (state) => ({
+        token: state.token,
         refreshToken: state.refreshToken,
         tokenExpiresAt: state.tokenExpiresAt,
         savedVolume: state.savedVolume,
-        customFolders: state.customFolders, 
+        customFolders: state.customFolders,
         libraryGridSize: state.libraryGridSize,
         pinnedItems: state.pinnedItems, // SAVES YOUR SANDBOX
         queueOrder: state.queueOrder,
@@ -309,8 +406,9 @@ export const useUserStore = create(
         playlistSortSettings: state.playlistSortSettings,
         stagedSeven : state.stagedSeven,
         sevens: state.sevens,
-        sevensSeeded: state.sevensSeeded
-      }), 
+        sevensSeeded: state.sevensSeeded,
+        unaddedCheckPlaylists: state.unaddedCheckPlaylists
+      }),
     }
-  )
+  ))
 );

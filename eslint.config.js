@@ -18,4 +18,12 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // Vercel serverless functions, the Electron entry point and the test scripts all run in
+    // Node, not the browser, so they need Node globals (process, console, Buffer).
+    files: ['api/**/*.{js,mjs}', 'scripts/**/*.{js,mjs}', 'main.cjs'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 ])

@@ -14,6 +14,7 @@ import Artist from './views/Artist/Artist';
 import Album from './views/Album/Album';
 import LikedSongsView from './views/Library/LikedSongsView';
 import SevensSettings from './views/Sevens/SevensSettings';
+import * as syncEngine from './sync/engine';
 import { BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -41,12 +42,27 @@ function App() {
   const [statsData, setStatsData] = useState({ tracks: [], artists: [], loading: false });
   const [sevenTurns, setSevenTurns] = useState([]);
 
-  // --- ONE-TIME MIGRATION OF THE OLD HARDCODED SEVENS ---
+  // --- CROSS-DEVICE SYNC ---
+  // Keyed on profile.id rather than on store hydration: `profile` is not persisted and arrives a
+  // round trip after start-up, so there is a window on every launch where folders exist locally
+  // but the account they belong to is still unknown. Syncing before then would be anonymous.
   useEffect(() => {
-    // The pool playlist used to be a single global localStorage key shared by every Seven
-    const legacyPool = localStorage.getItem('jomify_pool_playlist_id') || '';
-    seedLegacySevens(LEGACY_SEVEN_PLAYLIST_IDS, legacyPool);
-  }, [seedLegacySevens]);
+    if (!token || !profile?.id) return;
+    let cancelled = false;
+
+    syncEngine.start(profile.id).finally(() => {
+      if (cancelled) return;
+
+      // The legacy Sevens seed is deliberately deferred until the first sync has settled. On a
+      // fresh device, seeding first would recreate the old hardcoded Sevens and push them up,
+      // resurrecting ones that had been deliberately removed. If sync is unavailable, this still
+      // runs -- seedLegacySevens is itself guarded by the sevensSeeded flag.
+      const legacyPool = localStorage.getItem('jomify_pool_playlist_id') || '';
+      seedLegacySevens(LEGACY_SEVEN_PLAYLIST_IDS, legacyPool);
+    });
+
+    return () => { cancelled = true; syncEngine.stop(); };
+  }, [token, profile?.id, seedLegacySevens]);
 
   // --- THE INFINITE SESSION HEARTBEAT ---
   useEffect(() => {
