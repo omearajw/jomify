@@ -1,64 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { usePlayerStore } from '../../store/playerStore';
 import { Mic2, AlertCircle, Sparkles } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import TrackArtists from '../../components/TrackArtists';
-
-// --- LRC TIME PARSER ---
-const parseLrc = (lrcString) => {
-  const lines = lrcString.split('\n');
-  const synced = [];
-  const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
-  
-  lines.forEach(line => {
-    const match = timeRegex.exec(line);
-    if (match) {
-      const min = parseInt(match[1], 10);
-      const sec = parseInt(match[2], 10);
-      const msRaw = match[3];
-      const ms = msRaw.length === 2 ? parseInt(msRaw, 10) * 10 : parseInt(msRaw, 10);
-      
-      const timeMs = (min * 60000) + (sec * 1000) + ms;
-      const text = line.replace(timeRegex, '').trim();
-      
-      synced.push({ timeMs, text });
-    }
-  });
-  
-  return synced;
-};
-
-// lrclib returns several versions of a song; prefer the one whose length matches what's
-// actually playing, within a tolerance. Falls back to the first hit when nothing is close.
-const pickClosestByDuration = (results, durationSec) => {
-  if (!durationSec) return results[0];
-  let best = results[0];
-  let bestDiff = Infinity;
-  for (const candidate of results) {
-    if (typeof candidate.duration !== 'number') continue;
-    const diff = Math.abs(candidate.duration - durationSec);
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      best = candidate;
-    }
-  }
-  return bestDiff <= 10 ? best : results[0];
-};
-
-// --- AESTHETIC INSTRUMENTAL WAVEFORM ---
-const AudioWaveform = ({ isActive }) => (
-  <motion.div 
-    initial={{ opacity: 0, scale: 0.8 }}
-    animate={{ opacity: isActive ? 1 : 0.3, scale: isActive ? 1 : 0.9 }}
-    className="flex items-end justify-center space-x-2 h-12 my-2"
-  >
-    <motion.div animate={isActive ? { height: ["30%", "80%", "40%", "100%", "30%"] } : { height: ["15%", "25%", "15%"] }} transition={{ repeat: Infinity, duration: isActive ? 1.2 : 3.5, ease: "easeInOut" }} className="w-2 rounded-full bg-white/40" />
-    <motion.div animate={isActive ? { height: ["50%", "100%", "30%", "90%", "50%"] } : { height: ["25%", "35%", "25%"] }} transition={{ repeat: Infinity, duration: isActive ? 1.5 : 4.0, ease: "easeInOut" }} className={`w-2 rounded-full transition-colors duration-700 ${isActive ? 'bg-[var(--brand-mid)] shadow-[0_0_15px_var(--brand-mid)]' : 'bg-white/30'}`} />
-    <motion.div animate={isActive ? { height: ["70%", "40%", "100%", "50%", "70%"] } : { height: ["35%", "45%", "35%"] }} transition={{ repeat: Infinity, duration: isActive ? 1.0 : 3.2, ease: "easeInOut" }} className={`w-2 rounded-full transition-colors duration-700 ${isActive ? 'bg-white shadow-[0_0_15px_rgba(255,255,255,0.8)]' : 'bg-white/40'}`} />
-    <motion.div animate={isActive ? { height: ["100%", "50%", "80%", "30%", "100%"] } : { height: ["20%", "30%", "20%"] }} transition={{ repeat: Infinity, duration: isActive ? 1.4 : 3.8, ease: "easeInOut" }} className={`w-2 rounded-full transition-colors duration-700 ${isActive ? 'bg-[var(--brand-mid)] shadow-[0_0_15px_var(--brand-mid)]' : 'bg-white/30'}`} />
-    <motion.div animate={isActive ? { height: ["40%", "90%", "50%", "100%", "40%"] } : { height: ["15%", "20%", "15%"] }} transition={{ repeat: Infinity, duration: isActive ? 1.1 : 4.2, ease: "easeInOut" }} className="w-2 rounded-full bg-white/40" />
-  </motion.div>
-);
+import AudioWaveform from '../../components/AudioWaveform';
+import { parseLrc, pickClosestByDuration, LYRIC_LEAD_IN_MS } from '../../lib/lrc';
 
 export default function LyricsView() {
   const { playbackState, player } = usePlayerStore();
@@ -102,7 +48,7 @@ export default function LyricsView() {
       const checkLineIndex = (pos) => {
         const lyrics = syncedLyricsRef.current;
         if (!lyrics || lyrics.length === 0) return;
-        const idx = lyrics.findLastIndex(l => l.timeMs <= pos + 300);
+        const idx = lyrics.findLastIndex(l => l.timeMs <= pos + LYRIC_LEAD_IN_MS);
         setActiveIndex(prev => (prev !== idx ? idx : prev));
       };
 

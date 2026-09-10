@@ -1,19 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { playSingleTrack, checkTracksLiked, fetchMoreTracks, spotifyFetch } from '../../services/spotify/api';
+import { playSingleTrack, checkTracksLiked, fetchMoreTracks, spotifyFetch, saveAlbumToLibrary, unsaveAlbum } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
-import { Play } from 'lucide-react';
+import { Plus, Check, Loader2 } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
-
-// Safe String comparison for the Green Highlight
-const cleanString = (str) => {
-  if (!str) return '';
-  return str.split(/[-(]/)[0].toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-};
+import TrackArtists from '../../components/TrackArtists';
+import { cleanString } from '../../utils/strings';
+import { rowButtonProps } from '../../utils/a11y';
 
 export default function Album() {
-  const { token, setLikedTracks, currentAlbumId, navigateToArtist, setContextMenu } = useUserStore();
+  const { token, setLikedTracks, currentAlbumId, setContextMenu, albums, setAlbums, removeAlbumFromLibrary } = useUserStore();
   const { deviceId, playbackState } = usePlayerStore();
   const [album, setAlbum] = useState(null);
   const [tracks, setTracks] = useState([]);
@@ -79,9 +76,35 @@ export default function Album() {
     playSingleTrack(token, deviceId, trackUri).catch(console.error);
   };
 
-  const handleArtistClick = (e, artistId) => {
-    e.stopPropagation();
-    navigateToArtist(artistId);
+  // --- SAVE / UNSAVE ---
+  // The helper existed in api.js from the start but nothing ever called it; there was no way to
+  // save an album from its own page.
+  const [saving, setSaving] = useState(false);
+  const isSaved = Boolean(album) && (albums || []).some(a => a.id === album.id);
+
+  const handleToggleSave = async () => {
+    if (!token || !album || saving) return;
+    setSaving(true);
+    try {
+      if (isSaved) {
+        await unsaveAlbum(token, album.id);
+        removeAlbumFromLibrary(album.id);
+      } else {
+        await saveAlbumToLibrary(token, album.id);
+        setAlbums([...(albums || []), {
+          id: album.id,
+          name: album.name,
+          images: album.images,
+          artists: album.artists,
+          type: 'album',
+          total_tracks: album.total_tracks
+        }]);
+      }
+    } catch (err) {
+      console.error('Failed to update saved album:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) {
@@ -117,21 +140,25 @@ export default function Album() {
           <div className="text-neutral-400 font-medium mb-4">
             <p>
               By{' '}
-              {album.artists?.map((artist, i) => (
-                <span key={artist.id}>
-                  <span 
-                    onClick={(e) => handleArtistClick(e, artist.id)}
-                    className="text-white hover:underline cursor-pointer ml-1"
-                  >
-                    {artist.name}
-                  </span>
-                  {i < album.artists.length - 1 ? ',' : ''}
-                </span>
-              ))}
+              <TrackArtists artists={album.artists} className="text-white" linkClassName="hover:underline" />
             </p>
             <p className="mt-2">
               {album.release_date?.split('-')[0]} • {album.total_tracks} tracks
             </p>
+            <button
+              type="button"
+              onClick={handleToggleSave}
+              disabled={saving}
+              aria-pressed={isSaved}
+              className={`mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all disabled:opacity-60 ${
+                isSaved
+                  ? 'bg-white/10 border border-white/15 text-white hover:bg-white/15'
+                  : 'bg-brand-gradient text-white shadow-brand-glow hover:scale-105'
+              }`}
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : isSaved ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              {isSaved ? 'In your library' : 'Save to library'}
+            </button>
           </div>
         </div>
       </div>
@@ -153,6 +180,7 @@ export default function Album() {
                 <div
                   key={track.id}
                   onClick={() => handleTrackPlay(track.uri)}
+                  {...rowButtonProps(() => handleTrackPlay(track.uri))}
                   onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track, sourceAlbumId: currentAlbumId }); }}
                   className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
                 >
@@ -162,19 +190,11 @@ export default function Album() {
                       <p className={`font-medium truncate ${isCurrentTrack ? 'text-brand-gradient' : 'text-white'}`}>
                         {track.name}
                       </p>
-                      <p className="text-neutral-400 text-xs truncate">
-                        {track.artists?.map((artist, i) => (
-                          <span key={artist.id}>
-                            <span 
-                              onClick={(e) => handleArtistClick(e, artist.id)}
-                              className="hover:underline hover:text-white"
-                            >
-                              {artist.name}
-                            </span>
-                            {i < track.artists.length - 1 ? ', ' : ''}
-                          </span>
-                        ))}
-                      </p>
+                      <TrackArtists
+                        artists={track.artists}
+                        className="block text-neutral-400 text-xs truncate"
+                        linkClassName="hover:underline hover:text-white"
+                      />
                     </div>
                   </div>
                   <div className="flex items-center space-x-4">

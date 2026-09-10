@@ -9,6 +9,7 @@ import { downloadBackup, parseBackup, applyBackup } from '../sync/backup';
 import { useSyncStore } from '../store/syncStore';
 import { isSafeToHardLogout } from '../sync/engine';
 import { clearMeta } from '../sync/meta';
+import { getUnfolderedItems } from '../utils/library';
 
 const TAGLINES = [
   "All my homies HATE Spotify!",
@@ -55,8 +56,7 @@ export default function Sidebar() {
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 
   const activeFolder = customFolders.find(f => f.id === isolatedFolderId);
-  const unfolderedPlaylists = playlists.filter(p => !customFolders.some(f => f.playlistIds.includes(p.id)));
-  const unfolderedAlbums = (albums || []).filter(a => !customFolders.some(f => f.playlistIds.includes(a.id)));
+  const { playlists: unfolderedPlaylists, albums: unfolderedAlbums } = getUnfolderedItems(playlists, albums, customFolders);
   
   const [tagline] = useState(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)]);
 
@@ -147,6 +147,24 @@ export default function Sidebar() {
     setExpandedFolders(prev => prev.includes(folderId) ? prev.filter(id => id !== folderId) : [...prev, folderId]);
   };
 
+  // Spring-loaded folders: hover a dragged track over a collapsed folder for a moment and it
+  // opens, so tracks can be dropped onto playlists that live inside folders without having to
+  // expand the folder first with the other hand.
+  const springTimer = useRef(null);
+  const armSpringLoad = (folderId) => {
+    if (draggedItem?.type !== 'track' || springTimer.current) return;
+    springTimer.current = setTimeout(() => {
+      setExpandedFolders(prev => (prev.includes(folderId) ? prev : [...prev, folderId]));
+      springTimer.current = null;
+    }, 600);
+  };
+  const disarmSpringLoad = () => {
+    if (springTimer.current) {
+      clearTimeout(springTimer.current);
+      springTimer.current = null;
+    }
+  };
+
   const handleCreateFolder = async ({ name }) => {
     if (!name || !name.trim()) return;
     setIsCreatingFolder(true);
@@ -230,7 +248,6 @@ export default function Sidebar() {
     if (droppedUri && droppedUri.includes('spotify:track:')) {
       try {
         await addTracksToPlaylist(token, targetPlaylistId, [droppedUri]);
-        console.log('Successfully added track via Sidebar!');
       } catch (err) {
         console.error('Failed to drop track:', err);
       }
@@ -359,10 +376,10 @@ export default function Sidebar() {
                   <div 
                     draggable="true"
                     onDragStart={(e) => handleDragStart(e, { type: 'folder', id: folder.id })}
-                    onDragOver={(e) => handleDragOver(e, folder.id)}
-                    onDragLeave={handleDragLeave}
-                    onDragEnd={handleDragEnd} 
-                    onDrop={(e) => handleDropOnFolder(e, folder.id)}
+                    onDragOver={(e) => { handleDragOver(e, folder.id); armSpringLoad(folder.id); }}
+                    onDragLeave={(e) => { handleDragLeave(e); disarmSpringLoad(); }}
+                    onDragEnd={handleDragEnd}
+                    onDrop={(e) => { disarmSpringLoad(); handleDropOnFolder(e, folder.id); }}
                     onClick={() => setIsolatedFolderId(folder.id)}
                     onContextMenu={(e) => {
                       e.preventDefault();

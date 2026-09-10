@@ -5,12 +5,8 @@ import { playSingleTrack, checkTracksLiked, spotifyFetch } from '../../services/
 import { formatTime } from '../../utils/formatTime';
 import { Play } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
-
-// Safe String comparison for the Green Highlight
-const cleanString = (str) => {
-  if (!str) return '';
-  return str.split(/[-(]/)[0].toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-};
+import { cleanString } from '../../utils/strings';
+import { rowButtonProps } from '../../utils/a11y';
 
 export default function Artist() {
   const { token, setLikedTracks, currentArtistId, setContextMenu, navigateToAlbum } = useUserStore();
@@ -128,7 +124,7 @@ export default function Artist() {
           {artist.genres?.length > 0 && (
             <div className="flex gap-2 flex-wrap">
               {artist.genres.slice(0, 5).map((genre) => (
-                <span key={genre} className="px-3 py-1 bg-brand-gradient text-white/20 text-brand-gradient text-sm rounded-full">
+                <span key={genre} className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-brand-gradient text-sm font-semibold">
                   {genre}
                 </span>
               ))}
@@ -154,6 +150,7 @@ export default function Artist() {
                   <div
                     key={track.id}
                     onClick={() => handleTrackPlay(track.uri)}
+                    {...rowButtonProps(() => handleTrackPlay(track.uri))}
                     onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track }); }}
                     className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
                   >

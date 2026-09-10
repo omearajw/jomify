@@ -5,11 +5,8 @@ import { searchSpotify, playSingleTrack, checkTracksLiked, fetchSearchPage } fro
 import { formatTime } from '../../utils/formatTime';
 import { Search, Play, ChevronLeft, Loader } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
-
-const cleanString = (str) => {
-  if (!str) return '';
-  return str.split(/[-(]/)[0].toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-};
+import { cleanString } from '../../utils/strings';
+import { rowButtonProps } from '../../utils/a11y';
 
 const MAX_CACHED_RESULTS_BYTES = 500 * 1024;
 
@@ -251,6 +248,7 @@ export default function Browse() {
                       setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track });
                     }}
                     onClick={() => handleTrackPlay(track.uri)}
+                    {...rowButtonProps(() => handleTrackPlay(track.uri))}
                     className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
                   >
                     <div className="flex items-center space-x-4 truncate pr-4">
@@ -521,6 +519,7 @@ export default function Browse() {
                         setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track });
                       }}
                       onClick={() => handleTrackPlay(track.uri)}
+                      {...rowButtonProps(() => handleTrackPlay(track.uri))}
                       className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
                     >
                       <div className="flex items-center space-x-4 truncate pr-4">

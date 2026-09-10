@@ -5,10 +5,11 @@ import { fetchInitialLikedSongs, playLikedSongsQueue, fetchMoreTracks, toggleShu
 import { formatTime } from '../../utils/formatTime';
 import { Clock3, Play, Heart, Shuffle } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
+import { rowButtonProps } from '../../utils/a11y';
 
 export default function LikedSongsView() {
   const { token, setLikedTracks } = useUserStore();
-  const { deviceId, playbackState, isShuffled, toggleOptimisticShuffle } = usePlayerStore();
+  const { deviceId, playbackState, isShuffled, setShuffle, setShufflePending } = usePlayerStore();
   const [trackData, setTrackData] = useState(null);
   
   const isFetchingMore = useRef(false);
@@ -37,7 +38,9 @@ export default function LikedSongsView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const loadRestOfTracks = async (initialNextUrl) => {
+  // A function declaration rather than a const, so the effect above can reference it without
+  // a use-before-declare: declarations hoist, and it only ever runs after mount anyway.
+  async function loadRestOfTracks(initialNextUrl) {
     isFetchingMore.current = true;
     setLoadError('');
     let nextUrl = initialNextUrl;
@@ -72,12 +75,17 @@ export default function LikedSongsView() {
       }
     }
     isFetchingMore.current = false;
-  };
+  }
 
   const handleToggleShuffle = () => {
     if (!token || !deviceId) return;
-    toggleOptimisticShuffle();
-    toggleShuffleState(token, deviceId, !isShuffled).catch(console.error);
+    const previous = isShuffled;
+    const next = !previous;
+    setShufflePending(true);
+    setShuffle(next);
+    toggleShuffleState(token, deviceId, next)
+      .catch((err) => { console.error(err); setShuffle(previous); })
+      .finally(() => setShufflePending(false));
   };
 
   const handleTrackSelect = (index) => {
@@ -131,7 +139,7 @@ export default function LikedSongsView() {
       {/* Action Bar (Play & Shuffle) */}
       <div className="flex items-center space-x-4 mb-8 pl-4">
         <div className="flex items-center space-x-4 mb-8 pl-4">
-          <button onClick={() => handleTrackSelect(0)} className="w-14 h-14 bg-brand-gradient text-white text-black rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-xl">
+          <button onClick={() => handleTrackSelect(0)} aria-label="Play Liked Songs" className="w-14 h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-xl">
             <Play className="w-6 h-6 fill-current ml-1" />
           </button>
           <button onClick={handleToggleShuffle} className={`w-10 h-10 flex items-center justify-center hover:scale-110 transition-all ${isShuffled ? 'text-brand-gradient' : 'text-neutral-400 hover:text-white'}`}>
@@ -163,7 +171,7 @@ export default function LikedSongsView() {
           );
 
           return (
-            <div key={`${track.id}-${index}`} onClick={() => handleTrackSelect(index)} className="grid grid-cols-[16px_minmax(0,1fr)_minmax(0,1fr)_80px] gap-4 px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer">
+            <div key={`${track.id}-${index}`} onClick={() => handleTrackSelect(index)} {...rowButtonProps(() => handleTrackSelect(index))} className="grid grid-cols-[16px_minmax(0,1fr)_minmax(0,1fr)_80px] gap-4 px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer">
               <div className="text-neutral-400 w-4 h-4 flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
                   <span className="text-brand-gradient font-bold animate-pulse">🔊</span>

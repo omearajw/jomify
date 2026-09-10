@@ -4,11 +4,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { fetchQueue } from '../services/spotify/api';
 import { formatTime } from '../utils/formatTime';
 import { X, ListPlus } from 'lucide-react';
-
-const cleanString = (str) => {
-  if (!str) return '';
-  return str.split(/[-(]/)[0].toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-};
+import { cleanString } from '../utils/strings';
 
 // Identity only. The old fallback compared the part of the name before any "-" or "(", so
 // "Song" and "Song - Live" by the same artist matched and the wrong row was dropped from the

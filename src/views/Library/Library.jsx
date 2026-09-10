@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
 import FolderFormDialog from '../../components/FolderFormDialog';
+import { getUnfolderedItems } from '../../utils/library';
 
 // --- VISUAL UPGRADE: Safely Bounded Right-to-Left Fan Stack ---
 const FolderStack = ({ folder, items }) => {
@@ -138,8 +139,7 @@ export default function Library() {
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 
   const activeFolder = customFolders.find(f => f.id === isolatedFolderId);
-  const unfolderedPlaylists = playlists.filter(p => !customFolders.some(f => f.playlistIds.includes(p.id)));
-  const unfolderedAlbums = (albums || []).filter(a => !customFolders.some(f => f.playlistIds.includes(a.id)));
+  const { playlists: unfolderedPlaylists, albums: unfolderedAlbums } = getUnfolderedItems(playlists, albums, customFolders);
 
   const allItems = [...playlists, ...(albums || [])];
 
@@ -275,7 +275,6 @@ export default function Library() {
     if (droppedUri && droppedUri.includes('spotify:track:')) {
       try {
         await addTracksToPlaylist(token, targetItemId, [droppedUri]);
-        console.log('Successfully added track!');
       } catch (err) {
         console.error('Failed to drop track:', err);
       }
@@ -541,7 +540,7 @@ export default function Library() {
               <button onClick={() => setFolderDialogOpen(true)} className="px-5 py-2 rounded-full border border-white/20 text-white font-bold hover:bg-white/10 transition-all flex items-center">
                 <FolderPlus className="w-4 h-4 mr-2" /> Folder
               </button>
-              <button onClick={() => setPlaylistDialogOpen(true)} className="px-5 py-2 rounded-full bg-brand-gradient text-white text-black font-bold hover:bg-brand-gradient transition-all flex items-center">
+              <button onClick={() => setPlaylistDialogOpen(true)} className="px-5 py-2 rounded-full bg-brand-gradient text-white font-bold hover:opacity-90 transition-all flex items-center">
                 <Plus className="w-4 h-4 mr-2" /> Playlist
               </button>
               <SizingControls libraryGridSize={libraryGridSize} setLibraryGridSize={setLibraryGridSize} />

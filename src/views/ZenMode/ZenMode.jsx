@@ -3,45 +3,8 @@ import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-// --- LRC TIME PARSER ---
-const parseLrc = (lrcString) => {
-  const lines = lrcString.split('\n');
-  const synced = [];
-  const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
-  
-  lines.forEach(line => {
-    const match = timeRegex.exec(line);
-    if (match) {
-      const min = parseInt(match[1], 10);
-      const sec = parseInt(match[2], 10);
-      const msRaw = match[3];
-      const ms = msRaw.length === 2 ? parseInt(msRaw, 10) * 10 : parseInt(msRaw, 10);
-      
-      const timeMs = (min * 60000) + (sec * 1000) + ms;
-      const text = line.replace(timeRegex, '').trim();
-      
-      synced.push({ timeMs, text });
-    }
-  });
-  
-  return synced;
-};
-
-// --- HYPER-CINEMATIC INSTRUMENTAL WAVEFORM ---
-const AudioWaveform = ({ isActive }) => (
-  <motion.div 
-    initial={{ opacity: 0, scale: 0.8 }}
-    animate={{ opacity: isActive ? 1 : 0.25, scale: isActive ? 1 : 0.9 }}
-    className="flex items-end justify-center space-x-3 h-16 my-4"
-  >
-    <motion.div animate={isActive ? { height: ["35%", "90%", "45%", "100%", "35%"] } : { height: ["15%", "25%", "15%"] }} transition={{ repeat: Infinity, duration: isActive ? 1.1 : 3.5, ease: "easeInOut" }} className="w-3 rounded-full bg-white/40 shadow-[0_0_15px_rgba(255,255,255,0.4)] backdrop-blur-md" />
-    <motion.div animate={isActive ? { height: ["55%", "100%", "35%", "95%", "55%"] } : { height: ["25%", "35%", "25%"] }} transition={{ repeat: Infinity, duration: isActive ? 1.4 : 4.0, ease: "easeInOut" }} className={`w-3 rounded-full backdrop-blur-md transition-colors duration-700 ${isActive ? 'bg-[var(--brand-mid)] shadow-[0_0_30px_var(--brand-mid),0_0_60px_var(--brand-mid)]' : 'bg-white/20'}`} />
-    <motion.div animate={isActive ? { height: ["75%", "45%", "100%", "55%", "75%"] } : { height: ["35%", "45%", "35%"] }} transition={{ repeat: Infinity, duration: isActive ? 0.9 : 3.2, ease: "easeInOut" }} className={`w-3 rounded-full backdrop-blur-md transition-colors duration-700 ${isActive ? 'bg-white shadow-[0_0_40px_rgba(255,255,255,1),0_0_80px_rgba(255,255,255,0.6)]' : 'bg-white/40'}`} />
-    <motion.div animate={isActive ? { height: ["100%", "55%", "85%", "35%", "100%"] } : { height: ["20%", "30%", "20%"] }} transition={{ repeat: Infinity, duration: isActive ? 1.3 : 3.8, ease: "easeInOut" }} className={`w-3 rounded-full backdrop-blur-md transition-colors duration-700 ${isActive ? 'bg-[var(--brand-mid)] shadow-[0_0_30px_var(--brand-mid),0_0_60px_var(--brand-mid)]' : 'bg-white/20'}`} />
-    <motion.div animate={isActive ? { height: ["45%", "95%", "55%", "100%", "45%"] } : { height: ["15%", "20%", "15%"] }} transition={{ repeat: Infinity, duration: isActive ? 1.0 : 4.2, ease: "easeInOut" }} className="w-3 rounded-full bg-white/40 shadow-[0_0_15px_rgba(255,255,255,0.4)] backdrop-blur-md" />
-  </motion.div>
-);
+import AudioWaveform from '../../components/AudioWaveform';
+import { parseLrc, pickClosestByDuration, LYRIC_LEAD_IN_MS } from '../../lib/lrc';
 
 export default function ZenMode() {
   const { isZenMode, toggleZenMode, savedVolume, setSavedVolume } = useUserStore();
@@ -165,7 +128,8 @@ export default function ZenMode() {
     const checkLineIndex = (pos) => {
       const lyrics = syncedLyricsRef.current;
       if (!lyrics || lyrics.length === 0) return;
-      const idx = lyrics.findLastIndex(l => l.timeMs <= pos);
+      // Same lead-in as LyricsView, so both views highlight the same line at the same moment
+      const idx = lyrics.findLastIndex(l => l.timeMs <= pos + LYRIC_LEAD_IN_MS);
       setActiveIndex(prev => (prev !== idx ? idx : prev));
     };
 
@@ -229,6 +193,8 @@ export default function ZenMode() {
     }
 
     let isMounted = true;
+    // Used to pick the right VERSION from lrclib -- the first hit is often a live cut or a remix
+    const trackDurationSec = playbackState?.duration ? playbackState.duration / 1000 : null;
 
     const fetchLyrics = async () => {
       setSyncedLyrics(null);
@@ -251,7 +217,7 @@ export default function ZenMode() {
           if (lrcRes.ok) {
             const data = await lrcRes.json();
             if (isMounted && data && data.length > 0) {
-              const bestMatch = data[0];
+              const bestMatch = pickClosestByDuration(data, trackDurationSec);
               if (bestMatch.syncedLyrics) {
                 setSyncedLyrics(parseLrc(bestMatch.syncedLyrics));
                 foundLyrics = true;
@@ -347,7 +313,7 @@ export default function ZenMode() {
                 )}
 
                 {isInstrumental ? (
-                  <AudioWaveform isActive={isLineActive} />
+                  <AudioWaveform size="lg" isActive={isLineActive} />
                 ) : (() => {
                   // Depth-of-field: lines further from the active one rack
                   // out of focus, like a camera pulling focus between them.

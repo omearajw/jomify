@@ -1,76 +1,14 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useUserStore } from '../../store/userStore'; 
 import { usePlayerStore } from '../../store/playerStore';
-import { fetchPlaylistDetails, playPlaylistTrack, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch } from '../../services/spotify/api';
+import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Clock3, Play, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
-
-// Robust string cleaner to bypass Spotify's meta mismatches
-const cleanString = (str) => {
-  if (!str) return '';
-  return str
-    .split(/[-(]/)[0] 
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '') 
-    .trim();
-};
-
-// String hashing function
-const hashCode = (str) => {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return hash;
-};
-
-// Generates the subtle, grungy glass styles based on group adjacency
-const getCollaboratorStyle = (userId, isCollaborative, isFirst, isLast) => {
-  if (!isCollaborative || !userId) return {};
-  
-  // Multiply by the golden angle (137.508) to guarantee perfectly distinct colors for every user
-  const hash = Math.abs(hashCode(userId));
-  const hue = Math.round((hash * 137.508) % 360);
-
-  let shadow = [
-    `-12px 0px 24px -12px hsla(${hue}, 50%, 50%, 0.15)` // Very soft ambient left glow
-  ];
-
-  if (isFirst) {
-    shadow.push(`inset 0px 1px 0px hsla(${hue}, 100%, 60%, 0.25)`); // Barely-there top glass edge
-  }
-  if (isLast) {
-    shadow.push(`inset 0px -1px 0px hsla(${hue}, 50%, 60%, 0.3)`); // Barely-there bottom glass edge
-    shadow.push(`-12px 12px 24px -12px hsla(${hue}, 50%, 50%, 0.4)`); // Pooled bottom-left glow
-  }
-
-  // Calculate the continuous overlay glow that spreads THROUGH the group
-  let bgGradient = '';
-  
-  if (isFirst && isLast) {
-    // Standalone track
-    bgGradient = `radial-gradient(120% 150% at bottom left, hsla(${hue}, 100%, 60%, 0.12) 0%, transparent 60%)`;
-  } else if (isLast) {
-    // Source of the glow (strongest at the bottom of the group)
-    bgGradient = `radial-gradient(150% 200% at bottom left, hsla(${hue}, 100%, 60%, 0.18) 0%, hsla(${hue}, 100%, 60%, 0.05) 50%, transparent 100%)`;
-  } else if (isFirst) {
-    // Farthest from the source (fading out at the top of the group)
-    bgGradient = `radial-gradient(150% 200% at bottom left, hsla(${hue}, 100%, 60%, 0.04) 0%, transparent 80%)`;
-  } else {
-    // Middle of the group (light passing through)
-    bgGradient = `radial-gradient(150% 200% at bottom left, hsla(${hue}, 100%, 60%, 0.08) 0%, transparent 90%)`;
-  }
-
-  return {
-    '--track-hue': hue,
-    boxShadow: shadow.join(', '),
-    // backgroundImage renders over background-color, preserving your Tailwind hover effects
-    backgroundImage: bgGradient,
-    borderLeft: `1px solid hsla(${hue}, 100%, 60%, 0.15)`
-  };
-};
+import { cleanString } from '../../utils/strings';
+import { getCollaboratorStyle } from '../../utils/collaboratorStyle';
+import { rowButtonProps } from '../../utils/a11y';
 
 export default function PlaylistView() {
   const { 
@@ -88,6 +26,20 @@ export default function PlaylistView() {
   const fetchedUserIds = useRef(new Set());
 
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
+  const sortMenuRef = useRef(null);
+
+  // The sort menu used to close only via its own button; click anywhere else or press Escape
+  useEffect(() => {
+    if (!sortDropdownOpen) return;
+    const onClick = (e) => { if (sortMenuRef.current && !sortMenuRef.current.contains(e.target)) setSortDropdownOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setSortDropdownOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [sortDropdownOpen]);
 
   // Get current sort settings safely from Zustand (default to custom / asc)
   const currentSort = playlistSortSettings?.[activePlaylistId] || { sortBy: 'custom', sortOrder: 'asc' };
@@ -388,8 +340,22 @@ export default function PlaylistView() {
 
   const handleTrackSelect = (originalIndex) => {
     if (!token || !deviceId || !playlist) return;
+
+    // A sorted view plays in the order on screen. That means sending explicit URIs (Spotify caps
+    // the list at ~100, so it's a window from the clicked row) rather than the playlist context,
+    // which would continue in Spotify's stored order regardless of what's displayed.
+    if (sortBy !== 'custom') {
+      const uris = sortedTracks.slice(originalIndex, originalIndex + 100).map(item => item.track?.uri).filter(Boolean);
+      if (uris.length > 0) playUris(token, deviceId, uris, 0).catch(console.error);
+      return;
+    }
+
+    // Custom order keeps the playlist context so Spotify shows "playing from <playlist>". Match
+    // the row by identity, not by track id: a playlist with the same song twice used to start
+    // at the first copy whichever one you clicked.
     const targetTrack = sortedTracks[originalIndex];
-    const realIndex = playlist.tracks.items.findIndex(item => item.track?.id === targetTrack.track?.id);
+    let realIndex = playlist.tracks.items.indexOf(targetTrack);
+    if (realIndex === -1) realIndex = playlist.tracks.items.findIndex(item => item.track?.uri === targetTrack.track?.uri);
     if (realIndex !== -1) {
       playPlaylistTrack(token, deviceId, activePlaylistId, realIndex).catch(console.error);
     }
@@ -601,9 +567,11 @@ export default function PlaylistView() {
 
       {/* FILTER & SORT CONTROLS BAR */}
       <div className="flex items-center justify-end mb-4 px-4 select-none">
-        <div className="relative">
+        <div className="relative" ref={sortMenuRef}>
           <button
             onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
+            aria-haspopup="menu"
+            aria-expanded={sortDropdownOpen}
             className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors"
           >
             <ArrowUpDown className="w-4 h-4 text-neutral-400" />
@@ -726,9 +694,10 @@ export default function PlaylistView() {
           }
 
           return (
-            <div 
-              key={`${track.id}-${index}`} 
+            <div
+              key={`${track.id}-${index}`}
               onClick={() => handleTrackSelect(index)}
+              {...rowButtonProps(() => handleTrackSelect(index))}
               onContextMenu={(e) => handleRightClick(e, track)}
               style={getCollaboratorStyle(adderId, isCollaborative, isFirstInGroup, isLastInGroup)}
               className={`grid ${gridColumns} gap-4 px-4 py-3 group text-sm items-center transition-colors cursor-pointer ${bgHoverClass} ${radiusClass} ${marginClass}`}

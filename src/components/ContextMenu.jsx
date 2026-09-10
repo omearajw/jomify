@@ -9,6 +9,7 @@ const MENU_WIDTH = 224;     // w-56
 const SUBMENU_WIDTH = 256;  // w-64
 const VIEWPORT_PAD = 8;
 import ConfirmDialog from './ConfirmDialog';
+import { getUnfolderedItems } from '../utils/library';
 
 export default function ContextMenu() {
   const { 
@@ -81,7 +82,7 @@ export default function ContextMenu() {
   // Anything you can actually add tracks to: playlists you own, plus collaborative ones. The
   // old owner-only filter silently hid collaborative playlists you had write access to.
   const userPlaylists = playlists.filter(p => p.owner?.id === profile?.id || p.collaborative);
-  const unfolderedPlaylists = userPlaylists.filter(p => !customFolders.some(f => f.playlistIds.includes(p.id)));
+  const { playlists: unfolderedPlaylists } = getUnfolderedItems(userPlaylists, [], customFolders);
 
   const toggleFolderOpen = (folderId) => {
     setOpenFolderIds(prev => {

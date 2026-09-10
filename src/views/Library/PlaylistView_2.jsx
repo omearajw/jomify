@@ -5,6 +5,7 @@ import { fetchPlaylistDetails, fetchMoreTracks, addTracksToPlaylist, playPlaylis
 import { formatTime } from '../../utils/formatTime';
 import { Play, X, LayoutPanelLeft, ArrowRight, Loader2, Disc3 } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
+import { getCollaboratorStyle } from '../../utils/collaboratorStyle';
 
 // A playlist with every page of tracks, not just the first 100. fetchMoreTracks goes through
 // the rate-limit interceptor and throws on a bad page, so a failure surfaces instead of
@@ -20,54 +21,6 @@ async function fetchEntirePlaylist(token, playlistId) {
   }
   return { ...data, tracks: { ...data.tracks, items: allItems } };
 }
-
-const hashCode = (str) => {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return hash;
-};
-
-// Generates the subtle, grungy glass styles with a compact variant for the workspace
-const getCollaboratorStyle = (userId, isCollaborative, isFirst, isLast, isCompact = false) => {
-  if (!isCollaborative || !userId) return {};
-  
-  const hash = Math.abs(hashCode(userId));
-  const hue = Math.round((hash * 137.508) % 360);
-
-  const ambientGlow = isCompact ? `-6px 0px 12px -6px hsla(${hue}, 50%, 50%, 0.15)` : `-12px 0px 24px -12px hsla(${hue}, 50%, 50%, 0.15)`;
-  const bottomGlow = isCompact ? `-6px 6px 12px -6px hsla(${hue}, 50%, 50%, 0.3)` : `-12px 12px 24px -12px hsla(${hue}, 50%, 50%, 0.4)`;
-
-  let shadow = [ambientGlow];
-
-  if (isFirst) {
-    shadow.push(`inset 0px 1px 0px hsla(${hue}, 100%, 60%, 0.25)`);
-  }
-  if (isLast) {
-    shadow.push(`inset 0px -1px 0px hsla(${hue}, 50%, 60%, 0.3)`);
-    shadow.push(bottomGlow);
-  }
-
-  let bgGradient = '';
-  
-  if (isFirst && isLast) {
-    bgGradient = `radial-gradient(${isCompact ? '80%' : '120%'} 150% at bottom left, hsla(${hue}, 100%, 60%, 0.12) 0%, transparent 60%)`;
-  } else if (isLast) {
-    bgGradient = `radial-gradient(150% 200% at bottom left, hsla(${hue}, 100%, 60%, 0.18) 0%, hsla(${hue}, 100%, 60%, 0.05) 50%, transparent 100%)`;
-  } else if (isFirst) {
-    bgGradient = `radial-gradient(150% 200% at bottom left, hsla(${hue}, 100%, 60%, 0.04) 0%, transparent 80%)`;
-  } else {
-    bgGradient = `radial-gradient(150% 200% at bottom left, hsla(${hue}, 100%, 60%, 0.08) 0%, transparent 90%)`;
-  }
-
-  return {
-    '--track-hue': hue,
-    boxShadow: shadow.join(', '),
-    backgroundImage: bgGradient,
-    borderLeft: `1px solid hsla(${hue}, 100%, 60%, 0.15)`
-  };
-};
 
 export default function PlaylistView_2() {
   const { 
@@ -423,8 +376,10 @@ const turnIndicator = useMemo(() => {
                 const isDragOver = dragOverIdx === idx;
 
                 return (
-                  <div 
-                    key={idx} 
+                  <div
+                    // Keyed by the track, not the slot: this is the one list in the app that
+                    // genuinely reorders, and an index key made React reuse the wrong DOM node
+                    key={track?.uri || `empty-slot-${idx}`}
                     draggable={!!track}
                     onDragStart={(e) => {
                       if (track) {
