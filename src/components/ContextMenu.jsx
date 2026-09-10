@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist } from '../services/spotify/api';
-import { ListPlus, Plus, ChevronRight, Folder, Trash2, FolderPlus, Pin, PinOff } from 'lucide-react';
+import { ListPlus, Plus, ChevronRight, ChevronDown, Folder, Trash2, FolderPlus, Pin, PinOff } from 'lucide-react';
+
+const MENU_WIDTH = 224;     // w-56
+const SUBMENU_WIDTH = 256;  // w-64
+const VIEWPORT_PAD = 8;
 import ConfirmDialog from './ConfirmDialog';
 
 export default function ContextMenu() {
@@ -21,21 +25,72 @@ export default function ContextMenu() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmFolderOpen, setConfirmFolderOpen] = useState(false);
 
+  // Which folder groups in the "Add to Playlist" submenu are expanded. Every folder starts
+  // closed each time the menu opens, so a big library is a short list of folders rather than
+  // one long scroll of every playlist.
+  const [openFolderIds, setOpenFolderIds] = useState(() => new Set());
+
+  const closeMenu = () => {
+    setContextMenu(null);
+    setShowPlaylistMenu(false);
+    setOpenFolderIds(new Set());
+  };
+
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setContextMenu(null);
-        setShowPlaylistMenu(false);
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target)) closeMenu();
+    };
+    const handleKey = (e) => {
+      if (e.key === 'Escape') closeMenu();
     };
     document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('keydown', handleKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setContextMenu]);
+
+  // Keep the menu on screen. Position is written straight to the element rather than held in
+  // state so that hover re-renders (which open the submenu) never reset it. useLayoutEffect
+  // runs before paint, so there is no flash at the unclamped position.
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el || !contextMenu) return;
+
+    const rect = el.getBoundingClientRect();
+    const maxLeft = window.innerWidth - rect.width - VIEWPORT_PAD;
+    const maxTop = window.innerHeight - rect.height - VIEWPORT_PAD;
+    const left = Math.max(VIEWPORT_PAD, Math.min(contextMenu.x, maxLeft));
+    const top = Math.max(VIEWPORT_PAD, Math.min(contextMenu.y, maxTop));
+
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+  }, [contextMenu]);
 
   if (!contextMenu) return null;
 
-  const userPlaylists = playlists.filter(p => p.owner.id === profile?.id);
+  // Submenu geometry, derived from the click position rather than measured. The clamp above
+  // only ever moves the menu UP or LEFT, so using the raw coordinates here is conservative:
+  // the real menu has at least this much room.
+  const menuLeft = Math.min(contextMenu.x, window.innerWidth - MENU_WIDTH - VIEWPORT_PAD);
+  const flipSubmenu = menuLeft + MENU_WIDTH + SUBMENU_WIDTH + VIEWPORT_PAD > window.innerWidth;
+  const submenuMaxHeight = Math.max(160, window.innerHeight - contextMenu.y - VIEWPORT_PAD - 48);
+
+  // Anything you can actually add tracks to: playlists you own, plus collaborative ones. The
+  // old owner-only filter silently hid collaborative playlists you had write access to.
+  const userPlaylists = playlists.filter(p => p.owner?.id === profile?.id || p.collaborative);
   const unfolderedPlaylists = userPlaylists.filter(p => !customFolders.some(f => f.playlistIds.includes(p.id)));
+
+  const toggleFolderOpen = (folderId) => {
+    setOpenFolderIds(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  };
   const sourcePlaylist = contextMenu.sourcePlaylistId ? playlists.find(p => p.id === contextMenu.sourcePlaylistId) : null;
   const folder = contextMenu?.folderId ? customFolders.find(f => f.id === contextMenu.folderId) : null;
   const canRemove = sourcePlaylist && sourcePlaylist.owner.id === profile?.id;
@@ -65,8 +120,7 @@ export default function ContextMenu() {
     if (!token || !contextMenu.track) return;
     try {
       await addTracksToPlaylist(token, playlistId, [contextMenu.track.uri]);
-      setContextMenu(null);
-      setShowPlaylistMenu(false);
+      closeMenu();
     } catch (err) {
       console.error(err);
     }
@@ -156,7 +210,6 @@ export default function ContextMenu() {
   return createPortal(
     <div
       ref={menuRef}
-      style={{ top: contextMenu.y, left: contextMenu.x }}
       className="fixed z-[9999] w-56 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-1 overflow-visible"
     >
       {/* UNIVERSAL PIN TOGGLE */}
@@ -195,7 +248,11 @@ export default function ContextMenu() {
             onMouseEnter={() => setShowPlaylistMenu(true)}
             onMouseLeave={() => setShowPlaylistMenu(false)}
           >
-            <button className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-between transition-colors">
+            <button
+              // Click as well as hover, so it works on touch screens
+              onClick={() => setShowPlaylistMenu(v => !v)}
+              className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-between transition-colors"
+            >
               <div className="flex items-center space-x-3">
                 <Plus className="w-4 h-4 text-neutral-400" />
                 <span>Add to Playlist</span>
@@ -204,8 +261,11 @@ export default function ContextMenu() {
             </button>
 
             {showPlaylistMenu && (
-              <div className="absolute left-full top-0 pl-2 -ml-2 z-50">
-                <div className="w-64 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-2 max-h-96 overflow-y-auto custom-scrollbar">
+              <div className={`absolute top-0 z-50 ${flipSubmenu ? 'right-full pr-2 -mr-2' : 'left-full pl-2 -ml-2'}`}>
+                <div
+                  style={{ maxHeight: submenuMaxHeight }}
+                  className="w-64 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-2 overflow-y-auto custom-scrollbar"
+                >
                   {unfolderedPlaylists.map(pl => (
                     <button
                       key={pl.id}
@@ -219,17 +279,33 @@ export default function ContextMenu() {
                   {customFolders.map(folder => {
                     const folderPls = userPlaylists.filter(p => folder.playlistIds.includes(p.id));
                     if (folderPls.length === 0) return null;
+                    const isOpen = openFolderIds.has(folder.id);
 
                     return (
-                      <div key={folder.id} className="mt-2 pt-2 border-t border-white/5">
-                        <div className="px-4 py-1 flex items-center text-xs font-bold text-neutral-500 uppercase tracking-wider">
-                          <Folder className="w-3 h-3 mr-2" /> {folder.name}
-                        </div>
-                        {folderPls.map(pl => (
+                      <div key={folder.id} className="mt-1 pt-1 border-t border-white/5">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); toggleFolderOpen(folder.id); }}
+                          aria-expanded={isOpen}
+                          className="w-full px-4 py-2 flex items-center justify-between text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                        >
+                          <span className="flex items-center min-w-0">
+                            <Folder className={`w-3.5 h-3.5 mr-2 shrink-0 ${isOpen ? 'text-brand-gradient' : 'text-neutral-500'}`} />
+                            <span className="truncate font-medium">{folder.name}</span>
+                          </span>
+                          <span className="flex items-center gap-2 shrink-0 ml-2">
+                            <span className="text-[10px] font-bold text-neutral-500 tabular-nums">{folderPls.length}</span>
+                            {isOpen
+                              ? <ChevronDown className="w-3.5 h-3.5 text-neutral-500" />
+                              : <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />}
+                          </span>
+                        </button>
+
+                        {isOpen && folderPls.map(pl => (
                           <button
                             key={pl.id}
                             onClick={() => handleAddToPlaylist(pl.id)}
-                            className="w-full text-left px-4 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 truncate transition-colors pl-8"
+                            className="w-full text-left px-4 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 truncate transition-colors pl-9"
                           >
                             {pl.name}
                           </button>
