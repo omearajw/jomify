@@ -28,6 +28,23 @@ const parseLrc = (lrcString) => {
   return synced;
 };
 
+// lrclib returns several versions of a song; prefer the one whose length matches what's
+// actually playing, within a tolerance. Falls back to the first hit when nothing is close.
+const pickClosestByDuration = (results, durationSec) => {
+  if (!durationSec) return results[0];
+  let best = results[0];
+  let bestDiff = Infinity;
+  for (const candidate of results) {
+    if (typeof candidate.duration !== 'number') continue;
+    const diff = Math.abs(candidate.duration - durationSec);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = candidate;
+    }
+  }
+  return bestDiff <= 10 ? best : results[0];
+};
+
 // --- AESTHETIC INSTRUMENTAL WAVEFORM ---
 const AudioWaveform = ({ isActive }) => (
   <motion.div 
@@ -114,8 +131,13 @@ export default function LyricsView() {
   }, [playbackState, player]);
 
   // --- 2. PUBLIC FREE API FETCHING (LrcLib) ---
+  // Cancellation matters here: skip tracks quickly and a slow response for track A used to
+  // land after track B's and paint B with A's lyrics. Every state write is guarded.
   useEffect(() => {
     if (!currentTrack) return;
+    let cancelled = false;
+    // Used to pick the right VERSION -- the first search hit is often a live cut or a remix
+    const trackDurationSec = playbackState?.duration ? playbackState.duration / 1000 : null;
 
     const fetchLyrics = async () => {
       setLoading(true);
@@ -130,16 +152,18 @@ export default function LyricsView() {
         const query = encodeURIComponent(`${artist} ${title}`);
 
         const res = await fetch(`https://lrclib.net/api/search?q=${query}`);
+        if (cancelled) return;
 
         if (!res.ok) throw new Error('Could not connect to the public lyrics database.');
-        
+
         const data = await res.json();
+        if (cancelled) return;
 
         if (!data || data.length === 0) {
            throw new Error("We couldn't find lyrics for this specific track in the open database.");
         }
 
-        const bestMatch = data[0];
+        const bestMatch = pickClosestByDuration(data, trackDurationSec);
 
         if (bestMatch.syncedLyrics) {
           setSyncedLyrics(parseLrc(bestMatch.syncedLyrics));
@@ -150,14 +174,16 @@ export default function LyricsView() {
         }
 
       } catch (err) {
+        if (cancelled) return;
         console.error("Lyrics Engine Error:", err);
         setError(err.message || "Failed to load lyrics.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchLyrics();
+    return () => { cancelled = true; };
   }, [currentTrack?.id]);
 
   // --- 3. AUTO-SCROLL ON LINE CHANGE ---

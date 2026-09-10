@@ -11,6 +11,18 @@ const cleanString = (str) => {
   return str.split(/[-(]/)[0].toLowerCase().replace(/[^a-z0-9]/g, '').trim();
 };
 
+const MAX_CACHED_RESULTS_BYTES = 500 * 1024;
+
+const safeSessionSet = (key, value) => {
+  try { sessionStorage.setItem(key, value); } catch { /* quota or private mode: skip the cache */ }
+};
+const safeSessionRemove = (key) => {
+  try { sessionStorage.removeItem(key); } catch { /* nothing to do */ }
+};
+
+const hasAnyResults = (results) =>
+  ['tracks', 'albums', 'artists', 'playlists'].some(kind => (results?.[kind]?.items?.length ?? 0) > 0);
+
 // View-Level Caching: Isolates ephemeral UI memory from the global store
 const getCachedString = (key, defaultVal) => {
   const saved = sessionStorage.getItem(key);
@@ -49,17 +61,26 @@ export default function Browse() {
 
   const currentPlayingTrack = playbackState?.track_window?.current_track;
 
-  // Real-time synchronization to cache
-  useEffect(() => { sessionStorage.setItem('jomify_browse_query', query); }, [query]);
-  useEffect(() => { 
-    if (results) sessionStorage.setItem('jomify_browse_results', JSON.stringify(results));
-    else sessionStorage.removeItem('jomify_browse_results');
+  // Real-time synchronization to cache. Every write is guarded: after a few "load more" pages
+  // the result set can exceed the sessionStorage quota, and an uncaught QuotaExceededError
+  // thrown inside an effect unmounts the whole tree.
+  useEffect(() => { safeSessionSet('jomify_browse_query', query); }, [query]);
+  useEffect(() => {
+    if (!results) { safeSessionRemove('jomify_browse_results'); return; }
+    const json = JSON.stringify(results);
+    if (json.length > MAX_CACHED_RESULTS_BYTES) safeSessionRemove('jomify_browse_results');
+    else safeSessionSet('jomify_browse_results', json);
   }, [results]);
-  useEffect(() => { 
-    if (expandedSection) sessionStorage.setItem('jomify_browse_expanded', expandedSection);
-    else sessionStorage.removeItem('jomify_browse_expanded');
+  useEffect(() => {
+    if (expandedSection) safeSessionSet('jomify_browse_expanded', expandedSection);
+    else safeSessionRemove('jomify_browse_expanded');
   }, [expandedSection]);
-  useEffect(() => { sessionStorage.setItem('jomify_browse_pagination', JSON.stringify(paginationUrls)); }, [paginationUrls]);
+  useEffect(() => { safeSessionSet('jomify_browse_pagination', JSON.stringify(paginationUrls)); }, [paginationUrls]);
+
+  // Search status, so the page can say "searching", "nothing found" or "that failed" instead
+  // of leaving stale results (or nothing at all) on screen.
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
 
   useEffect(() => {
     // Prevent network requests on initial render if we successfully loaded from cache
@@ -71,6 +92,8 @@ export default function Browse() {
 
     const delayDebounce = setTimeout(() => {
       if (query.trim() && token) {
+        setSearching(true);
+        setSearchError('');
         searchSpotify(token, query)
           .then((data) => {
             setResults(data);
@@ -87,10 +110,19 @@ export default function Browse() {
               }
             }
           })
-          .catch(console.error);
+          .catch((err) => {
+            console.error(err);
+            setSearchError(
+              err?.message === 'RATE_LIMITED'
+                ? 'Spotify is rate-limiting searches right now. Try again in a moment.'
+                : "Search failed. Check your connection and try again."
+            );
+          })
+          .finally(() => setSearching(false));
       } else {
         setResults(null);
         setExpandedSection(null);
+        setSearchError('');
         setPaginationUrls({ tracks: null, albums: null, artists: null, playlists: null });
       }
     }, 400);
@@ -435,6 +467,20 @@ export default function Browse() {
           className="w-full bg-neutral-800 border-none rounded-full py-3 pl-12 pr-6 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f91362] transition-all"
         />
       </div>
+
+      {searching && (
+        <p className="text-neutral-500 text-sm font-medium mb-6 flex items-center gap-2">
+          <Loader className="w-4 h-4 animate-spin" /> Searching…
+        </p>
+      )}
+      {searchError && (
+        <p className="text-red-400 text-sm font-medium mb-6">{searchError}</p>
+      )}
+      {results && !searching && !hasAnyResults(results) && (
+        <p className="text-neutral-400 font-medium mb-6">
+          No results for <span className="text-white">"{query.trim()}"</span>.
+        </p>
+      )}
 
       {results ? (
         <div className="space-y-10 animate-fade-in">

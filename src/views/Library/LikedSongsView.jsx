@@ -15,6 +15,9 @@ export default function LikedSongsView() {
 
   const isCurrentTrackPaused = playbackState ? playbackState.paused : true;
 
+  // Set when a page fails to load partway; the header then says how much is actually here
+  const [loadError, setLoadError] = useState('');
+
   useEffect(() => {
     if (token) {
       isFetchingMore.current = false;
@@ -36,6 +39,7 @@ export default function LikedSongsView() {
 
   const loadRestOfTracks = async (initialNextUrl) => {
     isFetchingMore.current = true;
+    setLoadError('');
     let nextUrl = initialNextUrl;
 
     while (nextUrl) {
@@ -56,6 +60,14 @@ export default function LikedSongsView() {
         
         nextUrl = nextData.next;
       } catch (err) {
+        // Previously a silent break: the list stopped partway and the header still claimed the
+        // full total, with no way to tell and nothing to click.
+        console.error('Liked Songs stopped loading partway:', err);
+        setLoadError(
+          err?.message === 'RATE_LIMITED'
+            ? 'Spotify rate-limited the rest of the list.'
+            : "Couldn't load the rest of the list."
+        );
         break;
       }
     }
@@ -76,7 +88,8 @@ export default function LikedSongsView() {
       .filter(Boolean);
 
     if (!allUris.length) return;
-    playLikedSongsQueue(token, deviceId, allUris, index).catch(console.error);
+    const userId = useUserStore.getState().profile?.id;
+    playLikedSongsQueue(token, deviceId, allUris, index, userId).catch(console.error);
   };
 
   if (!trackData) {
@@ -93,7 +106,25 @@ export default function LikedSongsView() {
         <div>
           <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2">Playlist</p>
           <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tighter mb-4">Liked Songs</h1>
-          <p className="text-neutral-400 text-sm font-medium">{trackData.total} songs</p>
+          <p className="text-neutral-400 text-sm font-medium">
+            {trackData.items.length < trackData.total
+              ? `${trackData.items.length.toLocaleString()} of ${trackData.total.toLocaleString()} songs loaded`
+              : `${trackData.total.toLocaleString()} songs`}
+          </p>
+          {loadError && (
+            <p className="text-red-400 text-xs font-medium mt-2 flex items-center gap-3">
+              {loadError}
+              {trackData.next && (
+                <button
+                  type="button"
+                  onClick={() => { if (!isFetchingMore.current) loadRestOfTracks(trackData.next); }}
+                  className="underline hover:text-white transition-colors"
+                >
+                  Try again
+                </button>
+              )}
+            </p>
+          )}
         </div>
       </div>
 
