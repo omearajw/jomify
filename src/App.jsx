@@ -28,7 +28,7 @@ function App() {
     setToken, setRefreshToken, setProfile, setPlaylists, 
     currentView, setCurrentView,
     pinnedItems, playlists, albums, customFolders, 
-    activePlaylistId, navigateToAlbum, navigateToPlaylist, setContextMenu,
+    activePlaylistId, navigateToAlbum, navigateToPlaylist, setContextMenu, setActiveFolderId,
     sevens, seedLegacySevens
   } = useUserStore();
   
@@ -128,13 +128,35 @@ function App() {
     }
   }, [token]);
 
+  // Profile load with retry. This used to have no .catch at all: one rate-limited /v1/me left
+  // the app on "Loading Jomify core..." until a manual reload. During a cooldown the
+  // interceptor rejects locally without a network call, so retrying on a timer is cheap.
+  const [profileError, setProfileError] = useState(null);
+  const [profileAttempt, setProfileAttempt] = useState(0);
+
   useEffect(() => {
-    if (token && !profile) {
-      fetchUserProfile(token).then((data) => {
+    if (!token || profile) return;
+    let cancelled = false;
+
+    fetchUserProfile(token)
+      .then((data) => {
+        if (cancelled) return;
+        setProfileError(null);
         setProfile(data);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('Failed to load profile:', err);
+        setProfileError(
+          err?.message === 'RATE_LIMITED'
+            ? 'Spotify is rate-limiting requests right now.'
+            : "Couldn't reach Spotify to load your profile."
+        );
+        setTimeout(() => { if (!cancelled) setProfileAttempt(n => n + 1); }, 5000);
       });
-    }
-  }, [token, profile, setProfile]);
+
+    return () => { cancelled = true; };
+  }, [token, profile, setProfile, profileAttempt]);
 
   useEffect(() => {
     if (token && !useUserStore.getState().playlists.length) {
@@ -159,42 +181,72 @@ function App() {
     }
   }, [token, tokenExpiresAt, logout]);
 
-  // --- PINNED ITEMS HYDRATION ENGINE (RACE-CONDITION SAFE) ---
+  // --- PINNED + FOLDER ITEM HYDRATION ENGINE (RACE-CONDITION SAFE) ---
+  // Resolves ids the main library load didn't return: pinned playlists/albums you follow but
+  // don't own, and -- newly -- anything sitting in a folder. Folder items carry no type, so
+  // unknown ids are tried as albums in one batched call first, and whatever that doesn't
+  // account for is fetched as a playlist. Every render site does `if (!item) return null`, so
+  // an unresolved id simply vanishes from the UI; this is what stops that being permanent.
   useEffect(() => {
-    if (!token || pinnedItems.length === 0) return;
+    if (!token) return;
 
-    const hydratePinnedItems = async () => {
+    const pinnedTargets = pinnedItems.filter(p => p.type === 'playlist' || p.type === 'album');
+    const folderItemIds = [...new Set(customFolders.flatMap(f => f.playlistIds || []))];
+    if (pinnedTargets.length === 0 && folderItemIds.length === 0) return;
+
+    const hydrate = async () => {
       const currentPlaylists = useUserStore.getState().playlists;
       const currentAlbums = useUserStore.getState().albums;
+      const isLoaded = (id) => currentPlaylists.some(pl => pl.id === id) || currentAlbums.some(a => a.id === id);
+      const isNew = (id) => !isLoaded(id) && !hydratedPinnedIds.current.has(id);
 
-      const missingPlaylists = pinnedItems.filter(p => p.type === 'playlist' && !currentPlaylists.some(pl => pl.id === p.id) && !hydratedPinnedIds.current.has(p.id));
-      const missingAlbums = pinnedItems.filter(p => p.type === 'album' && !currentAlbums.some(a => a.id === p.id) && !hydratedPinnedIds.current.has(p.id));
+      const missingPlaylists = pinnedTargets.filter(p => p.type === 'playlist' && isNew(p.id)).map(p => p.id);
+      const missingAlbums = pinnedTargets.filter(p => p.type === 'album' && isNew(p.id)).map(p => p.id);
+      const typed = new Set([...missingPlaylists, ...missingAlbums]);
+      const unknown = folderItemIds.filter(id => isNew(id) && !typed.has(id));
 
-      if (missingPlaylists.length === 0 && missingAlbums.length === 0) return;
+      if (missingPlaylists.length === 0 && missingAlbums.length === 0 && unknown.length === 0) return;
 
-      missingPlaylists.forEach(p => hydratedPinnedIds.current.add(p.id));
-      missingAlbums.forEach(p => hydratedPinnedIds.current.add(p.id));
+      [...missingPlaylists, ...missingAlbums, ...unknown].forEach(id => hydratedPinnedIds.current.add(id));
 
-      let newPlaylists = [];
-      if (missingPlaylists.length > 0) {
+      const headers = { Authorization: `Bearer ${token}` };
+
+      // Albums first: /v1/albums?ids= takes up to 20 and returns null for ids that aren't
+      // albums, which is exactly how we learn which unknown folder items are playlists instead.
+      let newAlbums = [];
+      const foundAlbumIds = new Set();
+      const albumCandidates = [...missingAlbums, ...unknown];
+      for (let i = 0; i < albumCandidates.length; i += 20) {
+        const chunk = albumCandidates.slice(i, i + 20);
         try {
-          const res = await Promise.all(
-            missingPlaylists.map(p => fetch(`https://api.spotify.com/v1/playlists/${p.id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()))
-          );
-          newPlaylists = res.filter(p => p && !p.error && p.id);
-        } catch (e) { 
-          console.error("Hydration failed for playlists", e); 
+          const res = await fetch(`https://api.spotify.com/v1/albums?ids=${chunk.join(',')}`, { headers });
+          if (!res.ok) continue;
+          const data = await res.json();
+          (data.albums || []).forEach((album) => {
+            if (album?.id) {
+              newAlbums.push(album);
+              foundAlbumIds.add(album.id);
+            }
+          });
+        } catch (e) {
+          console.error("Hydration failed for albums", e);
         }
       }
 
-      let newAlbums = [];
-      if (missingAlbums.length > 0) {
+      let newPlaylists = [];
+      const playlistCandidates = [...missingPlaylists, ...unknown.filter(id => !foundAlbumIds.has(id))];
+      if (playlistCandidates.length > 0) {
         try {
-          const albumIds = missingAlbums.map(a => a.id).join(',');
-          const res = await fetch(`https://api.spotify.com/v1/albums?ids=${albumIds}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json());
-          if (res.albums) newAlbums = res.albums.filter(Boolean);
-        } catch (e) { 
-          console.error("Hydration failed for albums", e); 
+          const res = await Promise.all(
+            playlistCandidates.map(id =>
+              fetch(`https://api.spotify.com/v1/playlists/${id}`, { headers })
+                .then(r => (r.ok ? r.json() : null))
+                .catch(() => null)
+            )
+          );
+          newPlaylists = res.filter(p => p && !p.error && p.id);
+        } catch (e) {
+          console.error("Hydration failed for playlists", e);
         }
       }
 
@@ -213,8 +265,8 @@ function App() {
       }
     };
 
-    hydratePinnedItems();
-  }, [token, pinnedItems, setPlaylists]);
+    hydrate();
+  }, [token, pinnedItems, customFolders, setPlaylists]);
 
   // --- SEVENS TURN CHECKER (HIGH-SPEED OFFSET METHOD) ---
   // Only active Sevens are polled. A finished Seven is still cross-referenced for duplicate
@@ -510,7 +562,8 @@ function App() {
                           } else if (pinned.type === 'folder') {
                             item = customFolders.find(f => f.id === pinned.id);
                             if (!item) return null;
-                            onClick = () => setCurrentView('library');
+                            // Open THIS folder, not just the library root
+                            onClick = () => { setCurrentView('library'); setActiveFolderId(item.id); };
                             imageNode = <span className={`${folderIconSizeClass} transition-transform duration-500 group-hover:scale-110`}>📁</span>;
                             title = item.name;
                             subtitle = `Folder • ${item.playlistIds.length} items`;
@@ -582,8 +635,22 @@ function App() {
             {currentView === 'sevens' && <SevensSettings />}
           </>
         ) : (
-          <div className="flex items-center justify-center h-full relative z-10">
-            <p className="text-neutral-400 animate-pulse text-lg">Loading Jomify core...</p>
+          <div className="flex flex-col items-center justify-center h-full relative z-10 gap-4">
+            {profileError ? (
+              <>
+                <p className="text-white font-bold text-lg">{profileError}</p>
+                <p className="text-neutral-400 text-sm">Retrying automatically…</p>
+                <button
+                  type="button"
+                  onClick={() => setProfileAttempt(n => n + 1)}
+                  className="mt-2 px-5 py-2 rounded-full bg-white/10 border border-white/10 text-white text-sm font-bold hover:bg-white/20 transition-colors"
+                >
+                  Try again now
+                </button>
+              </>
+            ) : (
+              <p className="text-neutral-400 animate-pulse text-lg">Loading Jomify core...</p>
+            )}
           </div>
         )}
       </MainLayout>

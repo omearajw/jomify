@@ -37,13 +37,17 @@ function formatAgo(timestamp) {
 
 export default function Sidebar() {
   const { 
-    token, profile, currentView, setCurrentView, logout, playlists, albums, activePlaylistId, navigateToAlbum,
-    navigateToPlaylist, customFolders, createFolder,
+    token, profile, currentView, setCurrentView, logout, playlists, albums, navigateToAlbum,
+    navigateToPlaylist, customFolders, createFolder, activeFolderId, setActiveFolderId,
     draggedItem, setDraggedItem, reorderFolders, 
     addPlaylistToFolder, removePlaylistFromFolder, reorderPlaylistInFolder, setContextMenu, setPlaylists, deleteFolder
   } = useUserStore();
   
-  const [isolatedFolderId, setIsolatedFolderId] = useState(null);
+  // Folder isolation lives in the store so the sidebar and the Library view agree, the global
+  // Back button can restore it, and a pinned folder on Home can open it. These aliases keep the
+  // rest of this file untouched.
+  const isolatedFolderId = activeFolderId;
+  const setIsolatedFolderId = setActiveFolderId;
   const [expandedFolders, setExpandedFolders] = useState([]);
   const [dragOverId, setDragOverId] = useState(null);
   const [showCreatePlaylistDialog, setShowCreatePlaylistDialog] = useState(false);
@@ -273,7 +277,8 @@ export default function Sidebar() {
           return (
             <button
               key={item.id}
-              onClick={() => { setIsolatedFolderId(null); setCurrentView(item.id); }}
+              // Navigate first so the history frame captures the folder you were in, then leave it
+              onClick={() => { setCurrentView(item.id); setIsolatedFolderId(null); }}
               className={`flex items-center space-x-4 transition-colors duration-200 text-left ${isActive ? 'text-white font-bold' : 'text-neutral-400 hover:text-white'}`}
             >
               <Icon className={`w-6 h-6 ${isActive ? 'text-[var(--brand-mid)]' : 'text-neutral-400'}`} />

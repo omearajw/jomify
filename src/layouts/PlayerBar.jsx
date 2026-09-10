@@ -14,7 +14,7 @@ export default function PlayerBar() {
   const { 
     token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack, 
     toggleZenMode, savedVolume, setSavedVolume,
-    currentView, setCurrentView, goBack, navigateToAlbum
+    currentView, setCurrentView, goBack, navigateToAlbum, viewHistory
   } = useUserStore();
 
   const [progressMs, setProgressMs] = useState(0);
@@ -189,8 +189,16 @@ export default function PlayerBar() {
       </div>
 
       <div className="flex items-center justify-end space-x-4 w-1/3 text-neutral-400">
-        <button 
-          onClick={() => currentView === 'lyrics' ? goBack() : setCurrentView('lyrics')} 
+        <button
+          // Leaving lyrics: go back if there's somewhere to go, otherwise Home. A bare goBack()
+          // was a dead button when the history stack was empty.
+          onClick={() => {
+            if (currentView !== 'lyrics') setCurrentView('lyrics');
+            else if (viewHistory.length > 0) goBack();
+            else setCurrentView('home');
+          }}
+          aria-label={currentView === 'lyrics' ? 'Close lyrics' : 'Show lyrics'}
+          aria-pressed={currentView === 'lyrics'}
           className={`transition-colors ${currentView === 'lyrics' ? 'text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]' : 'hover:text-white'}`}
         >
           <Mic2 className="w-4 h-4" />

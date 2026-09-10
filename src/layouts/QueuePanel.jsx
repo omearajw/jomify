@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { fetchQueue } from '../services/spotify/api';
@@ -10,14 +10,27 @@ const cleanString = (str) => {
   return str.split(/[-(]/)[0].toLowerCase().replace(/[^a-z0-9]/g, '').trim();
 };
 
+// Identity only. The old fallback compared the part of the name before any "-" or "(", so
+// "Song" and "Song - Live" by the same artist matched and the wrong row was dropped from the
+// queue. Relinked tracks are the one legitimate id mismatch, and Spotify reports those.
 const isTrackMatch = (a, b) => {
   if (!a || !b) return false;
 
   if (a.id && b.id && a.id === b.id) return true;
   if (a.uri && b.uri && a.uri === b.uri) return true;
 
-  return cleanString(a.name) === cleanString(b.name) && a.artists?.[0]?.name === b.artists?.[0]?.name;
+  const linked = a.linked_from || b.linked_from;
+  if (linked) {
+    if (linked.id && (linked.id === a.id || linked.id === b.id)) return true;
+    if (linked.uri && (linked.uri === a.uri || linked.uri === b.uri)) return true;
+  }
+
+  return false;
 };
+
+// The queue endpoint returns episode objects whenever a podcast is queued. They have `show`
+// instead of `album`, and rendering them as tracks used to throw and blank the whole app.
+const isRenderableTrack = (item) => Boolean(item) && item.type !== 'episode';
 
 const removeManualMatchesFromQueue = (queueTracks, manualTracks) => {
   const remaining = [...queueTracks];
@@ -49,7 +62,8 @@ export default function QueuePanel() {
   })), [manuallyQueuedTracks]);
 
   useEffect(() => {
-    const filteredQueue = removeManualMatchesFromQueue(queueData?.queue || [], manuallyQueuedTracks);
+    const tracksOnly = (queueData?.queue || []).filter(isRenderableTrack);
+    const filteredQueue = removeManualMatchesFromQueue(tracksOnly, manuallyQueuedTracks);
     // Since we no longer need complex stable keys for drag-and-drop, we can map directly
     const nextEntries = filteredQueue.map((track, index) => ({
       key: `queue-${index}-${track.id || cleanString(track.name)}`,
@@ -83,10 +97,18 @@ export default function QueuePanel() {
           <div>
             <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-4">Now Playing</h3>
             <div className="flex items-center space-x-3">
-              <img src={queueData.currently_playing.album.images[0]?.url} alt="" className="w-12 h-12 rounded object-cover shadow-md" />
+              <img
+                src={queueData.currently_playing.album?.images?.[0]?.url || queueData.currently_playing.images?.[0]?.url}
+                alt=""
+                className="w-12 h-12 rounded object-cover shadow-md bg-neutral-800"
+              />
               <div className="flex flex-col truncate">
                 <span className="text-brand-gradient text-sm font-medium truncate">{queueData.currently_playing.name}</span>
-                <span className="text-neutral-400 text-xs truncate">{queueData.currently_playing.artists.map(a => a.name).join(', ')}</span>
+                <span className="text-neutral-400 text-xs truncate">
+                  {(queueData.currently_playing.artists || []).map(a => a.name).join(', ')
+                    || queueData.currently_playing.show?.name
+                    || ''}
+                </span>
               </div>
             </div>
           </div>
@@ -99,10 +121,10 @@ export default function QueuePanel() {
               {manualQueueEntries.map(({ key, track }) => (
                 <div key={key} className="flex items-center space-x-3 group cursor-default rounded-md px-2 py-1.5 border border-[var(--brand-mid)]/15 bg-[var(--brand-mid)]/5">
                   <ListPlus className="w-4 h-4 text-[var(--brand-mid)] shrink-0" title="Queued item" />
-                  <img src={track.album.images[0]?.url} alt="" className="w-10 h-10 rounded object-cover" draggable="false" />
+                  <img src={track.album?.images?.[0]?.url} alt="" className="w-10 h-10 rounded object-cover bg-neutral-800" draggable="false" />
                   <div className="flex flex-col truncate flex-1 pr-2 min-w-0">
                     <span className="text-white text-sm font-medium truncate">{track.name}</span>
-                    <span className="text-neutral-400 text-xs truncate">{track.artists.map(a => a.name).join(', ')}</span>
+                    <span className="text-neutral-400 text-xs truncate">{(track.artists || []).map(a => a.name).join(', ')}</span>
                   </div>
                   <span className="text-neutral-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
                     {formatTime(track.duration_ms)}
@@ -122,12 +144,12 @@ export default function QueuePanel() {
                   key={key}
                   className="flex items-center space-x-3 group cursor-default rounded-md px-2 py-1.5 border border-transparent hover:bg-white/5 transition-colors"
                 >
-                  <img src={track.album.images[0]?.url} alt="" className="w-10 h-10 rounded object-cover" draggable="false" />
+                  <img src={track.album?.images?.[0]?.url} alt="" className="w-10 h-10 rounded object-cover bg-neutral-800" draggable="false" />
                   <div className="flex flex-col truncate flex-1 pr-2 min-w-0">
                     <div className="flex items-center space-x-2 min-w-0">
                       <span className="text-white text-sm font-medium truncate">{track.name}</span>
                     </div>
-                    <span className="text-neutral-400 text-xs truncate">{track.artists.map(a => a.name).join(', ')}</span>
+                    <span className="text-neutral-400 text-xs truncate">{(track.artists || []).map(a => a.name).join(', ')}</span>
                   </div>
                   <span className="text-neutral-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
                     {formatTime(track.duration_ms)}
