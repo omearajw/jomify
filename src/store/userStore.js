@@ -185,6 +185,19 @@ export const useUserStore = create(
         viewHistory: state.viewHistory.filter(h => !(h.view === 'playlist' && h.playlistId === playlistId))
       })),
 
+      // The album counterpart of deletePlaylist: one set() that cleans every slice, instead of
+      // the N separate folder writes the context menu used to loop through.
+      removeAlbumFromLibrary: (albumId) => set((state) => ({
+        albums: (state.albums || []).filter(a => a.id !== albumId),
+        customFolders: state.customFolders.map(f => ({
+          ...f,
+          playlistIds: f.playlistIds.filter(id => id !== albumId)
+        })),
+        pinnedItems: state.pinnedItems.filter(p => p.id !== albumId),
+        currentAlbumId: state.currentAlbumId === albumId ? null : state.currentAlbumId,
+        viewHistory: state.viewHistory.filter(h => !(h.view === 'album' && h.albumId === albumId))
+      })),
+
       reorderFolders: (dragId, dropId) => set((state) => {
         const newFolders = [...state.customFolders].sort(byOrder);
         const dragIndex = newFolders.findIndex(f => f.id === dragId);
@@ -281,13 +294,17 @@ export const useUserStore = create(
         manuallyQueuedTracks: [...state.manuallyQueuedTracks, track]
       })),
       
+      // Matches on identity only. The old fuzzy clause compared the part of the name before any
+      // "-" or "(", so "Song" and "Song - Live" by the same artist collided and playing one
+      // removed the other. Spotify's relinking is the one legitimate case where the playing
+      // track's id differs from what was queued, and it tells us via linked_from.
       consumeManuallyQueuedTrack: (playingTrack) => set((state) => {
         if (!playingTrack) return state;
-        const index = state.manuallyQueuedTracks.findIndex(t => 
-          t.id === playingTrack.id || 
-          t.uri === playingTrack.uri ||
-          (t.name.split(/[-(]/)[0].trim().toLowerCase() === playingTrack.name.split(/[-(]/)[0].trim().toLowerCase() &&
-           t.artists?.[0]?.name === playingTrack.artists?.[0]?.name)
+        const linked = playingTrack.linked_from;
+        const index = state.manuallyQueuedTracks.findIndex(t =>
+          (t.id && t.id === playingTrack.id) ||
+          (t.uri && t.uri === playingTrack.uri) ||
+          (linked && ((t.uri && t.uri === linked.uri) || (t.id && t.id === linked.id)))
         );
         if (index > -1) {
           const newTracks = [...state.manuallyQueuedTracks];

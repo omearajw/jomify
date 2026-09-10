@@ -1,29 +1,65 @@
 import { Heart } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
-import { toggleTrackLike } from '../services/spotify/api';
+import { toggleTrackLike, checkTracksLiked } from '../services/spotify/api';
 
+// Three states, not two. `likedTracks[trackId]` is undefined until a checkTracksLiked pass has
+// covered that track, and "not checked yet" is not the same as "not liked": treating it as
+// false meant the first click on an already-saved track sent a PUT for something Spotify
+// already had, and the heart lied until then.
 export default function LikeButton({ trackId }) {
   const { token, likedTracks, setLikedTracks } = useUserStore();
-  const isLiked = likedTracks[trackId] || false;
 
-  const handleToggle = (e) => {
+  if (!trackId) return null;
+
+  const known = likedTracks[trackId];
+  const isKnown = known !== undefined;
+  const isLiked = known === true;
+
+  const handleToggle = async (e) => {
     e.stopPropagation(); // Prevents the playlist row from playing the song when you click the heart
-    if (!token || !trackId) return;
+    if (!token) return;
+
+    let current = isLiked;
+
+    // Unknown state: find out before flipping, so we never toggle blind
+    if (!isKnown) {
+      try {
+        const result = await checkTracksLiked(token, [trackId]);
+        current = Boolean(result[trackId]);
+        setLikedTracks({ [trackId]: current });
+      } catch (err) {
+        console.error(err);
+        return;
+      }
+    }
 
     // Optimistic UI Update: Instantly flip the state
-    setLikedTracks({ [trackId]: !isLiked });
-    
+    setLikedTracks({ [trackId]: !current });
+
     // Perform actual API call
-    toggleTrackLike(token, trackId, isLiked).catch((err) => {
+    toggleTrackLike(token, trackId, current).catch((err) => {
       console.error(err);
       // Revert if the network fails
-      setLikedTracks({ [trackId]: isLiked }); 
+      setLikedTracks({ [trackId]: current });
     });
   };
 
+  const heartClass = isLiked
+    ? 'fill-[var(--brand-mid)] text-brand-gradient'
+    : isKnown
+      ? 'text-neutral-400 hover:text-white'
+      : 'text-neutral-600 hover:text-white'; // dimmer: we haven't checked this one yet
+
   return (
-    <button onClick={handleToggle} className="flex items-center justify-center transition-all hover:scale-110">
-      <Heart className={`w-5 h-5 transition-colors ${isLiked ? 'fill-[var(--brand-mid)] text-brand-gradient' : 'text-neutral-400 hover:text-white'}`} />
+    <button
+      type="button"
+      onClick={handleToggle}
+      aria-pressed={isLiked}
+      aria-label={isLiked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
+      title={isLiked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
+      className="flex items-center justify-center transition-all hover:scale-110"
+    >
+      <Heart className={`w-5 h-5 transition-colors ${heartClass}`} />
     </button>
   );
 }

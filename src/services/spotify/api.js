@@ -432,6 +432,16 @@ export async function saveAlbumToLibrary(token, albumId) {
 
   if (!response.ok) throw new Error('Failed to save album to library');
 }
+
+export async function unsaveAlbum(token, albumId) {
+  const url = `https://api.spotify.com/v1/me/albums?ids=${encodeURIComponent(albumId)}`;
+  const response = await spotifyFetch(url, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  if (!response.ok) throw new Error('Failed to remove album from library');
+}
 // ==========================================
 // THE SEVENS ENGINE
 // ==========================================

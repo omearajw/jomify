@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
-import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist } from '../services/spotify/api';
+import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, unsaveAlbum } from '../services/spotify/api';
 import { ListPlus, Plus, ChevronRight, ChevronDown, Folder, Trash2, FolderPlus, Pin, PinOff } from 'lucide-react';
 
 const MENU_WIDTH = 224;     // w-56
@@ -15,7 +15,7 @@ export default function ContextMenu() {
     contextMenu, setContextMenu, token, triggerQueueRefresh, 
     addManuallyQueuedTrack, 
     playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId, activePlaylistId,
-    albums, setAlbums, addPlaylistToFolder, removePlaylistFromFolder,
+    removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder,
     pinnedItems, togglePin
   } = useUserStore();
 
@@ -106,11 +106,13 @@ export default function ContextMenu() {
     if (!token || !deviceId || !track) return;
 
     try {
-      addManuallyQueuedTrack(contextMenu.track);
       await addToQueue(token, deviceId, track.uri);
+      // Only record the optimistic entry once Spotify has accepted it. It's persisted, so a
+      // failed add used to leave a phantom in the queue panel that survived restarts.
+      addManuallyQueuedTrack(track);
 
       setTimeout(() => triggerQueueRefresh(), 750);
-      setContextMenu(null);
+      closeMenu();
     } catch (err) {
       console.error(err);
     }
@@ -186,22 +188,12 @@ export default function ContextMenu() {
   const handleRemoveAlbum = async () => {
     if (!token || !contextMenu.albumId) return;
     try {
-      await fetch(`https://api.spotify.com/v1/me/albums?ids=${contextMenu.albumId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (albums && setAlbums) {
-        setAlbums(albums.filter(a => a.id !== contextMenu.albumId));
-      }
-      
-      customFolders.forEach(f => {
-         if (f.playlistIds.includes(contextMenu.albumId)) {
-             removePlaylistFromFolder(f.id, contextMenu.albumId);
-         }
-      });
-      
-      setContextMenu(null);
+      // unsaveAlbum throws on a non-2xx response, so local state is only touched once Spotify
+      // has actually removed it. Previously the response was ignored and the album vanished
+      // locally even when the request failed, leaving the library diverged until reload.
+      await unsaveAlbum(token, contextMenu.albumId);
+      removeAlbumFromLibrary(contextMenu.albumId);
+      closeMenu();
     } catch (err) {
       console.error('Failed to remove album:', err);
     }
