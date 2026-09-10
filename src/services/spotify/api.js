@@ -85,15 +85,6 @@ export async function unfollowPlaylist(token, playlistId) {
   if (!response.ok) throw new Error("Failed to delete playlist");
 }
 
-export async function followPlaylist(token, playlistId) {
-  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}/followers`, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${token}` }
-  });
-
-  if (!response.ok) throw new Error("Failed to follow playlist");
-}
-
 export async function createPlaylist(token, userId, { name, description = '', public: isPublic = false, collaborative = false } = {}) {
   const response = await spotifyFetch(`https://api.spotify.com/v1/users/${encodeURIComponent(userId)}/playlists`, {
     method: "POST",
@@ -276,27 +267,24 @@ export async function playSingleTrack(token, deviceId, trackUri) {
   }
 }
 
-export async function playTrackSequence(token, deviceId, uris, positionMs = 0) {
-  const uniqueUris = [...new Set((uris || []).filter(Boolean))];
-  if (uniqueUris.length === 0) return;
+// Plays an explicit list of URIs in the given order, starting at `offsetIndex`. Spotify caps
+// the list (around 100), so callers pass a window. Used when a view's on-screen order differs
+// from the playlist's stored order.
+export async function playUris(token, deviceId, uris, offsetIndex = 0) {
+  const window = (uris || []).filter(Boolean).slice(0, 100);
+  if (window.length === 0) return;
 
   const url = "https://" + "api.spotify.com/v1/me/player/play?device_id=" + deviceId;
-
   const response = await spotifyFetch(url, {
     method: "PUT",
     headers: {
       "Authorization": "Bearer " + token,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({
-      uris: uniqueUris,
-      position_ms: positionMs
-    })
+    body: JSON.stringify({ uris: window, offset: { position: Math.max(0, Math.min(offsetIndex, window.length - 1)) } })
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to play ordered queue sequence");
-  }
+  if (!response.ok) throw new Error("Failed to play tracks");
 }
 
 export async function checkTracksLiked(token, trackIds) {

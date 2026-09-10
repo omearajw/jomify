@@ -250,9 +250,12 @@ export const useUserStore = create(
         ),
       })),
       
-      setToken: (newToken) => set({ 
+      // expiresInSeconds comes from Spotify's token response. The 3600 fallback only applies if
+      // a caller doesn't pass it; it used to be hardcoded, so a shorter-lived token would have
+      // expired mid-session before the heartbeat thought to refresh it.
+      setToken: (newToken, expiresInSeconds) => set({
         token: newToken,
-        tokenExpiresAt: Date.now() + (3600 * 1000) 
+        tokenExpiresAt: Date.now() + ((Number(expiresInSeconds) || 3600) * 1000)
       }),
 
       setRefreshToken: (newRefreshToken) => set({
@@ -289,9 +292,24 @@ export const useUserStore = create(
       queueRefreshTrigger: 0,
       triggerQueueRefresh: () => set((state) => ({ queueRefreshTrigger: state.queueRefreshTrigger + 1 })),
 
+      // Only what the queue panel renders and the matcher needs. Full Spotify track objects
+      // (every image size, full album and artist payloads) were being written to localStorage
+      // for a list that doesn't even outlive the Spotify queue.
       manuallyQueuedTracks: [],
       addManuallyQueuedTrack: (track) => set((state) => ({
-        manuallyQueuedTracks: [...state.manuallyQueuedTracks, track]
+        manuallyQueuedTracks: [...state.manuallyQueuedTracks, {
+          id: track.id,
+          uri: track.uri,
+          name: track.name,
+          duration_ms: track.duration_ms,
+          linked_from: track.linked_from ? { id: track.linked_from.id, uri: track.linked_from.uri } : undefined,
+          artists: (track.artists || []).map(a => ({ id: a.id, name: a.name, uri: a.uri })),
+          album: track.album ? {
+            id: track.album.id,
+            name: track.album.name,
+            images: track.album.images?.[0] ? [track.album.images[0]] : []
+          } : undefined
+        }]
       })),
       
       // Matches on identity only. The old fuzzy clause compared the part of the name before any
@@ -315,22 +333,9 @@ export const useUserStore = create(
       }),
 
       queueData: null,
-      queueOrder: [],
-      setQueueOrder: (order) => set((state) => ({
-        queueOrder: typeof order === 'function' ? order(state.queueOrder) : order
-      })),
       setQueueData: (data) => set((state) => ({
         queueData: typeof data === 'function' ? data(state.queueData) : data
       })),
-      injectOptimisticQueueItem: (track) => set((state) => {
-        if (!state.queueData) return state;
-        return {
-          queueData: {
-            ...state.queueData,
-            queue: [track, ...state.queueData.queue] 
-          }
-        };
-      }),
 
       playlistSortSettings: {},
       setPlaylistSortSettings: (playlistId, settings) => set((state) => ({
@@ -444,7 +449,6 @@ export const useUserStore = create(
         customFolders: state.customFolders,
         libraryGridSize: state.libraryGridSize,
         pinnedItems: state.pinnedItems, // SAVES YOUR SANDBOX
-        queueOrder: state.queueOrder,
         manuallyQueuedTracks: state.manuallyQueuedTracks,
         playlistSortSettings: state.playlistSortSettings,
         stagedSeven : state.stagedSeven,

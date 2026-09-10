@@ -57,14 +57,19 @@ export async function getAccessToken(code) {
 
   const data = await result.json();
 
-  // FIX: Save the refresh token safely to the global store right here in the background
+  // The verifier is single-use. It used to linger in localStorage forever, surviving even a
+  // hard logout.
+  localStorage.removeItem("verifier");
+
+  // Save the refresh token safely to the global store right here in the background
   const store = useUserStore.getState();
   if (data.refresh_token) {
     store.setRefreshToken(data.refresh_token);
   }
 
-  // Return ONLY the string to the Login component so it doesn't break
-  return data.access_token; 
+  // expires_in is Spotify's word on how long the token lasts; the caller feeds it to setToken
+  // instead of assuming an hour.
+  return { access_token: data.access_token, expires_in: data.expires_in };
 }
 
 export async function refreshAccessToken(refreshToken) {

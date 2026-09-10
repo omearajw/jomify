@@ -70,10 +70,9 @@ function App() {
       if (!token || !refreshToken || !tokenExpiresAt) return;
 
       if (Date.now() > tokenExpiresAt - 300000) {
-        console.log("Token expiring soon. Silently refreshing in background...");
         try {
           const data = await refreshAccessToken(refreshToken);
-          setToken(data.access_token);
+          setToken(data.access_token, data.expires_in);
           
           if (data.refresh_token) {
              setRefreshToken(data.refresh_token);
@@ -104,8 +103,8 @@ function App() {
     if (code && !token && !isAuthenticating.current) {
       isAuthenticating.current = true; 
       
-      getAccessToken(code).then((accessToken) => {
-        setToken(accessToken);
+      getAccessToken(code).then(({ access_token, expires_in }) => {
+        setToken(access_token, expires_in);
         window.history.replaceState({}, document.title, "/");
       }).catch(err => {
         console.error("Login failed:", err);
@@ -174,7 +173,6 @@ function App() {
   useEffect(() => {
     if (token) {
       if (!tokenExpiresAt || Date.now() > tokenExpiresAt) {
-        console.log("Token expired. Logging out.");
         logout();
         window.location.href = "/"; 
       }

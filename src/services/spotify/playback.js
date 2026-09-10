@@ -18,7 +18,7 @@ export function initializeSpotifyPlayer(token, storeActions) {
     });
 
     player.addListener('ready', ({ device_id }) => {
-      console.log('🎧 Jomify Audio Engine Ready! Device ID:', device_id);
+      console.debug('🎧 Jomify Audio Engine Ready! Device ID:', device_id);
       setDeviceId(device_id);
 
       // Apply the persisted volume. The SDK starts at its own default regardless of what the
@@ -35,7 +35,7 @@ export function initializeSpotifyPlayer(token, storeActions) {
     });
 
     player.addListener('not_ready', ({ device_id }) => {
-      console.log('Device ID has gone offline', device_id);
+      console.debug('Device ID has gone offline', device_id);
     });
 
     player.addListener('player_state_changed', (state) => {
