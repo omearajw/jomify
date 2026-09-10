@@ -17,7 +17,7 @@ export default function SevensSettings() {
   const {
     token, profile, playlists, sevens,
     addSeven, removeSeven, updateSeven,
-    setActivePlaylistId, setCurrentView
+    navigateToPlaylist
   } = useUserStore();
 
   const [query, setQuery] = useState('');
@@ -148,7 +148,7 @@ export default function SevensSettings() {
         {/* Cover + identity */}
         <button
           type="button"
-          onClick={() => { setActivePlaylistId(seven.playlistId); setCurrentView('playlist'); }}
+          onClick={() => { navigateToPlaylist(seven.playlistId); }}
           className="flex items-center gap-4 flex-1 min-w-0 text-left group"
         >
           <div className={`w-16 h-16 rounded-xl overflow-hidden bg-black/40 shrink-0 shadow-lg flex items-center justify-center ${seven.active ? '' : 'grayscale opacity-60'}`}>

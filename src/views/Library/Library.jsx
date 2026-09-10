@@ -41,7 +41,7 @@ const FolderStack = ({ folder, items }) => {
 
 export default function Library() {
   const { 
-    token, profile, playlists, albums, setPlaylists, setCurrentView, setActivePlaylistId, navigateToAlbum,
+    token, profile, playlists, albums, setPlaylists, setCurrentView, setActivePlaylistId, navigateToPlaylist, navigateToAlbum,
     customFolders, addPlaylistToFolder, removePlaylistFromFolder, deleteFolder, deletePlaylist, createFolder,
     draggedItem, setDraggedItem, reorderFolders, reorderPlaylistInFolder,
     libraryGridSize, setLibraryGridSize, setContextMenu
@@ -250,8 +250,7 @@ export default function Library() {
       }
 
       setPlaylists([...playlists, newPlaylist]);
-      setActivePlaylistId(newPlaylist.id);
-      setCurrentView('playlist');
+      navigateToPlaylist(newPlaylist.id);
       setPlaylistDialogOpen(false);
     } catch (err) {
       console.error('Failed to create playlist:', err);
@@ -296,7 +295,7 @@ export default function Library() {
         onDrop={(e) => handleDropOnItem(e, item.id, parentFolderId)}
         onClick={() => {
           if (isAlbum) navigateToAlbum(item.id);
-          else { setActivePlaylistId(item.id); setCurrentView('playlist'); }
+          else { navigateToPlaylist(item.id); }
         }}
         onContextMenu={(e) => handleMenuClick(e, item, parentFolderId)}
         className={`p-4 rounded-xl hover:bg-neutral-800 transition-all duration-300 cursor-pointer group shadow-lg flex flex-col h-full relative cursor-grab active:cursor-grabbing ${isDragTarget ? 'ring-2 ring-[#f91362] bg-brand-gradient text-white/10 scale-[1.02]' : isSubItem ? 'bg-neutral-800/40 border border-neutral-700/30 hover:border-neutral-500/50' : 'bg-neutral-800/40'}`}

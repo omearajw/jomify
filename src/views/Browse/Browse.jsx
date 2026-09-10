@@ -3,7 +3,7 @@ import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { searchSpotify, playSingleTrack, checkTracksLiked, fetchSearchPage } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
-import { Search, Play, ArrowLeft, Loader } from 'lucide-react';
+import { Search, Play, ChevronLeft, Loader } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 
 const cleanString = (str) => {
@@ -28,7 +28,7 @@ const getCachedJSON = (key, defaultVal) => {
 
 export default function Browse() {
   // Added setContextMenu and setDraggedItem here
-  const { token, setLikedTracks, navigateToArtist, navigateToAlbum, setContextMenu, setDraggedItem, setActivePlaylistId, setCurrentView } = useUserStore();
+  const { token, setLikedTracks, navigateToArtist, navigateToAlbum, setContextMenu, setDraggedItem, navigateToPlaylist } = useUserStore();
   const { deviceId, playbackState } = usePlayerStore();
   
   // Initialize state directly from the session cache
@@ -182,12 +182,12 @@ export default function Browse() {
 
     return (
       <div className="flex flex-col pb-8 select-none animate-fade-in px-2">
-        <div className="sticky top-16 z-10 backdrop-blur-md px-8 py-4 flex items-center">
+        <div className="sticky top-[var(--top-bar-h,64px)] z-10 backdrop-blur-md px-8 py-4 flex items-center">
           <button 
             onClick={() => setExpandedSection(null)} 
             className="flex items-center text-neutral-400 hover:text-white mb-1 w-fit font-bold transition-colors"
           >
-            <ArrowLeft className="w-5 h-5 mr-2" /> Back to Search
+            <ChevronLeft className="w-5 h-5 mr-2" /> Back to Search
           </button>
         </div>
 
@@ -288,7 +288,7 @@ export default function Browse() {
                 return (
                   <div
                     key={playlist.id}
-                    onClick={() => { setActivePlaylistId(playlist.id); setCurrentView('playlist'); }}
+                    onClick={() => { navigateToPlaylist(playlist.id); }}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({ type: 'playlist', x: e.pageX, y: e.pageY, playlistId: playlist.id, playlistSource: 'browse' });
@@ -533,7 +533,7 @@ export default function Browse() {
                     return (
                       <div
                         key={playlist.id}
-                        onClick={() => { setActivePlaylistId(playlist.id); setCurrentView('playlist'); }}
+                        onClick={() => { navigateToPlaylist(playlist.id); }}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setContextMenu({ type: 'playlist', x: e.pageX, y: e.pageY, playlistId: playlist.id, playlistSource: 'browse' });

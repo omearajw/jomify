@@ -3,7 +3,7 @@ import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { playSingleTrack, checkTracksLiked } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
-import { ArrowLeft, Play } from 'lucide-react';
+import { Play } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 
 // Safe String comparison for the Green Highlight
@@ -13,7 +13,7 @@ const cleanString = (str) => {
 };
 
 export default function Album() {
-  const { token, setLikedTracks, currentAlbumId, goBack, navigateToArtist, setContextMenu } = useUserStore();
+  const { token, setLikedTracks, currentAlbumId, navigateToArtist, setContextMenu } = useUserStore();
   const { deviceId, playbackState } = usePlayerStore();
   const [album, setAlbum] = useState(null);
   const [tracks, setTracks] = useState([]);
@@ -70,15 +70,11 @@ export default function Album() {
     );
   }
 
+  // Back navigation is the global button in MainLayout; this view used to render a second one
+  // 64px below it doing the identical thing.
   if (!album) {
     return (
       <div className="flex flex-col pb-8">
-        <button 
-          onClick={goBack}
-          className="flex items-center text-neutral-400 hover:text-white mb-6 w-fit font-bold transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5 mr-2" /> Back
-        </button>
         <p className="text-neutral-400">Album not found</p>
       </div>
     );
@@ -86,13 +82,6 @@ export default function Album() {
 
   return (
     <div className="flex flex-col pb-8">
-      <button 
-        onClick={goBack}
-        className="flex items-center text-neutral-400 hover:text-white mb-6 w-fit font-bold transition-colors"
-      >
-        <ArrowLeft className="w-5 h-5 mr-2" /> Back
-      </button>
-
       {/* Album Header */}
       <div className="flex items-end gap-6 mb-12">
         <div className="w-48 h-48 bg-neutral-700 rounded-lg overflow-hidden shadow-2xl flex-shrink-0">

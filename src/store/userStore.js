@@ -8,6 +8,20 @@ import { markFolderDeleted } from '../sync/meta';
 // that iterates customFolders keeps working unchanged.
 const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : 1);
 
+// One place that knows what a history frame looks like. Capped so bouncing between two views
+// all afternoon doesn't grow the stack without bound.
+const HISTORY_CAP = 50;
+const pushHistory = (state) => [
+  ...state.viewHistory,
+  {
+    view: state.currentView,
+    playlistId: state.activePlaylistId,
+    artistId: state.currentArtistId,
+    albumId: state.currentAlbumId,
+    folderId: state.activeFolderId
+  }
+].slice(-HISTORY_CAP);
+
 export const useUserStore = create(
   subscribeWithSelector(persist(
     (set) => ({
@@ -124,7 +138,9 @@ export const useUserStore = create(
         markFolderDeleted(folderId);
         set((state) => ({
           customFolders: state.customFolders.filter(f => f.id !== folderId),
-          pinnedItems: state.pinnedItems.filter(p => p.id !== folderId) // Remove from pins if deleted
+          pinnedItems: state.pinnedItems.filter(p => p.id !== folderId), // Remove from pins if deleted
+          activeFolderId: state.activeFolderId === folderId ? null : state.activeFolderId,
+          viewHistory: state.viewHistory.map(h => h.folderId === folderId ? { ...h, folderId: null } : h)
         }));
       },
 
@@ -164,7 +180,9 @@ export const useUserStore = create(
         })),
         pinnedItems: state.pinnedItems.filter(p => p.id !== playlistId), // Remove from pins if deleted
         activePlaylistId: state.activePlaylistId === playlistId ? null : state.activePlaylistId,
-        currentView: state.activePlaylistId === playlistId ? 'library' : state.currentView
+        currentView: state.activePlaylistId === playlistId ? 'library' : state.currentView,
+        // Otherwise Back after a delete lands on the dead playlist and fetches a 404
+        viewHistory: state.viewHistory.filter(h => !(h.view === 'playlist' && h.playlistId === playlistId))
       })),
 
       reorderFolders: (dragId, dropId) => set((state) => {
@@ -321,30 +339,38 @@ export const useUserStore = create(
       setSavedVolume: (vol) => set({ savedVolume: vol }),
 
       setCurrentView: (view) => set((state) => {
-        if (state.currentView === view) return {}; 
+        if (state.currentView === view) return {};
         return {
-          viewHistory: [...state.viewHistory, {
-            view: state.currentView,
-            playlistId: state.activePlaylistId,
-            artistId: state.currentArtistId,
-            albumId: state.currentAlbumId,
-            folderId: state.activeFolderId 
-          }],
+          viewHistory: pushHistory(state),
           currentView: view
         };
       }),
 
       navigateToArtist: (artistId) => set((state) => ({
-        viewHistory: [...state.viewHistory, { view: state.currentView, playlistId: state.activePlaylistId, artistId: state.currentArtistId, albumId: state.currentAlbumId, folderId: state.activeFolderId }],
+        viewHistory: pushHistory(state),
         currentView: 'artist',
         currentArtistId: artistId
       })),
 
       navigateToAlbum: (albumId) => set((state) => ({
-        viewHistory: [...state.viewHistory, { view: state.currentView, playlistId: state.activePlaylistId, artistId: state.currentArtistId, albumId: state.currentAlbumId, folderId: state.activeFolderId }],
+        viewHistory: pushHistory(state),
         currentView: 'album',
         currentAlbumId: albumId
       })),
+
+      // Playlist navigation used to be `setActivePlaylistId(id); setCurrentView('playlist')` at
+      // nine call sites. That never recorded history when already on a playlist (setCurrentView
+      // early-returns for the same view), and even when it did, the frame captured the NEW id
+      // because it was snapshotted after the overwrite. So Back from playlist to playlist did
+      // nothing, everywhere. This pushes the frame first, then moves.
+      navigateToPlaylist: (playlistId) => set((state) => {
+        if (state.currentView === 'playlist' && state.activePlaylistId === playlistId) return {};
+        return {
+          viewHistory: pushHistory(state),
+          currentView: 'playlist',
+          activePlaylistId: playlistId
+        };
+      }),
       
       goBack: () => set((state) => {
         if (state.viewHistory.length === 0) return {};

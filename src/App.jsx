@@ -28,7 +28,7 @@ function App() {
     setToken, setRefreshToken, setProfile, setPlaylists, 
     currentView, setCurrentView,
     pinnedItems, playlists, albums, customFolders, 
-    activePlaylistId, setActivePlaylistId, navigateToAlbum, setContextMenu,
+    activePlaylistId, navigateToAlbum, navigateToPlaylist, setContextMenu,
     sevens, seedLegacySevens
   } = useUserStore();
   
@@ -435,7 +435,7 @@ function App() {
                     {sevenTurns.map(playlist => (
                       <div 
                         key={playlist.id}
-                        onClick={() => { setActivePlaylistId(playlist.id); setCurrentView('playlist'); }}
+                        onClick={() => { navigateToPlaylist(playlist.id); }}
                         className="w-full bg-brand-gradient/10 border border-[var(--brand-mid)]/30 rounded-2xl p-4 flex items-center justify-between shadow-[0_0_30px_rgba(249,19,98,0.15)] cursor-pointer hover:bg-brand-gradient/20 transition-all group"
                       >
                         <div className="flex items-center gap-5">
@@ -496,7 +496,7 @@ function App() {
                           if (pinned.type === 'playlist') {
                             item = playlists.find(p => p.id === pinned.id);
                             if (!item) return null;
-                            onClick = () => { setActivePlaylistId(item.id); setCurrentView('playlist'); };
+                            onClick = () => { navigateToPlaylist(item.id); };
                             imageNode = item.images?.[0]?.url ? <img src={item.images[0].url} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" /> : <span className={`${iconSizeClass} transition-transform duration-500 group-hover:scale-110`}>💿</span>;
                             title = item.name;
                             subtitle = `Playlist • ${item.owner?.display_name || 'Spotify'}`;

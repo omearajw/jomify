@@ -38,7 +38,7 @@ function formatAgo(timestamp) {
 export default function Sidebar() {
   const { 
     token, profile, currentView, setCurrentView, logout, playlists, albums, activePlaylistId, navigateToAlbum,
-    setActivePlaylistId, customFolders, createFolder,
+    navigateToPlaylist, customFolders, createFolder,
     draggedItem, setDraggedItem, reorderFolders, 
     addPlaylistToFolder, removePlaylistFromFolder, reorderPlaylistInFolder, setContextMenu, setPlaylists, deleteFolder
   } = useUserStore();
@@ -175,8 +175,7 @@ export default function Sidebar() {
       }
 
       setPlaylists([...playlists, newPlaylist]);
-      setActivePlaylistId(newPlaylist.id);
-      setCurrentView('playlist');
+      navigateToPlaylist(newPlaylist.id);
     } catch (err) {
       console.error('Sidebar playlist creation failed:', err);
     }
@@ -323,7 +322,7 @@ export default function Sidebar() {
                     }}
                     onClick={() => {
                       if (isAlbum) navigateToAlbum(item.id);
-                      else { setActivePlaylistId(item.id); setCurrentView('playlist'); }
+                      else { navigateToPlaylist(item.id); }
                     }}
                     className={`w-full text-left px-2 py-1.5 transition-colors flex items-center group cursor-grab active:cursor-grabbing rounded-md ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white'}`}
                   >
@@ -399,7 +398,7 @@ export default function Sidebar() {
                             }}
                             onClick={() => {
                               if (isAlbum) navigateToAlbum(item.id);
-                              else { setActivePlaylistId(item.id); setCurrentView('playlist'); }
+                              else { navigateToPlaylist(item.id); }
                             }}
                             className={`w-full text-left py-1.5 transition-colors flex items-center group cursor-grab active:cursor-grabbing rounded ${isSubDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white px-2 -ml-2' : 'text-neutral-400 hover:text-white'}`}
                           >
@@ -432,7 +431,7 @@ export default function Sidebar() {
                       e.preventDefault(); e.stopPropagation();
                       setContextMenu({ type: 'playlist', playlistId: pl.id, parentFolderId: null, x: e.pageX, y: e.pageY });
                     }}
-                    onClick={() => { setActivePlaylistId(pl.id); setCurrentView('playlist'); }}
+                    onClick={() => { navigateToPlaylist(pl.id); }}
                     className={`w-full text-left px-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
                   >
                     <div className="w-8 h-8 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
