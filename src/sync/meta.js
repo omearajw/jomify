@@ -127,18 +127,31 @@ export function stampSortSetting(playlistId, at = syncNow()) {
 
 // --- tombstones -------------------------------------------------------------
 
-// THE ONLY PLACE A FOLDER TOMBSTONE IS EVER CREATED. Called from deleteFolder in userStore.js,
-// which is the sole code path in the app that removes a folder. Deliberately never inferred from
-// diffing two states: a false tombstone is the one bug that could delete real folders, and
-// inference is the only way one could arise.
+// Folder tombstones are minted in exactly two places -- deleteFolder (which cascades to
+// subfolders) and importFolderTree in replace mode -- both in userStore.js, and both are the
+// only code paths that remove folders. Deliberately never inferred from diffing two states: a
+// false tombstone is the one bug that could delete real folders, and inference is the only way
+// one could arise.
 export function markFolderDeleted(folderId, at = syncNow()) {
+  return markFoldersDeleted([folderId], at);
+}
+
+export function markFoldersDeleted(folderIds, at = syncNow()) {
   const meta = getMeta();
-  return saveMeta({ deletedFolders: { ...meta.deletedFolders, [folderId]: at } });
+  const deletedFolders = { ...meta.deletedFolders };
+  folderIds.forEach((id) => { deletedFolders[id] = at; });
+  return saveMeta({ deletedFolders });
 }
 
 export function markPinDeleted(pinId, at = syncNow()) {
+  return markPinsDeleted([pinId], at);
+}
+
+export function markPinsDeleted(pinIds, at = syncNow()) {
   const meta = getMeta();
-  return saveMeta({ deletedPins: { ...meta.deletedPins, [pinId]: at } });
+  const deletedPins = { ...meta.deletedPins };
+  pinIds.forEach((id) => { deletedPins[id] = at; });
+  return saveMeta({ deletedPins });
 }
 
 // --- identity ---------------------------------------------------------------

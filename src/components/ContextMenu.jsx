@@ -3,9 +3,46 @@ import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, unsaveAlbum } from '../services/spotify/api';
-import { ListPlus, Plus, ChevronRight, ChevronDown, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil } from 'lucide-react';
+import { ListPlus, Plus, ChevronRight, ChevronDown, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil, CornerDownRight } from 'lucide-react';
 import FolderFormDialog from './FolderFormDialog';
 import { toast } from '../store/toastStore';
+import { flattenFolderTree, descendantIds } from '../utils/library';
+
+// One picker for every "Move to…" list: playlists, albums and folders. Rows are indented by
+// depth and labelled with their path so two "Favourites" folders in different places can be
+// told apart. `excludeIds` hides a folder and its subtree (a folder can't move into itself).
+function MoveToList({ folders, currentParentId, excludeIds, allowRoot = false, onPick, footer }) {
+  const rows = flattenFolderTree(folders, { exclude: excludeIds || new Set() });
+  return (
+    <div className="max-h-48 overflow-y-auto custom-scrollbar">
+      {allowRoot && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onPick(null); }}
+          disabled={currentParentId === null}
+          className="w-full text-left px-4 py-2 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors truncate"
+        >
+          Top level
+        </button>
+      )}
+      {rows.map(({ folder, depth, path }) => (
+        <button
+          key={folder.id}
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onPick(folder.id); }}
+          disabled={folder.id === currentParentId}
+          title={path.join(' › ')}
+          style={{ paddingLeft: 16 + depth * 12 }}
+          className="w-full text-left pr-4 py-2 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors truncate flex items-center gap-2"
+        >
+          {depth > 0 && <CornerDownRight className="w-3 h-3 text-neutral-600 shrink-0" />}
+          <span className="truncate">{folder.name}</span>
+        </button>
+      ))}
+      {footer}
+    </div>
+  );
+}
 
 const MENU_WIDTH = 224;     // w-56
 const SUBMENU_WIDTH = 256;  // w-64
@@ -18,7 +55,7 @@ export default function ContextMenu() {
     contextMenu, setContextMenu, token, triggerQueueRefresh, 
     addManuallyQueuedTrack, 
     playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId, activePlaylistId,
-    removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder, renameFolder, createFolder,
+    removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder, renameFolder, createFolder, moveFolder,
     pinnedItems, togglePin
   } = useUserStore();
 
@@ -30,7 +67,8 @@ export default function ContextMenu() {
   // Which folder dialog is open, and what it should do with the name it collects. The menu
   // itself has usually closed by the time the dialog is on screen, so the item id is captured
   // here rather than read from contextMenu later.
-  const [folderDialog, setFolderDialog] = useState(null); // { mode: 'rename', folderId, name } | { mode: 'create', itemId }
+  const [folderDialog, setFolderDialog] = useState(null); // { mode: 'rename', folderId, name } | { mode: 'create', itemId?, parentId? }
+  const [showMoveFolder, setShowMoveFolder] = useState(false);
 
   // Which folder groups in the "Add to Playlist" submenu are expanded. Every folder starts
   // closed each time the menu opens, so a big library is a short list of folders rather than
@@ -40,6 +78,7 @@ export default function ContextMenu() {
   const closeMenu = () => {
     setContextMenu(null);
     setShowPlaylistMenu(false);
+    setShowMoveFolder(false);
     setOpenFolderIds(new Set());
   };
 
@@ -297,7 +336,7 @@ export default function ContextMenu() {
                     </button>
                   ))}
 
-                  {customFolders.map(folder => {
+                  {flattenFolderTree(customFolders).map(({ folder, path }) => {
                     const folderPls = userPlaylists.filter(p => folder.playlistIds.includes(p.id));
                     if (folderPls.length === 0) return null;
                     const isOpen = openFolderIds.has(folder.id);
@@ -308,11 +347,13 @@ export default function ContextMenu() {
                           type="button"
                           onClick={(e) => { e.stopPropagation(); toggleFolderOpen(folder.id); }}
                           aria-expanded={isOpen}
+                          title={path.join(' › ')}
                           className="w-full px-4 py-2 flex items-center justify-between text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
                         >
                           <span className="flex items-center min-w-0">
                             <Folder className={`w-3.5 h-3.5 mr-2 shrink-0 ${isOpen ? 'text-brand-gradient' : 'text-neutral-500'}`} />
-                            <span className="truncate font-medium">{folder.name}</span>
+                            {/* Nested folders show their path; the accordion itself stays one level deep */}
+                            <span className="truncate font-medium">{path.join(' › ')}</span>
                           </span>
                           <span className="flex items-center gap-2 shrink-0 ml-2">
                             <span className="text-[10px] font-bold text-neutral-500 tabular-nums">{folderPls.length}</span>
@@ -370,23 +411,12 @@ export default function ContextMenu() {
           )}
 
           <div className="px-4 py-2 text-xs text-neutral-500 uppercase tracking-wider font-bold flex items-center"><FolderPlus className="w-3 h-3 mr-2" /> Move to...</div>
-          <div className="max-h-48 overflow-y-auto custom-scrollbar">
-            {customFolders.map(folder => (
-              <button
-                key={folder.id}
-                onClick={(e) => {
-                  e?.stopPropagation?.();
-                  addPlaylistToFolder(folder.id, contextMenu.playlistId);
-                  setContextMenu(null);
-                }}
-                disabled={folder.id === contextMenu?.parentFolderId}
-                className="w-full text-left px-4 py-2 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors truncate"
-              >
-                {folder.name}
-              </button>
-            ))}
-            {newFolderEntry(contextMenu.playlistId)}
-          </div>
+          <MoveToList
+            folders={customFolders}
+            currentParentId={contextMenu?.parentFolderId ?? null}
+            onPick={(folderId) => { addPlaylistToFolder(folderId, contextMenu.playlistId); closeMenu(); }}
+            footer={newFolderEntry(contextMenu.playlistId)}
+          />
         </>
       )}
 
@@ -419,23 +449,12 @@ export default function ContextMenu() {
           )}
 
           <div className="px-4 py-2 text-xs text-neutral-500 uppercase tracking-wider font-bold flex items-center"><FolderPlus className="w-3 h-3 mr-2" /> Move to...</div>
-          <div className="max-h-48 overflow-y-auto custom-scrollbar">
-            {customFolders.map(folder => (
-              <button
-                key={folder.id}
-                onClick={(e) => {
-                  e?.stopPropagation?.();
-                  addPlaylistToFolder(folder.id, contextMenu.albumId);
-                  setContextMenu(null);
-                }}
-                disabled={folder.id === contextMenu?.parentFolderId}
-                className="w-full text-left px-4 py-2 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors truncate"
-              >
-                {folder.name}
-              </button>
-            ))}
-            {newFolderEntry(contextMenu.albumId)}
-          </div>
+          <MoveToList
+            folders={customFolders}
+            currentParentId={contextMenu?.parentFolderId ?? null}
+            onPick={(folderId) => { addPlaylistToFolder(folderId, contextMenu.albumId); closeMenu(); }}
+            footer={newFolderEntry(contextMenu.albumId)}
+          />
         </>
       )}
 
@@ -453,6 +472,37 @@ export default function ContextMenu() {
             <span>Rename folder</span>
           </button>
           <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setFolderDialog({ mode: 'create', parentId: folder.id });
+              setContextMenu(null);
+            }}
+            className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+          >
+            <FolderPlus className="w-4 h-4 text-neutral-400" />
+            <span>New subfolder</span>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowMoveFolder(v => !v); }}
+            aria-expanded={showMoveFolder}
+            className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-between transition-colors"
+          >
+            <span className="flex items-center space-x-3">
+              <CornerDownRight className="w-4 h-4 text-neutral-400" />
+              <span>Move folder to…</span>
+            </span>
+            {showMoveFolder ? <ChevronDown className="w-4 h-4 text-neutral-500" /> : <ChevronRight className="w-4 h-4 text-neutral-500" />}
+          </button>
+          {showMoveFolder && (
+            <MoveToList
+              folders={customFolders}
+              currentParentId={folder.parentId ?? null}
+              excludeIds={new Set([folder.id, ...descendantIds(customFolders, folder.id)])}
+              allowRoot
+              onPick={(targetId) => { moveFolder(folder.id, targetId); closeMenu(); }}
+            />
+          )}
+          <button
             onClick={handleDeleteFolder}
             className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
           >
@@ -464,12 +514,13 @@ export default function ContextMenu() {
 
       <FolderFormDialog
         open={Boolean(folderDialog)}
-        title={folderDialog?.mode === 'rename' ? 'Rename folder' : 'New folder'}
+        title={folderDialog?.mode === 'rename' ? 'Rename folder' : (folderDialog?.parentId ? 'New subfolder' : 'New folder')}
         submitLabel={folderDialog?.mode === 'rename' ? 'Rename' : 'Create'}
         initialName={folderDialog?.mode === 'rename' ? folderDialog.name : ''}
+        parentLabel={folderDialog?.parentId ? customFolders.find(f => f.id === folderDialog.parentId)?.name : ''}
         onSubmit={({ name }) => {
           if (folderDialog?.mode === 'rename') renameFolder(folderDialog.folderId, name);
-          else createFolder(name, [folderDialog.itemId]);
+          else createFolder(name, folderDialog.itemId ? [folderDialog.itemId] : [], folderDialog.parentId ?? null);
           setFolderDialog(null);
         }}
         onCancel={() => setFolderDialog(null)}
@@ -486,7 +537,10 @@ export default function ContextMenu() {
       <ConfirmDialog
         open={confirmFolderOpen}
         title="Delete Folder"
-        message={`Delete "${contextMenu?.folderName || folder?.name}"? Your playlists will not be deleted.`}
+        message={(() => {
+          const subs = folder ? descendantIds(customFolders, folder.id).length : 0;
+          return `Delete "${contextMenu?.folderName || folder?.name}"?${subs ? ` This also deletes ${subs} subfolder${subs === 1 ? '' : 's'}.` : ''} Your playlists will not be deleted.`;
+        })()}
         confirmLabel="Delete Folder"
         onConfirm={confirmDeleteFolder}
         onCancel={() => setConfirmFolderOpen(false)}

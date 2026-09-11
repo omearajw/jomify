@@ -9,7 +9,8 @@ import { downloadBackup, parseBackup, applyBackup } from '../sync/backup';
 import { useSyncStore } from '../store/syncStore';
 import { isSafeToHardLogout } from '../sync/engine';
 import { clearMeta } from '../sync/meta';
-import { getUnfolderedItems } from '../utils/library';
+import { getUnfolderedItems, buildFolderTree, childrenOf, folderPath, isDescendant } from '../utils/library';
+import { rowButtonProps } from '../utils/a11y';
 
 const TAGLINES = [
   "All my homies HATE Spotify!",
@@ -36,11 +37,114 @@ function formatAgo(timestamp) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+// Where a folder drag would land on a row: the top and bottom quarters insert beside it, the
+// middle drops inside. Everything else (playlists, albums, tracks) always goes inside.
+function dropPositionFor(e, draggedItem) {
+  if (draggedItem?.type !== 'folder') return 'into';
+  const rect = e.currentTarget.getBoundingClientRect();
+  const y = e.clientY - rect.top;
+  if (y < rect.height * 0.25) return 'before';
+  if (y > rect.height * 0.75) return 'after';
+  return 'into';
+}
+
+// Row components live at module scope: defining them inside Sidebar would give them a new
+// identity every render and remount the whole list mid-drag, dropping the drag.
+function ItemRow({ item, parentFolderId, indent, size = 6, ctx }) {
+  const isAlbum = item.type === 'album';
+  const isDragTarget = ctx.dragOverId === item.id;
+  const dragType = isAlbum ? 'album' : 'playlist';
+  return (
+    <button
+      draggable="true"
+      onDragStart={(e) => ctx.handleDragStart(e, { type: dragType, id: item.id, parentFolderId })}
+      onDragOver={(e) => ctx.handleDragOver(e, item.id)}
+      onDragLeave={ctx.handleDragLeave}
+      onDragEnd={ctx.handleDragEnd}
+      onDrop={(e) => ctx.handleDropOnPlaylist(e, item.id, parentFolderId)}
+      onContextMenu={(e) => {
+        e.preventDefault(); e.stopPropagation();
+        ctx.setContextMenu({ type: dragType, playlistId: isAlbum ? null : item.id, albumId: isAlbum ? item.id : null, parentFolderId, x: e.pageX, y: e.pageY });
+      }}
+      onClick={() => { if (isAlbum) ctx.navigateToAlbum(item.id); else ctx.navigateToPlaylist(item.id); }}
+      style={{ paddingLeft: indent }}
+      className={`w-full text-left pr-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
+    >
+      <div className={`${size === 8 ? 'w-8 h-8' : 'w-6 h-6'} rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none`}>
+        {item.images?.[0]?.url ? <img src={item.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
+      </div>
+      <span className="truncate pointer-events-none">{item.name}</span>
+    </button>
+  );
+}
+
+function FolderRow({ folder, depth, ctx }) {
+  const { customFolders, allItems, expandedFolders, draggedItem, dropTarget } = ctx;
+  const isExpanded = expandedFolders.includes(folder.id);
+  const children = childrenOf(customFolders, folder.id);
+  const target = dropTarget?.id === folder.id ? dropTarget.position : null;
+  const forbidden = draggedItem?.type === 'folder'
+    && (draggedItem.id === folder.id || isDescendant(customFolders, folder.id, draggedItem.id));
+  const invites = !target && !forbidden && draggedItem && draggedItem.type !== 'track';
+  const indent = 8 + depth * 16;
+
+  return (
+    <div className="flex flex-col" role="treeitem" aria-level={depth + 1} aria-expanded={isExpanded} aria-selected={false}>
+      <div
+        draggable="true"
+        onDragStart={(e) => ctx.handleDragStart(e, { type: 'folder', id: folder.id, parentFolderId: folder.parentId ?? null })}
+        onDragOver={(e) => ctx.handleFolderDragOver(e, folder, forbidden)}
+        onDragLeave={(e) => ctx.handleFolderDragLeave(e, folder)}
+        onDragEnd={ctx.handleDragEnd}
+        onDrop={(e) => ctx.handleFolderDrop(e, folder, forbidden)}
+        onClick={() => ctx.setIsolatedFolderId(folder.id)}
+        {...rowButtonProps(() => ctx.setIsolatedFolderId(folder.id))}
+        onContextMenu={(e) => ctx.openFolderMenu(e, folder)}
+        style={{ paddingLeft: indent }}
+        className={`relative flex items-center w-full pr-2 py-2 rounded-md cursor-pointer group transition-colors cursor-grab active:cursor-grabbing ${
+          target === 'into' ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white'
+          : invites ? 'text-neutral-300 hover:bg-neutral-800/50 border border-dashed border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/10'
+          : 'text-neutral-300 hover:text-white hover:bg-neutral-800/50'
+        } ${forbidden ? 'opacity-40' : ''}`}
+      >
+        {(target === 'before' || target === 'after') && (
+          <span aria-hidden="true" className={`pointer-events-none absolute left-1 right-1 h-0.5 rounded-full bg-[var(--brand-mid)] ${target === 'before' ? '-top-px' : '-bottom-px'}`} />
+        )}
+        <button onClick={(e) => ctx.toggleFolderExpand(e, folder.id)} aria-label={isExpanded ? 'Collapse' : 'Expand'} className="p-0.5 hover:bg-neutral-700 rounded text-neutral-400 hover:text-white mr-1 transition-colors">
+          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        </button>
+        <Folder className="w-4 h-4 mr-3 shrink-0 pointer-events-none" />
+        <span className="truncate pointer-events-none flex-1">{folder.name}</span>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); ctx.openManage(folder.id); }}
+          aria-label={`Add items to ${folder.name}`}
+          title="Add items"
+          className="ml-2 p-0.5 rounded text-neutral-500 hover:text-white hover:bg-neutral-700 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+      </div>
+
+      {isExpanded && (
+        <div role="group" className="space-y-1 mt-1 mb-2">
+          {children.map(child => <FolderRow key={child.id} folder={child} depth={depth + 1} ctx={ctx} />)}
+          {folder.playlistIds.map(id => {
+            const item = allItems.find(p => p.id === id);
+            if (!item) return null;
+            return <ItemRow key={item.id} item={item} parentFolderId={folder.id} indent={indent + 28} ctx={ctx} />;
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Sidebar() {
-  const { 
+  const {
     token, profile, currentView, setCurrentView, logout, playlists, albums, navigateToAlbum,
     navigateToPlaylist, customFolders, createFolder, activeFolderId, setActiveFolderId, requestFolderManage,
-    draggedItem, setDraggedItem, reorderFolders, 
+    draggedItem, setDraggedItem, reorderFolders, moveFolder,
     addPlaylistToFolder, removePlaylistFromFolder, reorderPlaylistInFolder, setContextMenu, setPlaylists, deleteFolder
   } = useUserStore();
   
@@ -51,11 +155,14 @@ export default function Sidebar() {
   const setIsolatedFolderId = setActiveFolderId;
   const [expandedFolders, setExpandedFolders] = useState([]);
   const [dragOverId, setDragOverId] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null); // { id, position: 'before' | 'into' | 'after' } for folder rows
   const [showCreatePlaylistDialog, setShowCreatePlaylistDialog] = useState(false);
   const [showCreateFolderDialog, setShowCreateFolderDialog] = useState(false);
+  const [createParentId, setCreateParentId] = useState(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 
   const activeFolder = customFolders.find(f => f.id === isolatedFolderId);
+  const allItems = [...playlists, ...(albums || [])];
   const { playlists: unfolderedPlaylists, albums: unfolderedAlbums } = getUnfolderedItems(playlists, albums, customFolders);
   
   const [tagline] = useState(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)]);
@@ -147,30 +254,34 @@ export default function Sidebar() {
     setExpandedFolders(prev => prev.includes(folderId) ? prev.filter(id => id !== folderId) : [...prev, folderId]);
   };
 
-  // Spring-loaded folders: hover a dragged track over a collapsed folder for a moment and it
-  // opens, so tracks can be dropped onto playlists that live inside folders without having to
-  // expand the folder first with the other hand.
-  const springTimer = useRef(null);
+  // Spring-loaded folders: hover anything draggable over a collapsed folder for a moment and it
+  // opens, so the drop can land on something inside it without expanding the folder first with
+  // the other hand. One timer per folder, so crossing several rows doesn't cancel the first.
+  const springTimers = useRef(new Map());
   const armSpringLoad = (folderId) => {
-    if (draggedItem?.type !== 'track' || springTimer.current) return;
-    springTimer.current = setTimeout(() => {
+    if (springTimers.current.has(folderId)) return;
+    springTimers.current.set(folderId, setTimeout(() => {
       setExpandedFolders(prev => (prev.includes(folderId) ? prev : [...prev, folderId]));
-      springTimer.current = null;
-    }, 600);
+      springTimers.current.delete(folderId);
+    }, 600));
   };
-  const disarmSpringLoad = () => {
-    if (springTimer.current) {
-      clearTimeout(springTimer.current);
-      springTimer.current = null;
-    }
+  const disarmSpringLoad = (folderId) => {
+    const timer = springTimers.current.get(folderId);
+    if (timer) { clearTimeout(timer); springTimers.current.delete(folderId); }
   };
+  const disarmAllSpringLoads = () => {
+    springTimers.current.forEach(clearTimeout);
+    springTimers.current.clear();
+  };
+
+  const closeFolderDialog = () => { setShowCreateFolderDialog(false); setCreateParentId(null); };
 
   const handleCreateFolder = async ({ name }) => {
     if (!name || !name.trim()) return;
     setIsCreatingFolder(true);
     try {
-      createFolder(name.trim());
-      setShowCreateFolderDialog(false);
+      createFolder(name.trim(), [], createParentId);
+      closeFolderDialog();
     } finally {
       setIsCreatingFolder(false);
     }
@@ -224,17 +335,36 @@ export default function Sidebar() {
   };
 
   const handleDragLeave = () => setDragOverId(null);
-  const handleDragEnd = () => { setDraggedItem(null); setDragOverId(null); };
+  const handleDragEnd = () => { setDraggedItem(null); setDragOverId(null); setDropTarget(null); disarmAllSpringLoads(); };
 
-  const handleDropOnFolder = (e, targetFolderId) => {
+  const handleFolderDragOver = (e, folder, forbidden) => {
     e.preventDefault(); e.stopPropagation();
-    setDragOverId(null);
-    if (!draggedItem) return;
+    if (forbidden) { e.dataTransfer.dropEffect = 'none'; return; }
+    e.dataTransfer.dropEffect = draggedItem?.type === 'track' ? 'copy' : 'move';
+    const position = dropPositionFor(e, draggedItem);
+    if (dropTarget?.id !== folder.id || dropTarget.position !== position) setDropTarget({ id: folder.id, position });
+    if (position === 'into') armSpringLoad(folder.id); else disarmSpringLoad(folder.id);
+  };
 
-    if (draggedItem.type === 'folder' && draggedItem.id !== targetFolderId) {
-      reorderFolders(draggedItem.id, targetFolderId);
+  const handleFolderDragLeave = (e, folder) => {
+    // dragleave also fires when the pointer crosses into a child element of the same row
+    if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) return;
+    setDropTarget(prev => (prev?.id === folder.id ? null : prev));
+    disarmSpringLoad(folder.id);
+  };
+
+  const handleFolderDrop = (e, folder, forbidden) => {
+    e.preventDefault(); e.stopPropagation();
+    const position = dropPositionFor(e, draggedItem);
+    setDropTarget(null);
+    disarmSpringLoad(folder.id);
+    if (!draggedItem || forbidden) return;
+
+    if (draggedItem.type === 'folder' && draggedItem.id !== folder.id) {
+      if (position === 'into') moveFolder(draggedItem.id, folder.id);
+      else reorderFolders(draggedItem.id, folder.id, position);
     } else if (draggedItem.type === 'playlist' || draggedItem.type === 'album') {
-      addPlaylistToFolder(targetFolderId, draggedItem.id);
+      addPlaylistToFolder(folder.id, draggedItem.id);
     }
     setDraggedItem(null);
   };
@@ -272,9 +402,39 @@ export default function Sidebar() {
     // Only unfolder if it's an item that actually came from a folder
     if ((draggedItem.type === 'playlist' || draggedItem.type === 'album') && draggedItem.parentFolderId) {
       removePlaylistFromFolder(draggedItem.parentFolderId, draggedItem.id);
+    } else if (draggedItem.type === 'folder' && draggedItem.parentFolderId) {
+      // Empty space means "the level I'm looking at": the top level, or the open folder
+      moveFolder(draggedItem.id, activeFolder ? activeFolder.id : null);
     }
     setDraggedItem(null);
   };
+
+  const openManage = (folderId) => {
+    // Navigate first so the history frame records where you came from
+    setCurrentView('library');
+    setIsolatedFolderId(folderId);
+    requestFolderManage(folderId);
+  };
+
+  const openFolderMenu = (e, folder) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      type: 'folder', folderId: folder.id, folderName: folder.name, x: e.pageX, y: e.pageY,
+      onDelete: () => { deleteFolder(folder.id); setContextMenu(null); }
+    });
+  };
+
+  // Everything the module-scope rows need from this render
+  const rowCtx = {
+    customFolders, allItems, expandedFolders, draggedItem, dropTarget, dragOverId,
+    toggleFolderExpand, handleDragStart, handleDragOver, handleDragLeave, handleDragEnd,
+    handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, handleDropOnPlaylist,
+    setIsolatedFolderId, openManage, openFolderMenu, setContextMenu, navigateToAlbum, navigateToPlaylist
+  };
+
+  const activePath = activeFolder ? folderPath(customFolders, activeFolder.id) : [];
+  const activeChildren = activeFolder ? childrenOf(customFolders, activeFolder.id) : [];
 
   const navItems = [
     { id: 'home', label: 'Home', icon: Home },
@@ -316,44 +476,40 @@ export default function Sidebar() {
         
         {activeFolder ? (
           <div className="animate-fade-in">
-            <button onClick={() => setIsolatedFolderId(null)} className="flex items-center text-neutral-400 hover:text-white mb-4 transition-colors group">
-              <ChevronLeft className="w-5 h-5 mr-1 group-hover:-translate-x-1 transition-transform" /> Back
-            </button>
+            <div className="flex items-center justify-between mb-3">
+              <button onClick={() => setIsolatedFolderId(activeFolder.parentId ?? null)} className="flex items-center text-neutral-400 hover:text-white transition-colors group">
+                <ChevronLeft className="w-5 h-5 mr-1 group-hover:-translate-x-1 transition-transform" /> Back
+              </button>
+              <button
+                type="button"
+                onClick={() => { setCreateParentId(activeFolder.id); setShowCreateFolderDialog(true); }}
+                title={`New subfolder in ${activeFolder.name}`}
+                aria-label={`New subfolder in ${activeFolder.name}`}
+                className="text-neutral-400 hover:text-white transition-colors"
+              >
+                <FolderPlus className="w-4 h-4" />
+              </button>
+            </div>
+            <nav aria-label="Folder path" className="flex items-center flex-wrap gap-x-1 px-2 mb-2 text-xs text-neutral-500">
+              <button onClick={() => setIsolatedFolderId(null)} className="hover:text-white transition-colors">Library</button>
+              {activePath.slice(0, -1).map(crumb => (
+                <span key={crumb.id} className="flex items-center gap-x-1">
+                  <ChevronRight className="w-3 h-3" />
+                  <button onClick={() => setIsolatedFolderId(crumb.id)} className="hover:text-white transition-colors truncate max-w-[6rem]">{crumb.name}</button>
+                </span>
+              ))}
+            </nav>
             <h3 className="text-white font-bold text-lg px-2 mb-3 flex items-center">
-              <Folder className="w-5 h-5 mr-2 text-brand-gradient fill-current" /> {activeFolder.name}
+              <Folder className="w-5 h-5 mr-2 text-brand-gradient fill-current shrink-0" /> <span className="truncate">{activeFolder.name}</span>
             </h3>
-            <div className="space-y-1 pl-2">
+            <div role="tree" aria-label={`Folders in ${activeFolder.name}`} className="space-y-1">
+              {activeChildren.map(child => <FolderRow key={child.id} folder={child} depth={0} ctx={rowCtx} />)}
+            </div>
+            <div className={`space-y-1 ${activeChildren.length ? 'mt-2 pt-2 border-t border-white/5' : ''}`}>
               {activeFolder.playlistIds.map(id => {
-                const item = playlists.find(p => p.id === id) || (albums && albums.find(a => a.id === id));
+                const item = allItems.find(p => p.id === id);
                 if (!item) return null;
-                const isAlbum = item.type === 'album';
-                const isDragTarget = dragOverId === item.id;
-                
-                return (
-                  <button 
-                    key={item.id} 
-                    draggable="true"
-                    onDragStart={(e) => handleDragStart(e, { type: isAlbum ? 'album' : 'playlist', id: item.id, parentFolderId: activeFolder.id })}
-                    onDragOver={(e) => handleDragOver(e, item.id)}
-                    onDragLeave={handleDragLeave}
-                    onDragEnd={handleDragEnd} 
-                    onDrop={(e) => handleDropOnPlaylist(e, item.id, activeFolder.id)}
-                    onContextMenu={(e) => {
-                      e.preventDefault(); e.stopPropagation();
-                      setContextMenu({ type: isAlbum ? 'album' : 'playlist', playlistId: isAlbum ? null : item.id, albumId: isAlbum ? item.id : null, parentFolderId: activeFolder.id, x: e.pageX, y: e.pageY });
-                    }}
-                    onClick={() => {
-                      if (isAlbum) navigateToAlbum(item.id);
-                      else { navigateToPlaylist(item.id); }
-                    }}
-                    className={`w-full text-left px-2 py-1.5 transition-colors flex items-center group cursor-grab active:cursor-grabbing rounded-md ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white'}`}
-                  >
-                    <div className="w-6 h-6 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
-                      {item.images?.[0]?.url ? <img src={item.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
-                    </div>
-                    <span className="truncate pointer-events-none">{item.name}</span>
-                  </button>
-                );
+                return <ItemRow key={item.id} item={item} parentFolderId={activeFolder.id} indent={16} ctx={rowCtx} />;
               })}
             </div>
           </div>
@@ -362,148 +518,20 @@ export default function Sidebar() {
             <div className="sticky top-0 flex items-center justify-between px-2 pb-3 pt-3 text-neutral-400 bg-transparent backdrop-blur-[3px] border-b border-t border-white/10 z-10">
               <span className="text-xs uppercase tracking-wider font-bold">Library</span>
               <div className="flex items-center gap-3">
-                <button onClick={() => setShowCreateFolderDialog(true)} className="hover:text-white transition-colors" title="Create Folder"><FolderPlus className="w-4 h-4" /></button>
+                <button onClick={() => { setCreateParentId(null); setShowCreateFolderDialog(true); }} className="hover:text-white transition-colors" title="Create Folder"><FolderPlus className="w-4 h-4" /></button>
                 <button onClick={() => setShowCreatePlaylistDialog(true)} className="hover:text-white transition-colors" title="Create Playlist"><Plus className="w-4 h-4" /></button>
               </div>
             </div>
 
-            {customFolders.map(folder => {
-              const isExpanded = expandedFolders.includes(folder.id);
-              const isDragTarget = dragOverId === folder.id;
-              
-              return (
-                <div key={folder.id} className="flex flex-col">
-                  <div 
-                    draggable="true"
-                    onDragStart={(e) => handleDragStart(e, { type: 'folder', id: folder.id })}
-                    onDragOver={(e) => { handleDragOver(e, folder.id); armSpringLoad(folder.id); }}
-                    onDragLeave={(e) => { handleDragLeave(e); disarmSpringLoad(); }}
-                    onDragEnd={handleDragEnd}
-                    onDrop={(e) => { disarmSpringLoad(); handleDropOnFolder(e, folder.id); }}
-                    onClick={() => setIsolatedFolderId(folder.id)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setContextMenu({
-                        type: 'folder', folderId: folder.id, folderName: folder.name, x: e.pageX, y: e.pageY,
-                        onDelete: () => { deleteFolder(folder.id); if (isolatedFolderId === folder.id) setIsolatedFolderId(null); setContextMenu(null); }
-                      });
-                    }}
-                    className={`flex items-center w-full px-2 py-2 rounded-md cursor-pointer group transition-colors cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : (draggedItem?.type === 'playlist' || draggedItem?.type === 'album') ? 'text-neutral-300 hover:bg-neutral-800/50 border border-dashed border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/10' : 'text-neutral-300 hover:text-white hover:bg-neutral-800/50'}`}
-                  >
-                    <button onClick={(e) => toggleFolderExpand(e, folder.id)} className="p-0.5 hover:bg-neutral-700 rounded text-neutral-400 hover:text-white mr-1 transition-colors">
-                      {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                    </button>
-                    <Folder className="w-4 h-4 mr-3 shrink-0 pointer-events-none" />
-                    <span className="truncate pointer-events-none flex-1">{folder.name}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Navigate first so the history frame records where you came from
-                        setCurrentView('library');
-                        setIsolatedFolderId(folder.id);
-                        requestFolderManage(folder.id);
-                      }}
-                      aria-label={`Add items to ${folder.name}`}
-                      title="Add items"
-                      className="ml-2 p-0.5 rounded text-neutral-500 hover:text-white hover:bg-neutral-700 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all shrink-0"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
-                  
-                  {isExpanded && (
-                    <div className="pl-9 pr-2 space-y-1 mt-1 mb-2">
-                      {folder.playlistIds.map(id => {
-                        const item = playlists.find(p => p.id === id) || (albums && albums.find(a => a.id === id));
-                        if (!item) return null;
-                        const isAlbum = item.type === 'album';
-                        const isSubDragTarget = dragOverId === item.id;
-                        return (
-                          <button 
-                            key={item.id}
-                            draggable="true"
-                            onDragStart={(e) => handleDragStart(e, { type: isAlbum ? 'album' : 'playlist', id: item.id, parentFolderId: folder.id })}
-                            onDragOver={(e) => handleDragOver(e, item.id)}
-                            onDragLeave={handleDragLeave}
-                            onDragEnd={handleDragEnd} 
-                            onDrop={(e) => handleDropOnPlaylist(e, item.id, folder.id)}
-                            onContextMenu={(e) => {
-                              e.preventDefault(); e.stopPropagation();
-                              setContextMenu({ type: isAlbum ? 'album' : 'playlist', playlistId: isAlbum ? null : item.id, albumId: isAlbum ? item.id : null, parentFolderId: folder.id, x: e.pageX, y: e.pageY });
-                            }}
-                            onClick={() => {
-                              if (isAlbum) navigateToAlbum(item.id);
-                              else { navigateToPlaylist(item.id); }
-                            }}
-                            className={`w-full text-left py-1.5 transition-colors flex items-center group cursor-grab active:cursor-grabbing rounded ${isSubDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white px-2 -ml-2' : 'text-neutral-400 hover:text-white'}`}
-                          >
-                            <div className="w-6 h-6 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
-                              {item.images?.[0]?.url ? <img src={item.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
-                            </div>
-                            <span className="truncate pointer-events-none">{item.name}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            <div role="tree" aria-label="Folders" className="space-y-1">
+              {buildFolderTree(customFolders).roots.map(node => (
+                <FolderRow key={node.folder.id} folder={node.folder} depth={0} ctx={rowCtx} />
+              ))}
+            </div>
 
             <div className="pt-2 space-y-1">
-              {unfolderedPlaylists.map(pl => {
-                const isDragTarget = dragOverId === pl.id; 
-                return (
-                  <button 
-                    key={pl.id}
-                    draggable="true"
-                    onDragStart={(e) => handleDragStart(e, { type: 'playlist', id: pl.id, parentFolderId: null })}
-                    onDragOver={(e) => handleDragOver(e, pl.id)}
-                    onDragLeave={handleDragLeave}
-                    onDragEnd={handleDragEnd}
-                    onDrop={(e) => handleDropOnPlaylist(e, pl.id, null)} 
-                    onContextMenu={(e) => {
-                      e.preventDefault(); e.stopPropagation();
-                      setContextMenu({ type: 'playlist', playlistId: pl.id, parentFolderId: null, x: e.pageX, y: e.pageY });
-                    }}
-                    onClick={() => { navigateToPlaylist(pl.id); }}
-                    className={`w-full text-left px-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
-                  >
-                    <div className="w-8 h-8 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
-                      {pl.images?.[0]?.url ? <img src={pl.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
-                    </div>
-                    <span className="truncate pointer-events-none">{pl.name}</span>
-                  </button>
-                );
-              })}
-
-              {unfolderedAlbums.map(album => {
-                const isDragTarget = dragOverId === album.id;
-                return (
-                  <button 
-                    key={album.id}
-                    draggable="true"
-                    onDragStart={(e) => handleDragStart(e, { type: 'album', id: album.id, parentFolderId: null })}
-                    onDragOver={(e) => handleDragOver(e, album.id)}
-                    onDragLeave={handleDragLeave}
-                    onDragEnd={handleDragEnd}
-                    onDrop={(e) => handleDropOnPlaylist(e, album.id, null)} 
-                    onContextMenu={(e) => {
-                      e.preventDefault(); e.stopPropagation();
-                      setContextMenu({ type: 'album', albumId: album.id, parentFolderId: null, x: e.pageX, y: e.pageY });
-                    }}
-                    onClick={() => navigateToAlbum(album.id)}
-                    className={`w-full text-left px-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
-                  >
-                    <div className="w-8 h-8 rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none">
-                      {album.images?.[0]?.url ? <img src={album.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
-                    </div>
-                    <span className="truncate pointer-events-none">{album.name}</span>
-                  </button>
-                );
-              })}
+              {unfolderedPlaylists.map(pl => <ItemRow key={pl.id} item={pl} parentFolderId={null} indent={8} size={8} ctx={rowCtx} />)}
+              {unfolderedAlbums.map(album => <ItemRow key={album.id} item={album} parentFolderId={null} indent={8} size={8} ctx={rowCtx} />)}
             </div>
           </div>
         )}
@@ -551,10 +579,11 @@ export default function Sidebar() {
       />
       <FolderFormDialog
         open={showCreateFolderDialog}
-        title="Create folder"
+        title={createParentId ? 'Create subfolder' : 'Create folder'}
         submitLabel="Create"
+        parentLabel={createParentId ? customFolders.find(f => f.id === createParentId)?.name : ''}
         onSubmit={handleCreateFolder}
-        onCancel={() => setShowCreateFolderDialog(false)}
+        onCancel={closeFolderDialog}
         isSubmitting={isCreatingFolder}
       />
     </aside>

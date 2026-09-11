@@ -24,6 +24,10 @@
 
 export const SCHEMA_VERSION = 1;
 
+// Largest synced document the server accepts, measured as JSON.stringify(doc).length so the
+// client can check the same number before it tries. Shared with api/sync.js.
+export const MAX_DOC_CHARS = 256 * 1024;
+
 // Keys that must never appear in a synced document at any depth. The client builds documents
 // from an explicit whitelist, so this is a second line of defence rather than the first.
 const FORBIDDEN_KEYS = ['token', 'refreshToken', 'accessToken', 'verifier', 'code_verifier'];

@@ -1,12 +1,10 @@
 import { create } from 'zustand';
 import { persist, subscribeWithSelector } from 'zustand/middleware';
-import { markFolderDeleted } from '../sync/meta';
-
-// Folders carry a sparse numeric `order` rather than relying on array position, so that a
-// reorder on one device touches exactly one folder and can be merged without disturbing
-// concurrent edits to the others. The array is kept sorted by it, so every existing render site
-// that iterates customFolders keeps working unchanged.
-const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : 1);
+// Explicit .js extensions so scripts/store-cases.mjs can import this store under plain node
+import { markFoldersDeleted, markPinsDeleted, syncNow } from '../sync/meta.js';
+import {
+  byOrder, childrenOf, descendantIds, isDescendant, nextSiblingOrder, repairFolderTree
+} from '../utils/library.js';
 
 // Keeps the first occurrence of each id, preserving order
 const uniqueById = (items) => {
@@ -35,7 +33,7 @@ const pushHistory = (state) => [
 
 export const useUserStore = create(
   subscribeWithSelector(persist(
-    (set) => ({
+    (set, get) => ({
       token: null,
       refreshToken: null,
       tokenExpiresAt: null,
@@ -130,8 +128,8 @@ export const useUserStore = create(
       // `initialItemIds` lets "New folder…" in a context menu create the folder with the item
       // already inside, in one state change. The items are pulled out of any other folder so
       // the one-folder-per-item invariant holds.
-      createFolder: (name, initialItemIds = []) => set((state) => {
-        const highestOrder = state.customFolders.reduce((max, f) => Math.max(max, f.order ?? 0), 0);
+      createFolder: (name, initialItemIds = [], parentId = null) => set((state) => {
+        const parent = parentId !== null && state.customFolders.some(f => f.id === parentId) ? parentId : null;
         const moving = new Set(initialItemIds);
         return {
           customFolders: [
@@ -145,12 +143,79 @@ export const useUserStore = create(
               id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
               name,
               playlistIds: [...moving],
-              parentId: null,      // reserved for nested folders; the UI is flat for now
-              order: highestOrder + 1000
+              parentId: parent,
+              order: nextSiblingOrder(state.customFolders, parent)
             }
-          ]
+          ].sort(byOrder)
         };
       }),
+
+      // Rejects moves that would make a folder its own ancestor; the merge can still produce
+      // such a cycle from two devices' concurrent moves, which repairFolderTree handles on read.
+      moveFolder: (folderId, newParentId = null) => set((state) => {
+        const folders = state.customFolders;
+        const folder = folders.find(f => f.id === folderId);
+        if (!folder || folderId === newParentId) return {};
+        if (newParentId !== null && !folders.some(f => f.id === newParentId)) return {};
+        if (newParentId !== null && isDescendant(folders, newParentId, folderId)) return {};
+        if ((folder.parentId ?? null) === newParentId) return {};
+
+        const order = nextSiblingOrder(folders, newParentId);
+        return {
+          customFolders: folders
+            .map(f => (f.id === folderId ? { ...f, parentId: newParentId, order } : f))
+            .sort(byOrder)
+        };
+      }),
+
+      // Applies a planned import (see src/import/spotifyFolders.js). Replace mode tombstones
+      // every existing folder the plan doesn't mention; both modes pull imported playlists out
+      // of whatever folder they were in. One set(), so one sync push.
+      importFolderTree: (incoming, { mode = 'replace' } = {}) => {
+        const state = get();
+        const incomingIds = new Set(incoming.map(f => f.id));
+        const existingIds = new Set(state.customFolders.map(f => f.id));
+        const removedIds = mode === 'replace'
+          ? state.customFolders.filter(f => !incomingIds.has(f.id)).map(f => f.id)
+          : [];
+
+        if (removedIds.length > 0) {
+          const at = syncNow();
+          markFoldersDeleted(removedIds, at);
+          const removedSet = new Set(removedIds);
+          const droppedPins = state.pinnedItems.filter(p => removedSet.has(p.id)).map(p => p.id);
+          if (droppedPins.length > 0) markPinsDeleted(droppedPins, at);
+        }
+
+        const removed = new Set(removedIds);
+        const moving = new Set(incoming.flatMap(f => f.playlistIds || []));
+
+        set((s) => {
+          const existing = new Map(s.customFolders.map(f => [f.id, f]));
+          const kept = s.customFolders
+            .filter(f => !removed.has(f.id) && !incomingIds.has(f.id))
+            .map(f => ({ ...f, playlistIds: f.playlistIds.filter(id => !moving.has(id)) }));
+          const imported = incoming.map(f => ({
+            ...(existing.get(f.id) || {}),
+            ...f,
+            parentId: f.parentId ?? null,
+            playlistIds: f.playlistIds || []
+          }));
+          return {
+            customFolders: [...kept, ...imported].sort(byOrder),
+            pinnedItems: s.pinnedItems.filter(p => !removed.has(p.id)),
+            activeFolderId: removed.has(s.activeFolderId) ? null : s.activeFolderId,
+            manageFolderId: removed.has(s.manageFolderId) ? null : s.manageFolderId,
+            viewHistory: s.viewHistory.map(h => (removed.has(h.folderId) ? { ...h, folderId: null } : h))
+          };
+        });
+
+        return {
+          created: incoming.filter(f => !existingIds.has(f.id)).length,
+          updated: incoming.filter(f => existingIds.has(f.id)).length,
+          removed: removedIds.length
+        };
+      },
 
       renameFolder: (folderId, name) => set((state) => ({
         customFolders: state.customFolders.map(f => (f.id === folderId ? { ...f, name } : f))
@@ -174,18 +239,32 @@ export const useUserStore = create(
       requestFolderManage: (folderId) => set({ manageFolderId: folderId }),
       clearManageRequest: () => set({ manageFolderId: null }),
 
+      // Cascades: the folder and everything under it. Items inside are never deleted, only
+      // unfoldered. This and importFolderTree are the only two places that remove folders and
+      // the only two that mint tombstones -- the sync layer never infers a folder removal from
+      // a diff, because a false tombstone would delete real folders on every device at once.
+      // Every descendant gets its own tombstone at ONE timestamp, or an untombstoned child
+      // would come straight back from the server.
       deleteFolder: (folderId) => {
-        // THE ONLY TOMBSTONE MINT SITE IN THE APP. This is also the only code path anywhere that
-        // removes a folder from customFolders, which is what lets the sync layer record deletions
-        // explicitly instead of inferring them from a diff. Inference is the one way a false
-        // tombstone could arise, and a false tombstone is the one bug that could delete real
-        // folders on every device at once.
-        markFolderDeleted(folderId);
-        set((state) => ({
-          customFolders: state.customFolders.filter(f => f.id !== folderId),
-          pinnedItems: state.pinnedItems.filter(p => p.id !== folderId), // Remove from pins if deleted
-          activeFolderId: state.activeFolderId === folderId ? null : state.activeFolderId,
-          viewHistory: state.viewHistory.map(h => h.folderId === folderId ? { ...h, folderId: null } : h)
+        const state = get();
+        const root = state.customFolders.find(f => f.id === folderId);
+        if (!root) return;
+
+        const ids = [folderId, ...descendantIds(state.customFolders, folderId)];
+        const gone = new Set(ids);
+        const at = syncNow();
+        markFoldersDeleted(ids, at);
+
+        const droppedPins = state.pinnedItems.filter(p => gone.has(p.id)).map(p => p.id);
+        if (droppedPins.length > 0) markPinsDeleted(droppedPins, at);
+
+        const fallback = root.parentId ?? null;
+        set((s) => ({
+          customFolders: s.customFolders.filter(f => !gone.has(f.id)),
+          pinnedItems: s.pinnedItems.filter(p => !gone.has(p.id)),
+          activeFolderId: gone.has(s.activeFolderId) ? fallback : s.activeFolderId,
+          manageFolderId: gone.has(s.manageFolderId) ? null : s.manageFolderId,
+          viewHistory: s.viewHistory.map(h => (gone.has(h.folderId) ? { ...h, folderId: fallback } : h))
         }));
       },
 
@@ -243,34 +322,51 @@ export const useUserStore = create(
         viewHistory: state.viewHistory.filter(h => !(h.view === 'album' && h.albumId === albumId))
       })),
 
-      reorderFolders: (dragId, dropId) => set((state) => {
-        const newFolders = [...state.customFolders].sort(byOrder);
-        const dragIndex = newFolders.findIndex(f => f.id === dragId);
-        const dropIndex = newFolders.findIndex(f => f.id === dropId);
-        if (dragIndex === -1 || dropIndex === -1 || dragIndex === dropIndex) return state;
+      // Places `dragId` before or after `dropId` among the drop target's SIBLINGS. A drop onto a
+      // folder in another parent reparents in the same change. `position` is optional so the
+      // old two-argument callers keep their splice semantics: a drag that sat earlier in the
+      // list lands after the target, otherwise before it.
+      reorderFolders: (dragId, dropId, position) => set((state) => {
+        const folders = state.customFolders;
+        const drag = folders.find(f => f.id === dragId);
+        const drop = folders.find(f => f.id === dropId);
+        if (!drag || !drop || dragId === dropId) return {};
 
-        const [draggedItem] = newFolders.splice(dragIndex, 1);
-        newFolders.splice(dropIndex, 0, draggedItem);
+        const targetParent = drop.parentId ?? null;
+        if (targetParent !== null && (targetParent === dragId || isDescendant(folders, targetParent, dragId))) return {};
 
-        // Give the moved folder an order between its new neighbours, so this reorder is a change
-        // to one folder rather than a rewrite of the whole list.
-        const before = newFolders[dropIndex - 1];
-        const after = newFolders[dropIndex + 1];
+        const siblings = childrenOf(folders, targetParent).filter(f => f.id !== dragId);
+        const dropIndex = siblings.findIndex(f => f.id === dropId);
+        if (dropIndex === -1) return {};
+
+        let resolved = position;
+        if (resolved !== 'before' && resolved !== 'after') {
+          const ordered = childrenOf(folders, targetParent);
+          const dragWasEarlier = (drag.parentId ?? null) === targetParent
+            && ordered.findIndex(f => f.id === dragId) < ordered.findIndex(f => f.id === dropId);
+          resolved = dragWasEarlier ? 'after' : 'before';
+        }
+
+        const insertAt = resolved === 'after' ? dropIndex + 1 : dropIndex;
+        const before = siblings[insertAt - 1];
+        const after = siblings[insertAt];
         let order;
         if (!before) order = (after?.order ?? 1000) - 1000;
         else if (!after) order = (before.order ?? 0) + 1000;
         else order = ((before.order ?? 0) + (after.order ?? 0)) / 2;
 
-        newFolders[dropIndex] = { ...draggedItem, order };
+        const arranged = [
+          ...siblings.slice(0, insertAt),
+          { ...drag, parentId: targetParent, order },
+          ...siblings.slice(insertAt)
+        ];
 
-        // If repeated midpoints have squeezed the gaps shut, renumber. Rare, and treated as an
-        // ordinary edit to every folder.
-        const collapsed = newFolders.some((f, i) => i > 0 && Math.abs(f.order - newFolders[i - 1].order) < 0.001);
-        if (collapsed) {
-          return { customFolders: newFolders.map((f, i) => ({ ...f, order: (i + 1) * 1000 })) };
-        }
+        // If repeated midpoints have squeezed the gaps shut, renumber this sibling group only
+        const collapsed = arranged.some((f, i) => i > 0 && Math.abs((f.order ?? 0) - (arranged[i - 1].order ?? 0)) < 0.001);
+        const finalSiblings = collapsed ? arranged.map((f, i) => ({ ...f, order: (i + 1) * 1000 })) : arranged;
+        const replaced = new Map(finalSiblings.map(f => [f.id, f]));
 
-        return { customFolders: newFolders };
+        return { customFolders: folders.map(f => replaced.get(f.id) || f).sort(byOrder) };
       }),
 
       reorderPlaylistInFolder: (folderId, dragId, dropId) => set((state) => ({
@@ -459,12 +555,16 @@ export const useUserStore = create(
     }),
     {
       name: 'jomify-storage',
-      version: 1,
+      version: 2,
 
-      // Zustand treats state stored without a version as version 0, so this runs exactly once on
-      // an existing install. It only ever ADDS fields -- nothing here can remove a folder.
+      // Zustand treats state stored without a version as version 0. Each step only ever ADDS or
+      // repairs fields -- nothing here can remove a folder. v2 runs the tree repair once so a
+      // store that predates nesting can't hold an orphan or a cycle.
       migrate: (persisted, fromVersion) => {
-        if (!persisted || fromVersion >= 1) return persisted;
+        if (!persisted || fromVersion >= 2) return persisted;
+        if (fromVersion >= 1) {
+          return { ...persisted, customFolders: repairFolderTree(persisted.customFolders || []).folders };
+        }
 
         const folders = Array.isArray(persisted.customFolders) ? persisted.customFolders : [];
 
@@ -487,7 +587,7 @@ export const useUserStore = create(
           }
         }
 
-        return { ...persisted, customFolders, unaddedCheckPlaylists };
+        return { ...persisted, customFolders: repairFolderTree(customFolders).folders, unaddedCheckPlaylists };
       },
 
       partialize: (state) => ({

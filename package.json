@@ -11,6 +11,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "test:merge": "node scripts/merge-cases.mjs",
+    "test:store": "node scripts/store-cases.mjs",
+    "test:import": "node scripts/import-cases.mjs",
     "preview": "vite preview",
     "build-app": "vite build && electron-builder -w"
   },

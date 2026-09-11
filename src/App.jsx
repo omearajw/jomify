@@ -15,6 +15,7 @@ import Album from './views/Album/Album';
 import LikedSongsView from './views/Library/LikedSongsView';
 import SevensSettings from './views/Sevens/SevensSettings';
 import * as syncEngine from './sync/engine';
+import { childrenOf } from './utils/library';
 import { BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -554,7 +555,10 @@ function App() {
                             onClick = () => { setCurrentView('library'); setActiveFolderId(item.id); };
                             imageNode = <span className={`${folderIconSizeClass} transition-transform duration-500 group-hover:scale-110`}>📁</span>;
                             title = item.name;
-                            subtitle = `Folder • ${item.playlistIds.length} items`;
+                            {
+                              const subfolders = childrenOf(customFolders, item.id).length;
+                              subtitle = `Folder • ${item.playlistIds.length} items${subfolders ? ` · ${subfolders} folder${subfolders === 1 ? '' : 's'}` : ''}`;
+                            }
                           }
 
                           const yOffset = count > 2 ? (i % 2 === 0 ? -15 : 15) : 0; 

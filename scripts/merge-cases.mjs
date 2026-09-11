@@ -41,13 +41,13 @@ function section(title) {
 
 // --- builders ---------------------------------------------------------------
 
-function folder(name, { t = 1000, items = [], order = 1000, deletedAt = null } = {}) {
+function folder(name, { t = 1000, items = [], order = 1000, deletedAt = null, parentId = null, tParent } = {}) {
   return {
     name,
-    parentId: null,
+    parentId,
     order,
     items,
-    t: { name: t, parentId: t, order: t, items: t },
+    t: { name: t, parentId: tParent ?? t, order: t, items: t },
     deletedAt
   };
 }
@@ -342,6 +342,130 @@ section('transform round trip');
   // Adopting the merged clocks must not look like a fresh local edit next time round
   const adopted = docToMetaClocks(doc, meta);
   check('adopted clocks match the document', adopted.folders['folder-a'].items === 200);
+}
+
+// --- nested folders -----------------------------------------------------------
+
+section('nested folders: parentId merges and survives');
+{
+  const { docToStore } = await import('../src/sync/transform.js');
+
+  const nested = docWith({
+    P: folder('Parent', { t: 1000, order: 1000 }),
+    C: folder('Child', { t: 1000, order: 1000, parentId: 'P' })
+  });
+  const back = docToStore(nested);
+  check('a non-null parentId round-trips through docToStore', back.customFolders.find(f => f.id === 'C')?.parentId === 'P');
+
+  // Different fields on the same folder: rename on one device, reparent on the other
+  const a = docWith({ Q: folder('Q'), C: folder('Renamed', { t: 9000, tParent: 1000, parentId: null }) });
+  const b = docWith({ Q: folder('Q'), C: folder('Child', { t: 1000, tParent: 9000, parentId: 'Q' }) });
+  const m = mergeSyncDoc(a, b).folders.C;
+  check('rename and reparent both survive', m.name === 'Renamed' && m.parentId === 'Q');
+}
+
+section('nested folders: reparent-vs-delete race becomes an adopted orphan');
+{
+  const { docToStore } = await import('../src/sync/transform.js');
+  const deletedParent = docWith({ P: folder('P', { t: 2000, deletedAt: 5000 }), C: folder('C', { t: 1000 }) });
+  const movedUnderIt = docWith({ P: folder('P', { t: 2000 }), C: folder('C', { t: 1000, tParent: 6000, parentId: 'P' }) });
+
+  const ab = mergeSyncDoc(deletedParent, movedUnderIt);
+  const ba = mergeSyncDoc(movedUnderIt, deletedParent);
+  checkEqual('merge is still commutative with parents in play', ab, ba);
+  check('the tombstoned parent is not live', !isFolderLive(ab.folders.P));
+  check('the child keeps its dead parent pointer in the document', ab.folders.C.parentId === 'P');
+
+  const store = docToStore(ab);
+  check('...but is adopted to the root when read', store.customFolders.find(f => f.id === 'C')?.parentId === null);
+  check('and the parent is gone from the store', !store.customFolders.some(f => f.id === 'P'));
+  checkEqual('both argument orders read to the same store state', docToStore(ab), docToStore(ba));
+}
+
+section('nested folders: cycles are broken deterministically');
+{
+  const { repairFolderTree, buildFolderTree } = await import('../src/utils/library.js');
+  const { docToStore } = await import('../src/sync/transform.js');
+
+  // Two-cycle: X under Y (moved at 7000), Y under X (moved at 8000). The 8000 move closed the loop.
+  const cycle = docWith({
+    X: folder('X', { t: 1000, tParent: 7000, parentId: 'Y' }),
+    Y: folder('Y', { t: 1000, tParent: 8000, parentId: 'X' })
+  });
+  const read = docToStore(cycle);
+  const X = read.customFolders.find(f => f.id === 'X');
+  const Y = read.customFolders.find(f => f.id === 'Y');
+  check('the most recent move is the one undone', Y.parentId === null && X.parentId === 'Y');
+
+  const raw = read.customFolders;
+  checkEqual('repair is idempotent', repairFolderTree(raw).folders, raw);
+
+  // Three-cycle plus a tail hanging off it: exactly one detached, everything still reachable
+  const three = [
+    { id: 'A', name: 'A', playlistIds: [], parentId: 'C', order: 1000 },
+    { id: 'B', name: 'B', playlistIds: [], parentId: 'A', order: 1000 },
+    { id: 'C', name: 'C', playlistIds: [], parentId: 'B', order: 1000 },
+    { id: 'D', name: 'D', playlistIds: [], parentId: 'A', order: 2000 }
+  ];
+  const repaired = repairFolderTree(three);
+  check('exactly one member of a 3-cycle is detached', repaired.detached.length === 1);
+  check('equal clocks detach the greatest id', repaired.detached[0] === 'C');
+  check('the tail keeps its parent', repaired.folders.find(f => f.id === 'D').parentId === 'A');
+  const tree = buildFolderTree(repaired.folders);
+  const count = (nodes) => nodes.reduce((n, node) => n + 1 + count(node.children), 0);
+  check('all four are reachable from a root', count(tree.roots) === 4);
+
+  // Input order must not matter
+  checkEqual('repair result is independent of input order',
+    repairFolderTree([...three].reverse()).folders, repaired.folders);
+
+  // Orphan with an unknown parent
+  const orphan = repairFolderTree([{ id: 'Z', name: 'Z', playlistIds: [], parentId: 'nope', order: 1000 }]);
+  check('an unknown parent is adopted to the root', orphan.folders[0].parentId === null && orphan.orphans[0] === 'Z');
+}
+
+section('nested folders: fuzzed docToStore(merge) is order-independent and fully reachable');
+{
+  const { docToStore } = await import('../src/sync/transform.js');
+  const { buildFolderTree } = await import('../src/utils/library.js');
+
+  let seed = 4242;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const ids = ['f1', 'f2', 'f3', 'f4', 'f5'];
+  const pick = (arr) => arr[Math.floor(rnd() * arr.length) % arr.length];
+
+  const randomNestedDoc = () => {
+    const folders = {};
+    for (const id of ids) {
+      if (rnd() < 0.3) continue;
+      const parent = rnd() < 0.5 ? null : pick([...ids, 'missing']); // may be self, absent, or missing
+      folders[id] = folder(id, {
+        t: Math.floor(rnd() * 5) * 1000,
+        tParent: Math.floor(rnd() * 5) * 1000,
+        parentId: parent === id ? null : parent,
+        order: Math.floor(rnd() * 3) * 1000,
+        deletedAt: rnd() > 0.8 ? Math.floor(rnd() * 5) * 1000 : null
+      });
+    }
+    return docWith(folders);
+  };
+
+  let commutative = true;
+  let reachable = true;
+  for (let i = 0; i < 400; i++) {
+    const a = randomNestedDoc();
+    const b = randomNestedDoc();
+    const ab = docToStore(mergeSyncDoc(a, b));
+    const ba = docToStore(mergeSyncDoc(b, a));
+    try { deepStrictEqual(ab, ba); } catch { commutative = false; break; }
+    const live = ab.customFolders;
+    const tree = buildFolderTree(live);
+    const count = (nodes) => nodes.reduce((n, node) => n + 1 + count(node.children), 0);
+    if (count(tree.roots) !== live.length) { reachable = false; break; }
+    if (live.some(f => f.parentId !== null && !live.some(p => p.id === f.parentId))) { reachable = false; break; }
+  }
+  check('docToStore(merge) is commutative over 400 random nested pairs', commutative);
+  check('every live folder is reachable from a root after repair', reachable);
 }
 
 // --- report -----------------------------------------------------------------

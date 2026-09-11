@@ -1,4 +1,5 @@
 import { useUserStore } from '../store/userStore';
+import { repairFolderTree } from '../utils/library';
 
 // A deliberately dumb, self-contained backup of everything Jomify keeps locally that isn't a
 // secret. This file must not import the sync engine or the merge function: its whole purpose is
@@ -148,6 +149,11 @@ export function applyBackup(parsed) {
   BACKED_UP_KEYS.forEach((key) => {
     if (data[key] !== undefined) patch[key] = data[key];
   });
+
+  // A backup taken before a folder was deleted elsewhere can carry children of that folder
+  if (Array.isArray(patch.customFolders)) {
+    patch.customFolders = repairFolderTree(patch.customFolders).folders;
+  }
 
   useUserStore.setState(patch);
 

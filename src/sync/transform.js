@@ -5,10 +5,9 @@
 // Explicit .js extension so plain node can import this too -- scripts/merge-cases.mjs exercises
 // these transforms directly, without a bundler.
 import { isFolderLive, isPinLive, emptyDoc } from './mergeSyncDoc.js';
+import { byOrder, repairFolderTree } from '../utils/library.js';
 
 const ZERO_FOLDER_CLOCKS = { name: 0, parentId: 0, order: 0, items: 0 };
-
-const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id < b.id ? -1 : 1);
 
 // --- store -> document ------------------------------------------------------
 
@@ -71,7 +70,7 @@ export function storeToDoc(state, meta) {
 // --- document -> store ------------------------------------------------------
 
 export function docToStore(doc) {
-  const customFolders = Object.entries(doc.folders || {})
+  const liveFolders = Object.entries(doc.folders || {})
     .filter(([, folder]) => isFolderLive(folder))
     .map(([id, folder]) => ({
       id,
@@ -79,8 +78,17 @@ export function docToStore(doc) {
       playlistIds: folder.items || [],
       parentId: folder.parentId ?? null,
       order: folder.order ?? 0
-    }))
-    .sort(byOrder);
+    }));
+
+  // Cross-device merges can leave a folder pointing at a deleted parent, or two folders pointing
+  // at each other. Repaired here, on every pull, from the merged document's own clocks -- and
+  // never re-stamped, so every device lands on the same answer without fighting over it.
+  const { folders: customFolders, orphans, detached } = repairFolderTree(liveFolders, {
+    clockOf: (id) => doc.folders?.[id]?.t?.parentId ?? 0
+  });
+  if (orphans.length || detached.length) {
+    console.info(`[sync] Repaired folder tree: ${orphans.length} orphan(s) adopted, ${detached.length} cycle(s) broken.`);
+  }
 
   const pinnedItems = Object.entries(doc.pins || {})
     .filter(([, pin]) => isPinLive(pin))

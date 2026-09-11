@@ -10,7 +10,7 @@ export default function FolderFormDialog(props) {
   return <FolderFormDialogBody {...props} />;
 }
 
-function FolderFormDialogBody({ title, submitLabel, initialName = '', onSubmit, onCancel, isSubmitting = false }) {
+function FolderFormDialogBody({ title, submitLabel, initialName = '', parentLabel = '', onSubmit, onCancel, isSubmitting = false }) {
   const [name, setName] = useState(initialName || '');
   const canSubmit = Boolean(name.trim()) && !isSubmitting;
 
@@ -31,7 +31,9 @@ function FolderFormDialogBody({ title, submitLabel, initialName = '', onSubmit, 
         <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
           <div>
             <h2 id="folder-dialog-title" className="text-xl font-bold text-white">{title}</h2>
-            <p className="text-sm text-neutral-400 mt-1">Enter a name to create a new folder.</p>
+            <p className="text-sm text-neutral-400 mt-1">
+              {parentLabel ? <>Creating inside <span className="text-white font-semibold">{parentLabel}</span></> : 'Enter a name for the folder.'}
+            </p>
           </div>
           <button type="button" onClick={onCancel} aria-label="Close" className="text-neutral-400 hover:text-white transition-colors p-2">
             <X className="w-5 h-5" />

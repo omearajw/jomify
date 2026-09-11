@@ -99,7 +99,12 @@ function stampChanges(prev, next) {
   }
   if (pinsChanged) patch.pins = pins;
 
-  const removedPins = [...prevPinIds].filter(id => !nextPinIds.has(id));
+  // Pins already tombstoned explicitly (a cascade delete or a replace import calls
+  // markPinsDeleted before its set()) are not removals to infer, so the sanity clamp below never
+  // mistakes a deliberate bulk removal for a bug.
+  const removedPins = [...prevPinIds].filter(id =>
+    !nextPinIds.has(id) && !((meta.deletedPins?.[id] ?? 0) > (meta.pins?.[id] ?? 0))
+  );
   if (removedPins.length > 0) {
     // A single user action removes one pin, or a handful via deleteFolder/deletePlaylist. A diff
     // that wipes most of the list is far more likely to be a bug than an intention.

@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { fetchUserPlaylists, addTracksToPlaylist, unfollowPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../../services/spotify/api';
-import { Heart, Folder, Maximize2, ChevronLeft, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2, FolderX } from 'lucide-react';
+import { Heart, Folder, Maximize2, ChevronLeft, ChevronRight, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2, FolderX, FolderInput, FolderOutput } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
 import FolderFormDialog from '../../components/FolderFormDialog';
-import { getUnfolderedItems } from '../../utils/library';
+import ImportFoldersDialog from '../../components/ImportFoldersDialog';
+import { getUnfolderedItems, childrenOf, descendantIds, descendantItemIds, folderPath, isDescendant } from '../../utils/library';
+import { rowButtonProps } from '../../utils/a11y';
 
 // --- VISUAL UPGRADE: Safely Bounded Right-to-Left Fan Stack ---
-const FolderStack = ({ folder, items }) => {
-  const folderItems = folder.playlistIds.map(id => items.find(p => p.id === id)).filter(Boolean);
+// Covers come from the whole subtree, so a folder that only holds subfolders still shows art
+const FolderStack = ({ folder, folders, items }) => {
+  const coverIds = folders ? descendantItemIds(folders, folder.id) : folder.playlistIds;
+  const folderItems = coverIds.map(id => items.find(p => p.id === id)).filter(Boolean);
   
   if (folderItems.length === 0) {
     return <div className="w-full h-full flex items-center justify-center bg-neutral-800"><Folder className="w-16 h-16 text-neutral-700" /></div>;
@@ -114,11 +118,97 @@ function ManageCard({ item, action, onClick }) {
   );
 }
 
+const subfolderLabel = (count) => (count ? ` · ${count} folder${count === 1 ? '' : 's'}` : '');
+
+// Collapsed folder tile. Module scope for the same reason as ItemCard above.
+function FolderCard({ folder, ctx }) {
+  const { customFolders, allItems, dragOverId, draggedItem } = ctx;
+  const isDragTarget = dragOverId === folder.id;
+  const subfolders = childrenOf(customFolders, folder.id).length;
+  // A folder can't be dropped into itself or anything beneath it
+  const forbidden = draggedItem?.type === 'folder'
+    && (draggedItem.id === folder.id || isDescendant(customFolders, folder.id, draggedItem.id));
+  const invites = !isDragTarget && !forbidden
+    && (draggedItem?.type === 'playlist' || draggedItem?.type === 'album' || draggedItem?.type === 'folder');
+
+  return (
+    <div
+      draggable="true"
+      onDragStart={(e) => ctx.handleDragStart(e, { type: 'folder', id: folder.id, parentFolderId: folder.parentId ?? null })}
+      onDragOver={(e) => {
+        if (forbidden) { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; return; }
+        ctx.handleDragOver(e, folder.id);
+      }}
+      onDragLeave={ctx.handleDragLeave}
+      onDragEnd={ctx.handleDragEnd}
+      onDrop={(e) => { if (forbidden) { e.preventDefault(); return; } ctx.handleDropOnFolder(e, folder.id); }}
+      onClick={() => ctx.setIsolatedFolderId(folder.id)}
+      {...rowButtonProps(() => ctx.setIsolatedFolderId(folder.id))}
+      onContextMenu={(e) => ctx.handleFolderContextMenu(e, folder)}
+      className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border relative flex flex-col h-full cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/15 border-[#f91362] scale-[1.02]' : 'bg-neutral-800/40 border-transparent hover:border-neutral-700 hover:bg-neutral-800/80'} ${invites ? 'border-dashed border-[#f91362]/50 bg-[var(--brand-mid)]/10' : ''} ${forbidden ? 'opacity-40' : ''}`}
+    >
+      <button onClick={(e) => ctx.toggleFolderExpand(e, folder.id)} className="absolute top-4 right-4 z-100 w-8 h-8 bg-black/40 hover:bg-black/80 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors" title="Expand Inline">
+        <Maximize2 className="w-4 h-4 text-white transition-transform duration-300" />
+      </button>
+      <div className="aspect-square w-full mb-4 rounded-md shadow-md shrink-0 pointer-events-none">
+        <FolderStack folder={folder} folders={customFolders} items={allItems} />
+      </div>
+      <h3 className="font-bold text-sm text-white truncate mb-1 flex items-center pointer-events-none">
+        <Folder className="w-4 h-4 mr-2 text-brand-gradient fill-current shrink-0" />
+        <span className="truncate">{folder.name}</span>
+      </h3>
+      <p className="text-xs text-neutral-400 truncate mt-auto pointer-events-none">{folder.playlistIds.length} items{subfolderLabel(subfolders)}</p>
+    </div>
+  );
+}
+
+// Expanded folder: a full-width panel whose grid holds subfolders first, then items. Recursive,
+// so an expanded subfolder opens its own panel inside.
+function FolderPanel({ folder, ctx }) {
+  const { customFolders, allItems, expandedFolders, getGridClass, itemCardProps } = ctx;
+  const children = childrenOf(customFolders, folder.id);
+
+  return (
+    <div className="col-span-full bg-neutral-800/30 border border-neutral-700/50 rounded-2xl p-6 shadow-inner animate-fade-in mb-4">
+      <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
+        <div className="flex items-center cursor-pointer group hover:text-green-400 transition-colors" onClick={() => ctx.setIsolatedFolderId(folder.id)}>
+          <Folder className="w-8 h-8 text-brand-gradient fill-current mr-4" />
+          <div>
+            <h3 className="text-2xl font-extrabold text-white tracking-tight group-hover:text-green-400 transition-colors">{folder.name}</h3>
+            <p className="text-sm text-neutral-400 font-medium">{folder.playlistIds.length} items inside{subfolderLabel(children.length)}</p>
+          </div>
+        </div>
+        <button onClick={(e) => ctx.toggleFolderExpand(e, folder.id)} className="w-10 h-10 bg-black/40 hover:bg-black text-white rounded-full flex items-center justify-center transition-all">
+          <Minimize2 className="w-5 h-5" />
+        </button>
+      </div>
+
+      <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} className={`grid ${getGridClass()}`}>
+        {folder.playlistIds.length === 0 && children.length === 0 && <p className="text-neutral-500 italic col-span-full py-4 text-center">Empty folder</p>}
+        {children.map(child => (
+          expandedFolders.includes(child.id)
+            ? <FolderPanel key={`expanded-${child.id}`} folder={child} ctx={ctx} />
+            : <FolderCard key={child.id} folder={child} ctx={ctx} />
+        ))}
+        {folder.playlistIds.map((id) => {
+          const item = allItems.find(p => p.id === id);
+          if (!item) return null;
+          return (
+            <motion.div key={item.id} variants={{ hidden: { opacity: 0, y: 30, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 300, damping: 24 } } }}>
+              <ItemCard item={item} isSubItem={true} parentFolderId={folder.id} {...itemCardProps} />
+            </motion.div>
+          );
+        })}
+      </motion.div>
+    </div>
+  );
+}
+
 export default function Library() {
   const { 
     token, profile, playlists, albums, setPlaylists, setCurrentView, setActivePlaylistId, navigateToPlaylist, navigateToAlbum,
     customFolders, addPlaylistToFolder, removePlaylistFromFolder, deleteFolder, deletePlaylist, createFolder,
-    draggedItem, setDraggedItem, reorderFolders, reorderPlaylistInFolder,
+    draggedItem, setDraggedItem, moveFolder, reorderPlaylistInFolder,
     libraryGridSize, setLibraryGridSize, setContextMenu, activeFolderId, setActiveFolderId,
     manageFolderId, clearManageRequest, removeMissingFolderItems
   } = useUserStore();
@@ -130,6 +220,7 @@ export default function Library() {
   const [expandedFolders, setExpandedFolders] = useState([]);
   const [isManagingRequested, setIsManagingRequested] = useState(false);
   const [confirmState, setConfirmState] = useState({ open: false, type: null, playlist: null, folderId: null });
+  const [importOpen, setImportOpen] = useState(false);
   
   const [dragOverId, setDragOverId] = useState(null);
   
@@ -137,6 +228,7 @@ export default function Library() {
   const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false);
   const [isSubmittingPlaylist, setIsSubmittingPlaylist] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [createParentId, setCreateParentId] = useState(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 
   const activeFolder = customFolders.find(f => f.id === isolatedFolderId);
@@ -203,7 +295,6 @@ export default function Library() {
       y: e.pageY,
       onDelete: () => {
         deleteFolder(folder.id);
-        if (isolatedFolderId === folder.id) setIsolatedFolderId(null);
         setContextMenu(null);
       }
     });
@@ -256,7 +347,6 @@ export default function Library() {
 
     if (confirmState.type === 'folder' && confirmState.folderId) {
       deleteFolder(confirmState.folderId);
-      setIsolatedFolderId(null);
       cancelConfirm();
     }
   };
@@ -268,7 +358,9 @@ export default function Library() {
     e.preventDefault(); e.stopPropagation();
     setDragOverId(null);
     if (!draggedItem) return;
-    if (draggedItem.type === 'folder' && draggedItem.id !== targetFolderId) reorderFolders(draggedItem.id, targetFolderId);
+    // A grid has no before/after, so a folder dropped on a folder card nests inside it; sibling
+    // ordering is done with the sidebar's insertion lines
+    if (draggedItem.type === 'folder' && draggedItem.id !== targetFolderId) moveFolder(draggedItem.id, targetFolderId);
     else if (draggedItem.type === 'playlist' || draggedItem.type === 'album') addPlaylistToFolder(targetFolderId, draggedItem.id);
     setDraggedItem(null);
   };
@@ -309,6 +401,9 @@ export default function Library() {
 
     if ((draggedItem.type === 'playlist' || draggedItem.type === 'album') && draggedItem.parentFolderId) {
       removePlaylistFromFolder(draggedItem.parentFolderId, draggedItem.id);
+    } else if (draggedItem.type === 'folder' && draggedItem.parentFolderId) {
+      // Dropping a nested folder on empty space lifts it to the level you're looking at
+      moveFolder(draggedItem.id, activeFolder ? activeFolder.id : null);
     }
     setDraggedItem(null);
   };
@@ -349,12 +444,14 @@ export default function Library() {
     }
   };
 
+  const closeFolderDialog = () => { setFolderDialogOpen(false); setCreateParentId(null); };
+
   const handleCreateFolder = async ({ name }) => {
     if (!name || !name.trim()) return;
     setIsCreatingFolder(true);
     try {
-      createFolder(name.trim());
-      setFolderDialogOpen(false);
+      createFolder(name.trim(), [], createParentId);
+      closeFolderDialog();
     } finally {
       setIsCreatingFolder(false);
     }
@@ -377,6 +474,16 @@ export default function Library() {
     onMenu: handleMenuClick
   };
 
+  // Everything the module-scope FolderCard / FolderPanel need from this render
+  const folderCtx = {
+    customFolders, allItems, expandedFolders, dragOverId, draggedItem, getGridClass, itemCardProps,
+    toggleFolderExpand, handleDragStart, handleDragOver, handleDragLeave, handleDragEnd,
+    handleDropOnFolder, setIsolatedFolderId, handleFolderContextMenu
+  };
+
+  const activeChildren = activeFolder ? childrenOf(customFolders, activeFolder.id) : [];
+  const activePath = activeFolder ? folderPath(customFolders, activeFolder.id) : [];
+
   const gridItems = [];
 
   if (!activeFolder) {
@@ -388,68 +495,12 @@ export default function Library() {
       </div>
     );
 
-    customFolders.forEach((folder) => {
-      const isExpanded = expandedFolders.includes(folder.id);
-      const isDragTarget = dragOverId === folder.id;
-      
-      if (isExpanded) {
-        gridItems.push(
-          <div key={`expanded-${folder.id}`} className="col-span-full bg-neutral-800/30 border border-neutral-700/50 rounded-2xl p-6 shadow-inner animate-fade-in mb-4">
-            <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
-              <div className="flex items-center cursor-pointer group hover:text-green-400 transition-colors" onClick={() => setIsolatedFolderId(folder.id)}>
-                <Folder className="w-8 h-8 text-brand-gradient fill-current mr-4" />
-                <div>
-                  <h3 className="text-2xl font-extrabold text-white tracking-tight group-hover:text-green-400 transition-colors">{folder.name}</h3>
-                  <p className="text-sm text-neutral-400 font-medium">{folder.playlistIds.length} items inside</p>
-                </div>
-              </div>
-              <button onClick={(e) => toggleFolderExpand(e, folder.id)} className="w-10 h-10 bg-black/40 hover:bg-black text-white rounded-full flex items-center justify-center transition-all">
-                <Minimize2 className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} className={`grid ${getGridClass()}`}>
-              {folder.playlistIds.length === 0 && <p className="text-neutral-500 italic col-span-full py-4 text-center">Empty folder</p>}
-              {folder.playlistIds.map((id) => {
-                const item = allItems.find(p => p.id === id);
-                if (!item) return null;
-                return (
-                  <motion.div key={item.id} variants={{ hidden: { opacity: 0, y: 30, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 300, damping: 24 } } }}>
-                    <ItemCard item={item} isSubItem={true} parentFolderId={folder.id} {...itemCardProps} />
-                  </motion.div>
-                );
-              })}
-            </motion.div>
-          </div>
-        );
-      } else {
-        gridItems.push(
-          <div 
-            key={folder.id} 
-            draggable="true" 
-            onDragStart={(e) => handleDragStart(e, { type: 'folder', id: folder.id })}
-            onDragOver={(e) => handleDragOver(e, folder.id)} 
-            onDragLeave={handleDragLeave}
-            onDragEnd={handleDragEnd} 
-            onDrop={(e) => handleDropOnFolder(e, folder.id)}
-            onClick={() => setIsolatedFolderId(folder.id)} 
-            onContextMenu={(e) => handleFolderContextMenu(e, folder)}
-            className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border relative flex flex-col h-full cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/15 border-[#f91362] scale-[1.02]' : 'bg-neutral-800/40 border-transparent hover:border-neutral-700 hover:bg-neutral-800/80'} ${(draggedItem?.type === 'playlist' || draggedItem?.type === 'album') && !isDragTarget ? 'border-dashed border-[#f91362]/50 bg-[var(--brand-mid)]/10' : ''}`}
-          >
-            <button onClick={(e) => toggleFolderExpand(e, folder.id)} className="absolute top-4 right-4 z-100 w-8 h-8 bg-black/40 hover:bg-black/80 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors" title="Expand Inline">
-              <Maximize2 className="w-4 h-4 text-white transition-transform duration-300" />
-            </button>
-            <div className="aspect-square w-full mb-4 rounded-md shadow-md shrink-0 pointer-events-none">
-               <FolderStack folder={folder} items={allItems} />
-            </div>
-            <h3 className="font-bold text-sm text-white truncate mb-1 flex items-center pointer-events-none">
-              <Folder className="w-4 h-4 mr-2 text-brand-gradient fill-current shrink-0" />
-              <span className="truncate">{folder.name}</span>
-            </h3>
-            <p className="text-xs text-neutral-400 truncate mt-auto pointer-events-none">{folder.playlistIds.length} items</p>
-          </div>
-        );
-      }
+    childrenOf(customFolders, null).forEach((folder) => {
+      gridItems.push(
+        expandedFolders.includes(folder.id)
+          ? <FolderPanel key={`expanded-${folder.id}`} folder={folder} ctx={folderCtx} />
+          : <FolderCard key={folder.id} folder={folder} ctx={folderCtx} />
+      );
     });
 
     unfolderedPlaylists.forEach((pl) => gridItems.push(<ItemCard key={pl.id} item={pl} {...itemCardProps} />));
@@ -467,14 +518,27 @@ export default function Library() {
     >
       {activeFolder ? (
         <div className="mb-8">
-          <button onClick={() => setIsolatedFolderId(null)} className="flex items-center text-neutral-400 hover:text-white mb-6 transition-colors font-bold w-fit">
-            <ChevronLeft className="w-5 h-5 mr-1" /> Back to Library
-          </button>
-          
+          <div className="flex items-center flex-wrap gap-x-1 gap-y-2 mb-6 text-sm">
+            <button onClick={() => setIsolatedFolderId(activeFolder.parentId ?? null)} className="flex items-center text-neutral-400 hover:text-white transition-colors font-bold mr-3">
+              <ChevronLeft className="w-5 h-5 mr-1" /> Back
+            </button>
+            <nav aria-label="Folder path" className="flex items-center flex-wrap gap-1">
+              <button onClick={() => setIsolatedFolderId(null)} className="text-neutral-400 hover:text-white transition-colors">Library</button>
+              {activePath.map((crumb, i) => (
+                <span key={crumb.id} className="flex items-center gap-1">
+                  <ChevronRight className="w-4 h-4 text-neutral-600" />
+                  {i === activePath.length - 1
+                    ? <span className="text-white font-semibold">{crumb.name}</span>
+                    : <button onClick={() => setIsolatedFolderId(crumb.id)} className="text-neutral-400 hover:text-white transition-colors">{crumb.name}</button>}
+                </span>
+              ))}
+            </nav>
+          </div>
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-10 gap-4">
             <div className="flex items-center">
               <div className="w-16 h-16 bg-neutral-800 rounded-lg flex items-center justify-center mr-4 shadow-lg shrink-0 overflow-hidden">
-                <FolderStack folder={activeFolder} items={allItems} />
+                <FolderStack folder={activeFolder} folders={customFolders} items={allItems} />
               </div>
               <div className="min-w-0">
                 <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Folder</span>
@@ -491,7 +555,36 @@ export default function Library() {
           
           {isManaging ? (
             <div className="space-y-12 animate-fade-in">
-               <div>
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-white">Subfolders</h2>
+                  <button
+                    type="button"
+                    onClick={() => { setCreateParentId(activeFolder.id); setFolderDialogOpen(true); }}
+                    className="flex items-center gap-2 rounded-full border border-white/20 px-4 py-1.5 text-sm font-bold text-white hover:bg-white/10 transition-colors"
+                  >
+                    <FolderPlus className="w-4 h-4" /> New subfolder
+                  </button>
+                </div>
+                {activeChildren.length === 0 && <p className="text-neutral-500 italic">No subfolders.</p>}
+                <div className={`grid ${getGridClass()}`}>
+                  {activeChildren.map(child => (
+                    <div key={child.id} className="relative">
+                      <FolderCard folder={child} ctx={folderCtx} />
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); moveFolder(child.id, activeFolder.parentId ?? null); }}
+                        title={activeFolder.parentId ? 'Move up one level' : 'Move to the top level'}
+                        className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-black/60 border border-white/10 px-3 py-1 text-xs font-bold text-white hover:bg-black transition-colors"
+                      >
+                        <FolderOutput className="w-3.5 h-3.5" /> Move out
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <hr className="border-white/10" />
+              <div>
                 <h2 className="text-xl font-bold text-white mb-4">Click to Remove</h2>
                 {activeFolder.playlistIds.length === 0 && <p className="text-neutral-500 italic">No items in this folder.</p>}
                 {missingItemCount > 0 && (
@@ -534,13 +627,18 @@ export default function Library() {
             </div>
           ) : (
             <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} className={`grid ${getGridClass()}`}>
-              {activeFolder.playlistIds.length === 0 && (
+              {activeFolder.playlistIds.length === 0 && activeChildren.length === 0 && (
                 <div className="col-span-full py-12 flex flex-col items-center justify-center text-neutral-500 border-2 border-dashed border-neutral-800 rounded-xl">
                   <Folder className="w-12 h-12 mb-4 opacity-50" />
                   <p>This folder is empty.</p>
                   <button onClick={() => setIsManagingRequested(true)} className="mt-4 text-white font-bold hover:underline">Add Items</button>
                 </div>
               )}
+              {activeChildren.map(child => (
+                expandedFolders.includes(child.id)
+                  ? <FolderPanel key={`expanded-${child.id}`} folder={child} ctx={folderCtx} />
+                  : <FolderCard key={child.id} folder={child} ctx={folderCtx} />
+              ))}
               {activeFolder.playlistIds.map((id) => {
                 const item = allItems.find(p => p.id === id);
                 if (!item) return null;
@@ -561,7 +659,10 @@ export default function Library() {
               <p className="text-sm text-neutral-400 mt-1">Create playlists and organize your collection.</p>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => setFolderDialogOpen(true)} className="px-5 py-2 rounded-full border border-white/20 text-white font-bold hover:bg-white/10 transition-all flex items-center">
+              <button onClick={() => setImportOpen(true)} title="Import your Spotify folder tree" className="px-5 py-2 rounded-full border border-white/20 text-white font-bold hover:bg-white/10 transition-all flex items-center">
+                <FolderInput className="w-4 h-4 mr-2" /> Import
+              </button>
+              <button onClick={() => { setCreateParentId(null); setFolderDialogOpen(true); }} className="px-5 py-2 rounded-full border border-white/20 text-white font-bold hover:bg-white/10 transition-all flex items-center">
                 <FolderPlus className="w-4 h-4 mr-2" /> Folder
               </button>
               <button onClick={() => setPlaylistDialogOpen(true)} className="px-5 py-2 rounded-full bg-brand-gradient text-white font-bold hover:opacity-90 transition-all flex items-center">
@@ -575,6 +676,7 @@ export default function Library() {
           </div>
         </>
       )}
+      <ImportFoldersDialog open={importOpen} onClose={() => setImportOpen(false)} />
       <PlaylistFormDialog
         open={playlistDialogOpen}
         title="Create playlist"
@@ -585,16 +687,22 @@ export default function Library() {
       />
       <FolderFormDialog
         open={folderDialogOpen}
-        title="Create folder"
+        title={createParentId ? 'Create subfolder' : 'Create folder'}
         submitLabel="Create"
+        parentLabel={createParentId ? customFolders.find(f => f.id === createParentId)?.name : ''}
         onSubmit={handleCreateFolder}
-        onCancel={() => setFolderDialogOpen(false)}
+        onCancel={closeFolderDialog}
         isSubmitting={isCreatingFolder}
       />
       <ConfirmDialog
         open={confirmState.open}
         title={confirmState.type === 'playlist' ? 'Delete Playlist' : 'Delete Folder'}
-        message={confirmState.type === 'playlist' ? `Delete "${confirmState.playlist?.name}" from your library?` : 'Are you sure you want to delete this folder? Your playlists will not be deleted.'}
+        message={confirmState.type === 'playlist'
+          ? `Delete "${confirmState.playlist?.name}" from your library?`
+          : (() => {
+            const subs = confirmState.folderId ? descendantIds(customFolders, confirmState.folderId).length : 0;
+            return `Are you sure you want to delete this folder?${subs ? ` This also deletes ${subs} subfolder${subs === 1 ? '' : 's'}.` : ''} Your playlists will not be deleted.`;
+          })()}
         confirmLabel={confirmState.type === 'playlist' ? 'Delete Playlist' : 'Delete Folder'}
         onConfirm={handleConfirm}
         onCancel={cancelConfirm}

@@ -5,7 +5,8 @@ import {
   mergeSyncDoc,
   clampFutureTimestamps,
   findForbiddenKey,
-  SCHEMA_VERSION
+  SCHEMA_VERSION,
+  MAX_DOC_CHARS
 } from '../src/sync/mergeSyncDoc.js';
 
 // The sync endpoint.
@@ -16,7 +17,7 @@ import {
 // expressible as an explicit tombstone carrying a timestamp. This property is what makes it safe
 // for a freshly-installed phone to talk to an account full of folders.
 
-const MAX_BODY_BYTES = 256 * 1024;
+const MAX_BODY_BYTES = MAX_DOC_CHARS;
 
 async function readStoredDoc(userId) {
   const raw = await redis().get(KEYS.doc(userId));
