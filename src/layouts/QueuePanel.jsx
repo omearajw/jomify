@@ -1,5 +1,7 @@
 import { useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import { usePlayerStore } from '../store/playerStore';
 import { fetchQueue } from '../services/spotify/api';
 import { formatTime } from '../utils/formatTime';
@@ -49,6 +51,7 @@ export default function QueuePanel() {
   const { token, isQueueOpen, toggleQueue, queueRefreshTrigger, manuallyQueuedTracks, queueData, setQueueData } = useUserStore();
   const { playbackState } = usePlayerStore();
   const currentTrackUid = playbackState?.track_window?.current_track?.uid;
+  const isMobile = useIsMobile();
 
   const manualQueueEntries = useMemo(() => manuallyQueuedTracks.map((track, index) => ({
     key: `manual-${index}-${track?.uri || track?.id || cleanString(track?.name)}`,
@@ -74,8 +77,11 @@ export default function QueuePanel() {
 
   if (!isQueueOpen) return null;
 
-  return (
-    <div className="w-80 bg-black/40 backdrop-blur-md border-l border-white/5 flex flex-col h-full overflow-hidden shrink-0 animate-slide-in-right shadow-2xl">
+  // Desktop: a column beside the content. Phone: the same panel, full screen, above everything
+  const panel = (
+    <div className={isMobile
+      ? 'fixed inset-0 z-[9001] bg-neutral-950 flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] animate-fade-in'
+      : 'w-80 bg-black/40 backdrop-blur-md border-l border-white/5 flex flex-col h-full overflow-hidden shrink-0 animate-slide-in-right shadow-2xl'}>
       <div className="p-6 border-b border-neutral-800 flex justify-between items-center">
         <h2 className="text-xl font-bold text-white tracking-tight">Queue</h2>
         <button onClick={toggleQueue} className="text-neutral-400 hover:text-white transition-colors">
@@ -117,7 +123,7 @@ export default function QueuePanel() {
                     <span className="text-white text-sm font-medium truncate">{track.name}</span>
                     <span className="text-neutral-400 text-xs truncate">{(track.artists || []).map(a => a.name).join(', ')}</span>
                   </div>
-                  <span className="text-neutral-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="text-neutral-500 text-xs opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity">
                     {formatTime(track.duration_ms)}
                   </span>
                 </div>
@@ -142,7 +148,7 @@ export default function QueuePanel() {
                     </div>
                     <span className="text-neutral-400 text-xs truncate">{(track.artists || []).map(a => a.name).join(', ')}</span>
                   </div>
-                  <span className="text-neutral-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="text-neutral-500 text-xs opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity">
                     {formatTime(track.duration_ms)}
                   </span>
                 </div>
@@ -153,4 +159,6 @@ export default function QueuePanel() {
       </div>
     </div>
   );
+
+  return isMobile ? createPortal(panel, document.body) : panel;
 }

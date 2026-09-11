@@ -24,6 +24,75 @@ export async function spotifyFetch(url, options) {
   return response;
 }
 
+// Player endpoints accept a device_id to target a specific device; without one Spotify uses
+// whatever is active. Callers pass null for "the active device".
+const deviceQuery = (deviceId, prefix = '?') => (deviceId ? `${prefix}device_id=${encodeURIComponent(deviceId)}` : '');
+
+// Player calls fail in two ways worth telling the user apart: nothing is playing anywhere
+// (404 NO_ACTIVE_DEVICE, fixed by picking a device) and the account can't be controlled at all
+// (403 PREMIUM_REQUIRED). Both carry a `code` so call sites can react without parsing text.
+export async function playbackError(response, message = 'Playback request failed') {
+  let reason = '';
+  try { reason = (await response.json())?.error?.reason || ''; } catch { /* no body */ }
+  const err = new Error(reason ? `${message} (${reason})` : `${message} (${response.status})`);
+  err.status = response.status;
+  if (response.status === 404 || reason === 'NO_ACTIVE_DEVICE') err.code = 'NO_ACTIVE_DEVICE';
+  else if (reason === 'PREMIUM_REQUIRED') err.code = 'PREMIUM_REQUIRED';
+  else err.code = reason || 'PLAYBACK_FAILED';
+  return err;
+}
+
+async function playerRequest(token, method, path, { body, deviceId, message } = {}) {
+  const separator = path.includes('?') ? '&' : '?';
+  const response = await spotifyFetch(`https://api.spotify.com/v1/me/player${path}${deviceQuery(deviceId, separator)}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!response.ok) throw await playbackError(response, message);
+  return response;
+}
+
+// --- Spotify Connect: state and transport for whichever device is playing ---------------------
+
+// null when nothing is active anywhere (Spotify answers 204)
+export async function fetchPlayerState(token) {
+  const response = await spotifyFetch('https://api.spotify.com/v1/me/player?additional_types=track,episode', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (response.status === 204) return null;
+  if (!response.ok) throw await playbackError(response, 'Failed to read playback state');
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+}
+
+export async function fetchDevices(token) {
+  const response = await spotifyFetch('https://api.spotify.com/v1/me/player/devices', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) throw await playbackError(response, 'Failed to list devices');
+  return (await response.json()).devices || [];
+}
+
+export const transferPlayback = (token, deviceId, play = false) =>
+  playerRequest(token, 'PUT', '', { body: { device_ids: [deviceId], play }, message: 'Failed to transfer playback' });
+export const pausePlayback = (token, deviceId = null) =>
+  playerRequest(token, 'PUT', '/pause', { deviceId, message: 'Failed to pause' });
+export const resumePlayback = (token, deviceId = null) =>
+  playerRequest(token, 'PUT', '/play', { deviceId, message: 'Failed to resume' });
+export const skipToNext = (token, deviceId = null) =>
+  playerRequest(token, 'POST', '/next', { deviceId, message: 'Failed to skip' });
+export const skipToPrevious = (token, deviceId = null) =>
+  playerRequest(token, 'POST', '/previous', { deviceId, message: 'Failed to go back' });
+export const seekPlayback = (token, positionMs, deviceId = null) =>
+  playerRequest(token, 'PUT', `/seek?position_ms=${Math.max(0, Math.round(positionMs))}`, { deviceId, message: 'Failed to seek' });
+export const setPlaybackVolume = (token, percent, deviceId = null) =>
+  playerRequest(token, 'PUT', `/volume?volume_percent=${Math.max(0, Math.min(100, Math.round(percent)))}`, { deviceId, message: 'Failed to set volume' });
+export const setRepeatMode = (token, state, deviceId = null) =>
+  playerRequest(token, 'PUT', `/repeat?state=${state}`, { deviceId, message: 'Failed to set repeat' });
+
 export async function fetchUserProfile(token) {
   // Use the REAL Spotify API endpoint here:
   const response = await spotifyFetch("https://api.spotify.com/v1/me", {
@@ -198,7 +267,7 @@ export async function fetchMoreTracks(token, nextUrl) {
 }
 
 export async function playPlaylistTrack(token, deviceId, playlistId, trackIndex) {
-  const response = await spotifyFetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/me/player/play${deviceQuery(deviceId)}`, {
     method: "PUT",
     headers: {
       "Authorization": `Bearer ${token}`,
@@ -210,9 +279,7 @@ export async function playPlaylistTrack(token, deviceId, playlistId, trackIndex)
     })
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to trigger track playback");
-  }
+  if (!response.ok) throw await playbackError(response, "Failed to trigger track playback");
 }
 
 export async function searchSpotify(token, query) {
@@ -249,7 +316,7 @@ export async function fetchSearchPage(token, nextUrl) {
 }
 
 export async function playSingleTrack(token, deviceId, trackUri) {
-  const url = "https://" + "api.spotify.com/v1/me/player/play?device_id=" + deviceId;
+  const url = "https://api.spotify.com/v1/me/player/play" + deviceQuery(deviceId);
 
   const response = await spotifyFetch(url, {
     method: "PUT",
@@ -262,9 +329,7 @@ export async function playSingleTrack(token, deviceId, trackUri) {
     })
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to play search track");
-  }
+  if (!response.ok) throw await playbackError(response, "Failed to play track");
 }
 
 // Plays an explicit list of URIs in the given order, starting at `offsetIndex`. Spotify caps
@@ -274,7 +339,7 @@ export async function playUris(token, deviceId, uris, offsetIndex = 0) {
   const window = (uris || []).filter(Boolean).slice(0, 100);
   if (window.length === 0) return;
 
-  const url = "https://" + "api.spotify.com/v1/me/player/play?device_id=" + deviceId;
+  const url = "https://api.spotify.com/v1/me/player/play" + deviceQuery(deviceId);
   const response = await spotifyFetch(url, {
     method: "PUT",
     headers: {
@@ -284,7 +349,7 @@ export async function playUris(token, deviceId, uris, offsetIndex = 0) {
     body: JSON.stringify({ uris: window, offset: { position: Math.max(0, Math.min(offsetIndex, window.length - 1)) } })
   });
 
-  if (!response.ok) throw new Error("Failed to play tracks");
+  if (!response.ok) throw await playbackError(response, "Failed to play tracks");
 }
 
 export async function checkTracksLiked(token, trackIds) {
@@ -329,15 +394,16 @@ export async function fetchInitialLikedSongs(token) {
 }
 
 export async function toggleShuffleState(token, deviceId, state) {
-  const url = "https://" + "api.spotify.com/v1/me/player/shuffle?state=" + state + "&device_id=" + deviceId;
-  await spotifyFetch(url, {
+  const url = "https://api.spotify.com/v1/me/player/shuffle?state=" + state + deviceQuery(deviceId, '&');
+  const response = await spotifyFetch(url, {
     method: "PUT",
     headers: { Authorization: "Bearer " + token }
   });
+  if (!response.ok) throw await playbackError(response, "Failed to set shuffle");
 }
 
 export async function playLikedSongsQueue(token, deviceId, allUris, startIndex, userId) {
-  const url = "https://" + "api.spotify.com/v1/me/player/play?device_id=" + deviceId;
+  const url = "https://api.spotify.com/v1/me/player/play" + deviceQuery(deviceId);
   const headers = {
     "Authorization": "Bearer " + token,
     "Content-Type": "application/json"
@@ -372,7 +438,7 @@ export async function playLikedSongsQueue(token, deviceId, allUris, startIndex, 
     })
   });
 
-  if (!response.ok) throw new Error("Failed to play Liked Songs");
+  if (!response.ok) throw await playbackError(response, "Failed to play Liked Songs");
 }
 
 // Fetches the entire upcoming queue
@@ -389,13 +455,13 @@ export async function fetchQueue(token) {
 
 // Pushes a track to the very top of the "Up Next" queue
 export async function addToQueue(token, deviceId, trackUri) {
-  const url = `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(trackUri)}&device_id=${deviceId}`;
+  const url = `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(trackUri)}${deviceQuery(deviceId, '&')}`;
   const response = await spotifyFetch(url, {
     method: "POST",
     headers: { Authorization: "Bearer " + token }
   });
-  
-  if (!response.ok) throw new Error("Failed to add to queue");
+
+  if (!response.ok) throw await playbackError(response, "Failed to add to queue");
 }
 
 export async function addTracksToPlaylist(token, playlistId, uris) {

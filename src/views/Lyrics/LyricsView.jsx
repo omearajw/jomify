@@ -5,9 +5,10 @@ import { motion } from 'framer-motion';
 import TrackArtists from '../../components/TrackArtists';
 import AudioWaveform from '../../components/AudioWaveform';
 import { parseLrc, pickClosestByDuration, LYRIC_LEAD_IN_MS } from '../../lib/lrc';
+import { seek } from '../../services/spotify/playbackController';
 
 export default function LyricsView() {
-  const { playbackState, player } = usePlayerStore();
+  const { playbackState, player, isLocalActive, positionAt } = usePlayerStore();
   const currentTrack = playbackState?.track_window?.current_track;
 
   const [plainLyrics, setPlainLyrics] = useState([]);
@@ -37,12 +38,16 @@ export default function LyricsView() {
     progressRef.current = currentPos;
 
     const startClock = async () => {
-      if (player) {
+      if (isLocalActive && player) {
         const state = await player.getCurrentState();
         if (state) {
           currentPos = state.position;
           progressRef.current = currentPos;
         }
+      } else if (playbackState && !playbackState.paused) {
+        // Remote playback: the last poll is a little old by now, so advance it to the present
+        currentPos = playbackState.position + (Date.now() - positionAt);
+        progressRef.current = currentPos;
       }
 
       const checkLineIndex = (pos) => {
@@ -74,7 +79,9 @@ export default function LyricsView() {
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
-  }, [playbackState, player]);
+  // positionAt changes with every playbackState, so listing it adds nothing but keeps the
+  // dependency list honest for the remote branch above
+  }, [playbackState, player, isLocalActive, positionAt]);
 
   // --- 2. PUBLIC FREE API FETCHING (LrcLib) ---
   // Cancellation matters here: skip tracks quickly and a slow response for track A used to
@@ -147,11 +154,7 @@ export default function LyricsView() {
   }, [activeIndex]);
 
   // --- 4. CLICK TO SEEK ---
-  const handleSeek = (timeMs) => {
-    if (player) {
-      player.seek(timeMs).catch(console.error);
-    }
-  };
+  const handleSeek = (timeMs) => { seek(timeMs); };
 
   if (!currentTrack) {
     return (

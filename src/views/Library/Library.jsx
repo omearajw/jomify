@@ -89,7 +89,7 @@ function ItemCard({
       onContextMenu={(e) => onMenu(e, item, parentFolderId)}
       className={`p-4 rounded-xl hover:bg-neutral-800 transition-all duration-300 cursor-pointer group shadow-lg flex flex-col h-full relative cursor-grab active:cursor-grabbing ${isDragTarget ? 'ring-2 ring-[#f91362] bg-[var(--brand-mid)]/15 scale-[1.02]' : isSubItem ? 'bg-neutral-800/40 border border-neutral-700/30 hover:border-neutral-500/50' : 'bg-neutral-800/40'}`}
     >
-      <button type="button" onClick={(e) => onMenu(e, item, parentFolderId)} className="absolute top-6 right-6 z-10 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md">
+      <button type="button" onClick={(e) => onMenu(e, item, parentFolderId)} className="absolute top-6 right-6 z-10 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity backdrop-blur-md">
         <MoreVertical className="w-4 h-4" />
       </button>
 
@@ -509,7 +509,7 @@ export default function Library() {
 
   return (
     <div 
-      className="animate-fade-in pb-12 overflow-hidden min-h-[calc(100vh-200px)] flex flex-col"
+      className="animate-fade-in pb-12 overflow-hidden md:min-h-[calc(100vh-200px)] flex flex-col"
       onDragOver={(e) => { 
         e.preventDefault(); 
         if (draggedItem?.parentFolderId) e.dataTransfer.dropEffect = 'move'; 
@@ -658,7 +658,7 @@ export default function Library() {
               <h1 className="text-4xl font-extrabold text-white tracking-tighter">Your Library</h1>
               <p className="text-sm text-neutral-400 mt-1">Create playlists and organize your collection.</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button onClick={() => setImportOpen(true)} title="Import your Spotify folder tree" className="px-5 py-2 rounded-full border border-white/20 text-white font-bold hover:bg-white/10 transition-all flex items-center">
                 <FolderInput className="w-4 h-4 mr-2" /> Import
               </button>

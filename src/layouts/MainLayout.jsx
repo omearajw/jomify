@@ -9,6 +9,16 @@ import { ChevronLeft, AlertTriangle, CloudOff } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { useSyncStore } from '../store/syncStore';
 import ZenMode from '../views/ZenMode/ZenMode';
+import UpdatePrompt from '../pwa/registerServiceWorker';
+import { shouldRegisterServiceWorker } from '../pwa/env';
+import BottomTabBar from './BottomTabBar';
+import MiniPlayer from './MiniPlayer';
+import NowPlayingSheet from './NowPlayingSheet';
+import DevicePicker from '../components/DevicePicker';
+import { useIsMobile, useIsCoarsePointer } from '../hooks/useMediaQuery';
+import { installLongPressContextMenu } from '../utils/longPressContextMenu';
+
+const registerServiceWorker = shouldRegisterServiceWorker();
 
 // Sync is allowed to be flaky for a while before it's worth interrupting anyone; the sidebar
 // status line covers short blips. Past this, the user may believe folders are backing up when
@@ -20,6 +30,14 @@ export default function MainLayout({ children }) {
   const syncStatus = useSyncStore((s) => s.status);
   const syncFailingSince = useSyncStore((s) => s.failingSince);
   const syncErrorMessage = useSyncStore((s) => s.errorMessage);
+  const isMobile = useIsMobile();
+  const isCoarsePointer = useIsCoarsePointer();
+
+  // Long-press opens the same menus right-click does; only touch screens need it
+  useEffect(() => {
+    if (!isCoarsePointer) return undefined;
+    return installLongPressContextMenu();
+  }, [isCoarsePointer]);
 
   // Time-based conditions below need a nudge to re-evaluate; nothing else in the store changes
   // just because a minute passed
@@ -50,12 +68,12 @@ export default function MainLayout({ children }) {
   const backBarHeight = canGoBack ? 64 : 0;
 
   return (
-    <div className="flex flex-col h-screen bg-transparent overflow-hidden font-sans">
+    <div className="flex flex-col h-dvh pt-[env(safe-area-inset-top)] bg-transparent overflow-hidden font-sans">
       <div className="flex-1 flex overflow-hidden">
         <Sidebar />
 
         <main
-          className="flex-1 overflow-y-auto [scrollbar-gutter:stable] backdrop-blur-sm rounded-lg my-2 mr-2 relative shadow-2xl flex flex-col"
+          className="flex-1 overflow-y-auto [scrollbar-gutter:stable] backdrop-blur-sm md:rounded-lg md:my-2 md:mr-2 relative shadow-2xl flex flex-col"
           style={{ '--top-bar-h': `${bannerHeight + backBarHeight}px` }}
         >
           {/* One sticky header, so banners and the back button stack instead of all pinning to
@@ -64,14 +82,14 @@ export default function MainLayout({ children }) {
           {(isCoolingDown || syncBroken || canGoBack) && (
             <div className="sticky top-0 z-30">
               {isCoolingDown && (
-                <div className="bg-red-500/90 backdrop-blur-md text-white px-8 py-3 flex items-center justify-center space-x-3 text-sm font-medium shadow-lg animate-fade-in">
+                <div className="bg-red-500/90 backdrop-blur-md text-white px-4 md:px-8 py-3 flex items-center justify-center space-x-3 text-sm font-medium shadow-lg animate-fade-in">
                   <AlertTriangle className="w-5 h-5" />
                   <span>Spotify API rate limit reached. Pausing network requests to cool down...</span>
                 </div>
               )}
 
               {syncBroken && (
-                <div className="bg-amber-500/90 backdrop-blur-md text-black px-8 py-3 flex items-center justify-center space-x-3 text-sm font-medium shadow-lg animate-fade-in">
+                <div className="bg-amber-500/90 backdrop-blur-md text-black px-4 md:px-8 py-3 flex items-center justify-center space-x-3 text-sm font-medium shadow-lg animate-fade-in">
                   <CloudOff className="w-5 h-5" />
                   <span>
                     Sync isn't reaching the server. Your folders are saved on this device but not backing up.
@@ -81,7 +99,7 @@ export default function MainLayout({ children }) {
               )}
 
               {canGoBack && (
-                <div className="backdrop-blur-md px-8 py-4 flex items-center">
+                <div className="backdrop-blur-md px-4 md:px-8 py-4 flex items-center">
                   <button
                     onClick={goBack}
                     aria-label="Go back"
@@ -94,7 +112,7 @@ export default function MainLayout({ children }) {
             </div>
           )}
 
-          <div className={`px-8 pb-4 ${canGoBack ? 'pt-2' : 'pt-6'}`}>
+          <div className={`px-4 md:px-8 pb-4 ${canGoBack ? 'pt-2' : 'pt-6'}`}>
             {children}
           </div>
         </main>
@@ -102,12 +120,24 @@ export default function MainLayout({ children }) {
         <QueuePanel />
       </div>
 
-      <PlayerBar />
+      {/* One or the other, never both: PlayerBar owns document keyboard shortcuts and its own
+          progress tick, and the phone gets a strip plus tabs instead of the 96px bar */}
+      {isMobile ? (
+        <>
+          <MiniPlayer />
+          <BottomTabBar />
+          <NowPlayingSheet />
+        </>
+      ) : (
+        <PlayerBar />
+      )}
 
+      <DevicePicker />
       <ContextMenu />
       <ToastHost />
       <SyncConflictDialog />
       <ZenMode />
+      {registerServiceWorker && <UpdatePrompt />}
     </div>
   );
 }

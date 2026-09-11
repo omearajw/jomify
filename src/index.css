@@ -14,6 +14,11 @@
     background-color: black;
     color: white;
     overflow: hidden;
+    /* Installed on a phone: no pull-to-refresh bounce, no grey tap flash, and no iOS
+       link-preview callout fighting the long-press menu */
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
   }
   ::selection {
     background-color: var(--brand-mid);

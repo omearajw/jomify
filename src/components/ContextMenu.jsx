@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
-import { usePlayerStore } from '../store/playerStore';
+import { resolvePlaybackDeviceId, handlePlaybackError } from '../services/spotify/playbackController';
 import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, unsaveAlbum } from '../services/spotify/api';
-import { ListPlus, Plus, ChevronRight, ChevronDown, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil, CornerDownRight } from 'lucide-react';
+import { ListPlus, Plus, ChevronRight, ChevronDown, ChevronUp, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil, CornerDownRight } from 'lucide-react';
 import FolderFormDialog from './FolderFormDialog';
 import { toast } from '../store/toastStore';
-import { flattenFolderTree, descendantIds } from '../utils/library';
+import { flattenFolderTree, descendantIds, childrenOf } from '../utils/library';
+import { useIsMobile } from '../hooks/useMediaQuery';
 
 // One picker for every "Move to…" list: playlists, albums and folders. Rows are indented by
 // depth and labelled with their path so two "Favourites" folders in different places can be
@@ -14,7 +15,7 @@ import { flattenFolderTree, descendantIds } from '../utils/library';
 function MoveToList({ folders, currentParentId, excludeIds, allowRoot = false, onPick, footer }) {
   const rows = flattenFolderTree(folders, { exclude: excludeIds || new Set() });
   return (
-    <div className="max-h-48 overflow-y-auto custom-scrollbar">
+    <div className="max-h-[40dvh] md:max-h-48 overflow-y-auto custom-scrollbar">
       {allowRoot && (
         <button
           type="button"
@@ -56,11 +57,12 @@ export default function ContextMenu() {
     addManuallyQueuedTrack, 
     playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId, activePlaylistId,
     removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder, renameFolder, createFolder, moveFolder,
+    reorderFolders, reorderPlaylistInFolder,
     pinnedItems, togglePin
   } = useUserStore();
 
-  const { deviceId } = usePlayerStore();
   const menuRef = useRef(null);
+  const isMobile = useIsMobile();
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmFolderOpen, setConfirmFolderOpen] = useState(false);
@@ -105,6 +107,14 @@ export default function ContextMenu() {
     const el = menuRef.current;
     if (!el || !contextMenu) return;
 
+    // On a phone the menu is a sheet pinned to the bottom edge by its classes; inline
+    // coordinates from an earlier desktop-sized render would override that
+    if (isMobile) {
+      el.style.left = '';
+      el.style.top = '';
+      return;
+    }
+
     const rect = el.getBoundingClientRect();
     const maxLeft = window.innerWidth - rect.width - VIEWPORT_PAD;
     const maxTop = window.innerHeight - rect.height - VIEWPORT_PAD;
@@ -113,7 +123,7 @@ export default function ContextMenu() {
 
     el.style.left = `${left}px`;
     el.style.top = `${top}px`;
-  }, [contextMenu]);
+  }, [contextMenu, isMobile]);
 
   if (!contextMenu) return null;
 
@@ -157,6 +167,34 @@ export default function ContextMenu() {
   const folder = contextMenu?.folderId ? customFolders.find(f => f.id === contextMenu.folderId) : null;
   const canRemove = sourcePlaylist && sourcePlaylist.owner.id === profile?.id;
 
+  // One-step reordering for touch screens, where the sidebar's drag-and-drop can't be used.
+  // Neighbour ids drive the same store actions a drop would.
+  const moveRows = (() => {
+    if (contextMenu?.type === 'folder' && folder) {
+      const siblings = childrenOf(customFolders, folder.parentId ?? null);
+      const i = siblings.findIndex(f => f.id === folder.id);
+      return {
+        canUp: i > 0,
+        canDown: i >= 0 && i < siblings.length - 1,
+        up: () => reorderFolders(folder.id, siblings[i - 1].id, 'before'),
+        down: () => reorderFolders(folder.id, siblings[i + 1].id, 'after')
+      };
+    }
+    const itemId = contextMenu?.playlistId || contextMenu?.albumId;
+    const parent = contextMenu?.parentFolderId ? customFolders.find(f => f.id === contextMenu.parentFolderId) : null;
+    if (itemId && parent) {
+      const ids = parent.playlistIds;
+      const i = ids.indexOf(itemId);
+      return {
+        canUp: i > 0,
+        canDown: i >= 0 && i < ids.length - 1,
+        up: () => reorderPlaylistInFolder(parent.id, itemId, ids[i - 1]),
+        down: () => reorderPlaylistInFolder(parent.id, itemId, ids[i + 1])
+      };
+    }
+    return null;
+  })();
+
   // Sandbox Pinning Logic
   const activeId = contextMenu?.playlistId || contextMenu?.albumId || contextMenu?.folderId;
   const activeType = contextMenu?.type;
@@ -165,7 +203,9 @@ export default function ContextMenu() {
 
   const handleAddToQueue = async () => {
     const track = contextMenu.track;
-    if (!token || !deviceId || !track) return;
+    if (!token || !track) return;
+    const deviceId = resolvePlaybackDeviceId();
+    if (!deviceId) return;
 
     try {
       await addToQueue(token, deviceId, track.uri);
@@ -177,8 +217,8 @@ export default function ContextMenu() {
       closeMenu();
       toast(`Queued "${track.name}"`, { tone: 'success' });
     } catch (err) {
-      console.error(err);
-      toast("Couldn't add to the queue", { tone: 'error' });
+      handlePlaybackError(err);
+      if (err?.code !== 'NO_ACTIVE_DEVICE') toast("Couldn't add to the queue", { tone: 'error' });
     }
   };
 
@@ -268,10 +308,23 @@ export default function ContextMenu() {
   };
 
   return createPortal(
+    <>
+      {/* The document click-outside handler closes the menu when this is tapped */}
+      {isMobile && <div className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm animate-fade-in" aria-hidden="true" />}
     <div
       ref={menuRef}
-      className="fixed z-[9999] w-56 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-1 overflow-visible"
+      role="menu"
+      className={isMobile
+        ? 'fixed z-[9999] inset-x-0 bottom-0 w-full max-h-[80dvh] overflow-y-auto bg-neutral-900 border-t border-neutral-700 rounded-t-2xl shadow-2xl pt-2 pb-[env(safe-area-inset-bottom)] select-none'
+        : 'fixed z-[9999] w-56 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-1 overflow-visible'}
     >
+      {isMobile && <div className="mx-auto mb-1 h-1 w-10 rounded-full bg-white/20" aria-hidden="true" />}
+      {isMobile && (contextMenu.track?.name || contextMenu.folderName || (contextMenu.playlistId && playlists.find(p => p.id === contextMenu.playlistId)?.name)) && (
+        <p className="px-4 pb-2 text-xs font-bold uppercase tracking-wider text-neutral-500 truncate border-b border-white/5 mb-1">
+          {contextMenu.track?.name || contextMenu.folderName || playlists.find(p => p.id === contextMenu.playlistId)?.name}
+        </p>
+      )}
+
       {/* UNIVERSAL PIN TOGGLE */}
       {canPin && (
         <button
@@ -281,6 +334,29 @@ export default function ContextMenu() {
           {isPinned ? <PinOff className="w-4 h-4 text-neutral-400" /> : <Pin className="w-4 h-4 text-neutral-400" />}
           <span>{isPinned ? 'Unpin from Home' : 'Pin to Home'}</span>
         </button>
+      )}
+
+      {moveRows && (
+        <div className="flex border-b border-white/5">
+          <button
+            type="button"
+            disabled={!moveRows.canUp}
+            onClick={(e) => { e.stopPropagation(); moveRows.up(); }}
+            className="flex-1 px-4 py-3 text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-center space-x-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ChevronUp className="w-4 h-4 text-neutral-400" />
+            <span>Move up</span>
+          </button>
+          <button
+            type="button"
+            disabled={!moveRows.canDown}
+            onClick={(e) => { e.stopPropagation(); moveRows.down(); }}
+            className="flex-1 px-4 py-3 text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-center space-x-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed border-l border-white/5"
+          >
+            <ChevronDown className="w-4 h-4 text-neutral-400" />
+            <span>Move down</span>
+          </button>
+        </div>
       )}
 
       {(contextMenu?.type === 'track' || contextMenu?.track) && (
@@ -305,8 +381,8 @@ export default function ContextMenu() {
 
           <div
             className="relative"
-            onMouseEnter={() => setShowPlaylistMenu(true)}
-            onMouseLeave={() => setShowPlaylistMenu(false)}
+            onMouseEnter={() => { if (!isMobile) setShowPlaylistMenu(true); }}
+            onMouseLeave={() => { if (!isMobile) setShowPlaylistMenu(false); }}
           >
             <button
               // Click as well as hover, so it works on touch screens
@@ -317,14 +393,17 @@ export default function ContextMenu() {
                 <Plus className="w-4 h-4 text-neutral-400" />
                 <span>Add to Playlist</span>
               </div>
-              <ChevronRight className="w-4 h-4 text-neutral-500" />
+              {showPlaylistMenu && isMobile ? <ChevronDown className="w-4 h-4 text-neutral-500" /> : <ChevronRight className="w-4 h-4 text-neutral-500" />}
             </button>
 
+            {/* Desktop: a flyout beside the menu. Phone: the list unfolds inside the sheet. */}
             {showPlaylistMenu && (
-              <div className={`absolute top-0 z-50 ${flipSubmenu ? 'right-full pr-2 -mr-2' : 'left-full pl-2 -ml-2'}`}>
+              <div className={isMobile ? 'w-full' : `absolute top-0 z-50 ${flipSubmenu ? 'right-full pr-2 -mr-2' : 'left-full pl-2 -ml-2'}`}>
                 <div
-                  style={{ maxHeight: submenuMaxHeight }}
-                  className="w-64 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-2 overflow-y-auto custom-scrollbar"
+                  style={isMobile ? undefined : { maxHeight: submenuMaxHeight }}
+                  className={isMobile
+                    ? 'w-full max-h-[45dvh] bg-black/30 border-y border-white/5 py-2 overflow-y-auto'
+                    : 'w-64 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-2 overflow-y-auto custom-scrollbar'}
                 >
                   {unfolderedPlaylists.map(pl => (
                     <button
@@ -545,7 +624,8 @@ export default function ContextMenu() {
         onConfirm={confirmDeleteFolder}
         onCancel={() => setConfirmFolderOpen(false)}
       />
-    </div>,
+    </div>
+    </>,
     document.body
   );
 }

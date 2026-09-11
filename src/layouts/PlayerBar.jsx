@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, Mic2, Maximize2, VolumeX, Shuffle, ListMusic } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, Mic2, Maximize2, VolumeX, Shuffle, ListMusic, Repeat, Repeat1, MonitorSpeaker } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { formatTime } from '../utils/formatTime';
 import { checkTracksLiked } from '../services/spotify/api';
@@ -7,20 +7,23 @@ import { useUserStore } from '../store/userStore';
 import LikeButton from '../components/LikeButton';
 import TrackArtists from '../components/TrackArtists';
 import { idFromUri } from '../utils/spotifyUri';
-import { toggleShuffleState } from '../services/spotify/api';
+import {
+  togglePlay, next as nextTrack, previous as previousTrack, seek, setVolume as setPlaybackVolume,
+  toggleShuffle, cycleRepeat
+} from '../services/spotify/playbackController';
 
 export default function PlayerBar() {
-  const { player, playbackState, deviceId, isShuffled, setShuffle, setShufflePending } = usePlayerStore();
-  const { 
-    token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack, 
-    toggleZenMode, savedVolume, setSavedVolume,
+  const { playbackState, isShuffled, repeatMode, activeDevice, sdkStatus, isLocalActive, remoteVolume } = usePlayerStore();
+  const {
+    token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack,
+    toggleZenMode, savedVolume, setSavedVolume, setDevicePickerOpen,
     currentView, setCurrentView, goBack, navigateToAlbum, viewHistory,
     isQueueOpen, isZenMode
   } = useUserStore();
 
   const [progressMs, setProgressMs] = useState(0);
   const [prevVolume, setPrevVolume] = useState(50);
-  // True while the user is dragging the progress slider, so SDK position updates and the
+  // True while the user is dragging the progress slider, so position updates and the
   // one-second tick don't yank the thumb back mid-gesture.
   const isScrubbing = useRef(false);
 
@@ -28,10 +31,17 @@ export default function PlayerBar() {
   const currentTrackUid = currentTrack?.uid;
   const isPaused = playbackState ? playbackState.paused : true;
   const durationMs = currentTrack ? playbackState.duration : 0;
+  // Something to send commands to: this browser's player, or whatever device Spotify says is active
+  const canControl = Boolean(activeDevice) || sdkStatus === 'ready';
+  const isRemote = Boolean(activeDevice) && !isLocalActive;
+
+  // The slider shows this browser's own level, or the remote device's when one is playing
+  const volumeValue = isRemote && remoteVolume !== null ? remoteVolume : savedVolume;
+  const volumeSupported = !isRemote || activeDevice?.supportsVolume !== false;
 
   // Calculate percentages for the dynamic gradients
   const progressPercentage = durationMs > 0 ? (progressMs / durationMs) * 100 : 0;
-  const volumePercentage = savedVolume;
+  const volumePercentage = volumeValue;
 
   useEffect(() => {
     if (playbackState && !isScrubbing.current) {
@@ -56,75 +66,54 @@ export default function PlayerBar() {
     }
   }, [token, currentTrack?.id, setLikedTracks]);
 
-  const handleTogglePlay = () => player?.togglePlay().catch(console.error);
-  const handleNext = () => player?.nextTrack().catch(console.error);
-  const handlePrev = () => player?.previousTrack().catch(console.error);
+  const handleTogglePlay = () => { if (currentTrack) togglePlay(); };
+  const handleNext = () => nextTrack();
+  const handlePrev = () => previousTrack();
 
   // The slider previews while dragging and seeks once on release. onChange alone fired a
-  // player.seek() per pixel and fought the SDK's position events the whole way.
+  // seek per pixel and fought the position events the whole way.
   const previewSeek = (e) => setProgressMs(parseInt(e.target.value, 10));
   const commitSeek = () => {
     isScrubbing.current = false;
-    player?.seek(progressMs).catch(console.error);
+    seek(progressMs);
   };
   const seekBy = (deltaMs) => {
-    if (!player || !currentTrack) return;
+    if (!currentTrack) return;
     const next = Math.max(0, Math.min(durationMs, progressMs + deltaMs));
     setProgressMs(next);
-    player.seek(next).catch(console.error);
+    seek(next);
   };
 
-  const handleToggleShuffle = () => {
-    if (!player || !deviceId) return;
-    const previous = isShuffled;
-    const next = !previous;
-
-    // Flip immediately, hold SDK events off until Spotify answers, and on failure restore the
-    // value we actually had rather than blindly flipping again.
-    setShufflePending(true);
-    setShuffle(next);
-    toggleShuffleState(token, deviceId, next)
-      .catch((err) => {
-        console.error(err);
-        setShuffle(previous);
-      })
-      .finally(() => setShufflePending(false));
-  };
+  const handleToggleShuffle = () => { if (canControl) toggleShuffle(); };
 
   useEffect(() => {
     if (currentTrack) {
       consumeManuallyQueuedTrack(currentTrack);
     }
-  // Keyed on the SDK's per-play uid rather than the track object, so a track that repeats is
+  // Keyed on the per-play uid rather than the track object, so a track that repeats is
   // consumed once per play and a position tick doesn't re-run this
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrackUid, consumeManuallyQueuedTrack]);
 
-  // One place that maps slider value -> audible volume; the cubic curve must match the value
-  // applied on player ready in playback.js
+  // One place that maps slider value -> audible volume. The controller applies the cubic curve
+  // for this browser's player and sends the plain percentage to remote devices.
   const applyVolume = (sliderValue) => {
     const clamped = Math.max(0, Math.min(100, sliderValue));
-    setSavedVolume(clamped);
     if (clamped > 0) setPrevVolume(clamped);
-    player?.setVolume(Math.pow(clamped / 100, 3)).catch(console.error);
+    if (!isRemote) setSavedVolume(clamped);
+    setPlaybackVolume(clamped);
   };
 
   const handleVolumeChange = (e) => applyVolume(parseInt(e.target.value, 10));
-  const changeVolumeBy = (delta) => applyVolume(savedVolume + delta);
+  const changeVolumeBy = (delta) => applyVolume(volumeValue + delta);
 
   const toggleMute = () => {
-    if (!player) return;
-
-    if (savedVolume > 0) {
-        setPrevVolume(savedVolume);
-        setSavedVolume(0);
-        player.setVolume(0).catch(console.error);
+    if (!canControl || !volumeSupported) return;
+    if (volumeValue > 0) {
+      setPrevVolume(volumeValue);
+      applyVolume(0);
     } else {
-        const restoredVolume = prevVolume > 0 ? prevVolume : 50;
-        setSavedVolume(restoredVolume);
-        const normalized = restoredVolume / 100;
-        const humanEarVolume = Math.pow(normalized, 3);
-        player.setVolume(humanEarVolume).catch(console.error);
+      applyVolume(prevVolume > 0 ? prevVolume : 50);
     }
   };
 
@@ -222,7 +211,7 @@ export default function PlayerBar() {
         <div className="flex items-center space-x-6">
           <button
             onClick={handleToggleShuffle}
-            disabled={!player || !deviceId}
+            disabled={!canControl}
             aria-label={isShuffled ? 'Disable shuffle' : 'Enable shuffle'}
             aria-pressed={isShuffled}
             className={`mr-4 transition-colors disabled:opacity-50 ${isShuffled ? 'text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]' : 'text-neutral-400 hover:text-white'}`}
@@ -230,13 +219,13 @@ export default function PlayerBar() {
             <Shuffle className="w-4 h-4" />
           </button>
 
-          <button onClick={handlePrev} disabled={!player || !currentTrack} aria-label="Previous track" className="text-neutral-400 hover:text-white transition-colors disabled:opacity-50">
+          <button onClick={handlePrev} disabled={!currentTrack} aria-label="Previous track" className="text-neutral-400 hover:text-white transition-colors disabled:opacity-50">
             <SkipBack className="w-5 h-5 fill-current" />
           </button>
 
           <button
             onClick={handleTogglePlay}
-            disabled={!player || !currentTrack}
+            disabled={!currentTrack}
             aria-label={isPaused ? 'Play' : 'Pause'}
             title={isPaused ? 'Play (Space)' : 'Pause (Space)'}
             className="w-10 h-10 flex items-center justify-center bg-white text-black rounded-full hover:scale-105 transition-transform disabled:opacity-50"
@@ -244,8 +233,18 @@ export default function PlayerBar() {
             {isPaused ? <Play className="w-5 h-5 fill-current ml-1" /> : <Pause className="w-5 h-5 fill-current" />}
           </button>
 
-          <button onClick={handleNext} disabled={!player || !currentTrack} aria-label="Next track" className="text-neutral-400 hover:text-white transition-colors disabled:opacity-50">
+          <button onClick={handleNext} disabled={!currentTrack} aria-label="Next track" className="text-neutral-400 hover:text-white transition-colors disabled:opacity-50">
             <SkipForward className="w-5 h-5 fill-current" />
+          </button>
+
+          <button
+            onClick={cycleRepeat}
+            disabled={!canControl}
+            aria-label={['Repeat off', 'Repeat all', 'Repeat one'][repeatMode] || 'Repeat'}
+            title={['Repeat off', 'Repeat all', 'Repeat one'][repeatMode] || 'Repeat'}
+            className={`ml-4 transition-colors disabled:opacity-50 ${repeatMode ? 'text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]' : 'text-neutral-400 hover:text-white'}`}
+          >
+            {repeatMode === 2 ? <Repeat1 className="w-4 h-4" /> : <Repeat className="w-4 h-4" />}
           </button>
         </div>
 
@@ -260,7 +259,7 @@ export default function PlayerBar() {
             onPointerDown={() => { isScrubbing.current = true; }}
             onPointerUp={commitSeek}
             onKeyUp={commitSeek}
-            disabled={!player || !currentTrack}
+            disabled={!currentTrack}
             aria-label="Seek"
             className="flex-1 h-1.5 rounded-lg appearance-none cursor-pointer accent-white transition-all"
             style={{
@@ -272,6 +271,16 @@ export default function PlayerBar() {
       </div>
 
       <div className="flex items-center justify-end space-x-4 w-1/3 text-neutral-400">
+        <button
+          onClick={() => setDevicePickerOpen(true)}
+          aria-label="Choose a device"
+          title={activeDevice ? `Playing on ${activeDevice.name}` : 'Choose a device'}
+          className={`flex items-center gap-1.5 transition-colors ${isRemote ? 'text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]' : 'hover:text-white'}`}
+        >
+          <MonitorSpeaker className="w-4 h-4" />
+          {isRemote && <span className="text-[11px] font-semibold max-w-[8rem] truncate">{activeDevice.name}</span>}
+        </button>
+
         <button
           // Leaving lyrics: go back if there's somewhere to go, otherwise Home. A bare goBack()
           // was a dead button when the history stack was empty.
@@ -286,18 +295,18 @@ export default function PlayerBar() {
         >
           <Mic2 className="w-4 h-4" />
         </button>
-        
+
         <div className="flex items-center space-x-2 group">
-          <button onClick={toggleMute} disabled={!player} aria-label={savedVolume === 0 ? 'Unmute' : 'Mute'} title="Mute (M)" className="hover:text-white transition-colors disabled:opacity-50">
-            {savedVolume === 0 ? <VolumeX className="w-5 h-5 text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]" /> : <Volume2 className="w-5 h-5" />}
+          <button onClick={toggleMute} disabled={!canControl || !volumeSupported} aria-label={volumeValue === 0 ? 'Unmute' : 'Mute'} title="Mute (M)" className="hover:text-white transition-colors disabled:opacity-50">
+            {volumeValue === 0 ? <VolumeX className="w-5 h-5 text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]" /> : <Volume2 className="w-5 h-5" />}
           </button>
           <input
             type="range"
             min="0"
             max="100"
-            value={savedVolume}
+            value={volumeValue}
             onChange={handleVolumeChange}
-            disabled={!player}
+            disabled={!canControl || !volumeSupported}
             aria-label="Volume"
             className="w-24 h-1.5 rounded-lg appearance-none cursor-pointer accent-white transition-all disabled:opacity-50"
             style={{
@@ -305,7 +314,7 @@ export default function PlayerBar() {
             }}
           />
         </div>
-        
+
         <button
           onClick={toggleQueue}
           aria-label={isQueueOpen ? 'Hide queue' : 'Show queue'}

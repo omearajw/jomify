@@ -120,7 +120,7 @@ function FolderRow({ folder, depth, ctx }) {
           onClick={(e) => { e.stopPropagation(); ctx.openManage(folder.id); }}
           aria-label={`Add items to ${folder.name}`}
           title="Add items"
-          className="ml-2 p-0.5 rounded text-neutral-500 hover:text-white hover:bg-neutral-700 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all shrink-0"
+          className="ml-2 p-0.5 rounded text-neutral-500 hover:text-white hover:bg-neutral-700 opacity-0 group-hover:opacity-100 focus:opacity-100 pointer-coarse:opacity-100 transition-all shrink-0"
         >
           <Plus className="w-4 h-4" />
         </button>
@@ -444,7 +444,7 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 bg-black/40 backdrop-blur-md border-r border-white/5 flex flex-col p-6 space-y-6 select-none overflow-hidden h-full relative z-10">
+    <aside className="hidden md:flex w-64 bg-black/40 backdrop-blur-md border-r border-white/5 flex-col p-6 space-y-6 select-none overflow-hidden h-full relative z-10">
       <div className="text-brand-gradient font-extrabold text-3xl tracking-tighter shrink-0"><img src="/Jomify-Logo.png" alt="Jomify" className="w-30 object-contain"/></div>
       
       <nav className="flex flex-col space-y-4 font-semibold shrink-0">

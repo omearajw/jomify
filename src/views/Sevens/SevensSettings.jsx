@@ -178,7 +178,7 @@ export default function SevensSettings() {
         </button>
 
         {/* Controls */}
-        <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 shrink-0 w-full md:w-auto">
           {/* Partner override */}
           <div className="flex items-center gap-1.5">
             <select
@@ -192,7 +192,7 @@ export default function SevensSettings() {
                 });
               }}
               title="Who this Seven is with"
-              className="bg-black/50 border border-white/10 text-white text-xs rounded-lg px-2.5 py-2 outline-none focus:border-[var(--brand-mid)] max-w-[180px] font-medium"
+              className="bg-black/50 border border-white/10 text-white text-xs rounded-lg px-2.5 py-2 outline-none focus:border-[var(--brand-mid)] max-w-full sm:max-w-[180px] font-medium"
             >
               <option value="">-- Partner --</option>
               {found.map(c => (
@@ -220,7 +220,7 @@ export default function SevensSettings() {
             value={seven.poolPlaylistId || ''}
             onChange={(e) => updateSeven(seven.playlistId, { poolPlaylistId: e.target.value })}
             title="The playlist you draft candidate tracks from"
-            className="bg-black/50 border border-white/10 text-white text-xs rounded-lg px-2.5 py-2 outline-none focus:border-[var(--brand-mid)] max-w-[180px] font-medium"
+            className="bg-black/50 border border-white/10 text-white text-xs rounded-lg px-2.5 py-2 outline-none focus:border-[var(--brand-mid)] max-w-full sm:max-w-[180px] font-medium"
           >
             <option value="">-- Pool playlist --</option>
             {playlists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}

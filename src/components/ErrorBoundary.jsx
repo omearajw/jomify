@@ -22,7 +22,7 @@ export default class ErrorBoundary extends Component {
     if (!this.state.error) return this.props.children;
 
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-black text-white gap-4 px-8 text-center">
+      <div className="flex flex-col items-center justify-center h-dvh bg-black text-white gap-4 px-8 text-center">
         <p className="text-2xl font-extrabold tracking-tight">Something went wrong.</p>
         <p className="text-neutral-400 max-w-md text-sm">
           {String(this.state.error?.message || this.state.error)}

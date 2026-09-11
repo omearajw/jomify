@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
+import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
+import MoreButton from '../../components/MoreButton';
 import { playSingleTrack, checkTracksLiked, fetchMoreTracks, spotifyFetch, saveAlbumToLibrary, unsaveAlbum } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Plus, Check, Loader2 } from 'lucide-react';
@@ -11,7 +13,7 @@ import { rowButtonProps } from '../../utils/a11y';
 
 export default function Album() {
   const { token, setLikedTracks, currentAlbumId, setContextMenu, albums, setAlbums, removeAlbumFromLibrary } = useUserStore();
-  const { deviceId, playbackState } = usePlayerStore();
+  const { playbackState } = usePlayerStore();
   const [album, setAlbum] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -72,8 +74,10 @@ export default function Album() {
   }, [token, currentAlbumId, setLikedTracks]);
 
   const handleTrackPlay = (trackUri) => {
-    if (!token || !deviceId) return;
-    playSingleTrack(token, deviceId, trackUri).catch(console.error);
+    if (!token) return;
+    const deviceId = resolvePlaybackDeviceId();
+    if (!deviceId) return;
+    playSingleTrack(token, deviceId, trackUri).catch(handlePlaybackError);
   };
 
   // --- SAVE / UNSAVE ---
@@ -128,15 +132,15 @@ export default function Album() {
   return (
     <div className="flex flex-col pb-8">
       {/* Album Header */}
-      <div className="flex items-end gap-6 mb-12">
-        <div className="w-48 h-48 bg-neutral-700 rounded-lg overflow-hidden shadow-2xl flex-shrink-0">
+      <div className="flex flex-col md:flex-row md:items-end gap-4 md:gap-6 mb-8 md:mb-12">
+        <div className="w-40 h-40 md:w-48 md:h-48 bg-neutral-700 rounded-lg overflow-hidden shadow-2xl flex-shrink-0">
           {album.images?.[0]?.url && (
             <img src={album.images[0].url} alt={album.name} className="w-full h-full object-cover" />
           )}
         </div>
         <div>
           <p className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-2">Album</p>
-          <h1 className="text-6xl font-extrabold text-white tracking-tighter mb-4">{album.name}</h1>
+          <h1 className="text-4xl md:text-6xl font-extrabold text-white tracking-tighter mb-4 break-words">{album.name}</h1>
           <div className="text-neutral-400 font-medium mb-4">
             <p>
               By{' '}
@@ -200,6 +204,7 @@ export default function Album() {
                   <div className="flex items-center space-x-4">
                     <LikeButton trackId={track.id} />
                     <span className="text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
+                    <MoreButton onOpen={(e) => setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track, sourceAlbumId: currentAlbumId })} />
                   </div>
                 </div>
               );

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
+import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
 import { searchSpotify, playSingleTrack, checkTracksLiked, fetchSearchPage } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Search, Play, ChevronLeft, Loader } from 'lucide-react';
@@ -38,7 +39,7 @@ const getCachedJSON = (key, defaultVal) => {
 export default function Browse() {
   // Added setContextMenu and setDraggedItem here
   const { token, setLikedTracks, navigateToArtist, navigateToAlbum, setContextMenu, setDraggedItem, navigateToPlaylist } = useUserStore();
-  const { deviceId, playbackState } = usePlayerStore();
+  const { playbackState } = usePlayerStore();
   
   // Initialize state directly from the session cache
   const [query, setQuery] = useState(() => getCachedString('jomify_browse_query', ''));
@@ -186,8 +187,10 @@ export default function Browse() {
   }, [expandedSection, paginationUrls, loadingMore, loadMoreResults]);
 
   const handleTrackPlay = (trackUri) => {
-    if (!token || !deviceId) return;
-    playSingleTrack(token, deviceId, trackUri).catch(console.error);
+    if (!token) return;
+    const deviceId = resolvePlaybackDeviceId();
+    if (!deviceId) return;
+    playSingleTrack(token, deviceId, trackUri).catch(handlePlaybackError);
   };
 
   const handleArtistClick = (e, artistId) => {
@@ -211,7 +214,7 @@ export default function Browse() {
 
     return (
       <div className="flex flex-col pb-8 select-none animate-fade-in px-2">
-        <div className="sticky top-[var(--top-bar-h,64px)] z-10 backdrop-blur-md px-8 py-4 flex items-center">
+        <div className="sticky top-[var(--top-bar-h,64px)] z-10 backdrop-blur-md px-4 md:px-8 py-4 flex items-center">
           <button 
             onClick={() => setExpandedSection(null)} 
             className="flex items-center text-neutral-400 hover:text-white mb-1 w-fit font-bold transition-colors"

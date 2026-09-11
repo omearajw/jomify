@@ -14,6 +14,7 @@
     "test:store": "node scripts/store-cases.mjs",
     "test:import": "node scripts/import-cases.mjs",
     "test:cache": "node scripts/cache-cases.mjs",
+    "test:playback": "node scripts/playback-cases.mjs",
     "preview": "vite preview",
     "build-app": "vite build && electron-builder -w"
   },
@@ -42,7 +43,8 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "vite-plugin-pwa": "^1.3.0"
   },
   "build": {
     "appId": "com.jomify.desktop",

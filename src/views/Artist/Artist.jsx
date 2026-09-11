@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
+import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
+import MoreButton from '../../components/MoreButton';
 import { playSingleTrack, checkTracksLiked, spotifyFetch } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Play } from 'lucide-react';
@@ -10,7 +12,7 @@ import { rowButtonProps } from '../../utils/a11y';
 
 export default function Artist() {
   const { token, setLikedTracks, currentArtistId, setContextMenu, navigateToAlbum } = useUserStore();
-  const { deviceId, playbackState } = usePlayerStore();
+  const { playbackState } = usePlayerStore();
   const [artist, setArtist] = useState(null);
   const [topTracks, setTopTracks] = useState([]);
   const [albums, setAlbums] = useState([]);
@@ -84,8 +86,10 @@ export default function Artist() {
   }, [token, currentArtistId, setLikedTracks]);
 
   const handleTrackPlay = (trackUri) => {
-    if (!token || !deviceId) return;
-    playSingleTrack(token, deviceId, trackUri).catch(console.error);
+    if (!token) return;
+    const deviceId = resolvePlaybackDeviceId();
+    if (!deviceId) return;
+    playSingleTrack(token, deviceId, trackUri).catch(handlePlaybackError);
   };
 
   if (loading) {
@@ -109,15 +113,15 @@ export default function Artist() {
   return (
     <div className="flex flex-col pb-8">
       {/* Artist Header */}
-      <div className="flex items-end gap-6 mb-12">
-        <div className="w-48 h-48 bg-neutral-700 rounded-full overflow-hidden shadow-2xl flex-shrink-0">
+      <div className="flex flex-col md:flex-row md:items-end gap-4 md:gap-6 mb-8 md:mb-12">
+        <div className="w-40 h-40 md:w-48 md:h-48 bg-neutral-700 rounded-full overflow-hidden shadow-2xl flex-shrink-0">
           {artist.images?.[0]?.url && (
             <img src={artist.images[0].url} alt={artist.name} className="w-full h-full object-cover" />
           )}
         </div>
         <div>
           <p className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-2">Artist</p>
-          <h1 className="text-6xl font-extrabold text-white tracking-tighter mb-4">{artist.name}</h1>
+          <h1 className="text-4xl md:text-6xl font-extrabold text-white tracking-tighter mb-4 break-words">{artist.name}</h1>
           <p className="text-neutral-400 font-medium mb-4">
             {artist.followers?.total?.toLocaleString()} followers
           </p>
@@ -173,6 +177,7 @@ export default function Artist() {
                   <div className="flex items-center space-x-4">
                     <LikeButton trackId={track.id} />
                     <span className="text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
+                    <MoreButton onOpen={(e) => setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track })} />
                   </div>
                 </div>
               );

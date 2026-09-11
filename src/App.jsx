@@ -7,8 +7,9 @@ import Library from './views/Library/Library';
 import PlaylistView from './views/Library/PlaylistView';
 import PlaylistView_2 from './views/Library/PlaylistView_2';
 import LyricsView from './views/Lyrics/LyricsView';
-import { usePlayerStore } from './store/playerStore';
-import { initializeSpotifyPlayer } from './services/spotify/playback';
+import { startPlaybackController } from './services/spotify/playbackController';
+import { installHistorySync, syncSheetWithHistory } from './pwa/historySync';
+import { isMobileViewport } from './hooks/useMediaQuery';
 import Browse from './views/Browse/Browse';
 import Artist from './views/Artist/Artist';
 import Album from './views/Album/Album';
@@ -33,9 +34,7 @@ function App() {
     sevens, seedLegacySevens
   } = useUserStore();
   
-  const { setPlayer, setDeviceId, setPlaybackState } = usePlayerStore();
-
-  const isAuthenticating = useRef(false); 
+  const isAuthenticating = useRef(false);
   const hydratedPinnedIds = useRef(new Set());
 
   // --- STATS & SEVENS STATE ---
@@ -92,10 +91,25 @@ function App() {
 
 
   useEffect(() => {
-    if (token && !window.Spotify) {
-      initializeSpotifyPlayer(token, { setPlayer, setDeviceId, setPlaybackState });
-    }
-  }, [token, setPlayer, setDeviceId, setPlaybackState]);
+    if (!token) return;
+    return startPlaybackController();
+  }, [token]);
+
+  // Mirror in-app navigation and open sheets into browser history so a phone's back button
+  // walks back through the app instead of leaving it. Installed after the OAuth replaceState
+  // above has run, since the token only exists once that is done.
+  useEffect(() => {
+    if (!token) return;
+    const stop = installHistorySync();
+    const { setNowPlayingOpen, setQueueOpen, setDevicePickerOpen, setContextMenu } = useUserStore.getState();
+    const unsubscribes = [
+      syncSheetWithHistory((s) => s.isNowPlayingOpen, () => setNowPlayingOpen(false), { tag: 'now-playing', when: isMobileViewport }),
+      syncSheetWithHistory((s) => s.isQueueOpen, () => setQueueOpen(false), { tag: 'queue', when: isMobileViewport }),
+      syncSheetWithHistory((s) => s.isDevicePickerOpen, () => setDevicePickerOpen(false), { tag: 'devices' }),
+      syncSheetWithHistory((s) => Boolean(s.contextMenu), () => setContextMenu(null), { tag: 'menu', when: isMobileViewport })
+    ];
+    return () => { unsubscribes.forEach((fn) => fn()); stop(); };
+  }, [token]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -344,7 +358,7 @@ function App() {
   
   if (!token) {
     return (
-      <div className="relative flex items-center justify-center h-screen bg-black text-white overflow-hidden">
+      <div className="relative flex items-center justify-center h-dvh bg-black text-white overflow-hidden">
         <div className="fixed inset-0 z-[1] bg-aurora opacity-20"></div>
         <div className="fixed inset-0 z-[2] bg-noise opacity-[0.03] pointer-events-none"></div>
         
@@ -373,27 +387,27 @@ function App() {
               <div className="flex flex-col items-start relative z-10 w-full max-w-[1600px] animate-fade-in">
                 
                 {/* 1. Header & Stats Drawer Toggle */}
-                <div className="flex items-center space-x-6 mb-12 w-full">
+                <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6 mb-8 md:mb-12 w-full">
                   {profile.images?.length > 0 ? (
                     <img 
                       src={profile.images[0].url} 
                       alt="Profile Avatar" 
-                      className="w-32 h-32 md:w-48 md:h-48 rounded-full shadow-2xl shadow-black/50"
+                      className="w-24 h-24 md:w-48 md:h-48 rounded-full shadow-2xl shadow-black/50"
                     />
                   ) : (
-                    <div className="w-32 h-32 md:w-48 md:h-48 rounded-full bg-neutral-800 flex items-center justify-center text-4xl md:text-6xl shadow-2xl">
+                    <div className="w-24 h-24 md:w-48 md:h-48 rounded-full bg-neutral-800 flex items-center justify-center text-4xl md:text-6xl shadow-2xl">
                       🎧
                     </div>
                   )}
                   <div>
                     <p className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-1">Profile</p>
-                    <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tighter mb-4">{profile.display_name}</h1>
-                    <div className="flex items-center space-x-4">
+                    <h1 className="text-3xl md:text-7xl font-extrabold text-white tracking-tighter mb-4 break-words">{profile.display_name}</h1>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                       <p className="text-neutral-400 font-medium">
                         {profile.followers?.total} Followers • {profile.product} tier
                       </p>
-                      <span className="w-1.5 h-1.5 bg-neutral-600 rounded-full"></span>
-                      <button 
+                      <span className="hidden md:block w-1.5 h-1.5 bg-neutral-600 rounded-full"></span>
+                      <button
                         onClick={toggleAndLoadStats}
                         className="flex items-center px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:text-[#f91362] text-sm font-bold text-white transition-all group"
                       >
@@ -505,7 +519,7 @@ function App() {
                   {pinnedItems.length === 0 ? (
                     <div className="w-full border-2 border-dashed border-white/10 rounded-2xl p-12 flex flex-col items-center justify-center text-neutral-500 bg-neutral-900/20 backdrop-blur-sm">
                       <span className="text-4xl mb-4">📌</span>
-                      <p className="font-medium text-lg text-white text-center">Right-click playlists or albums to pin them to your home page.</p>
+                      <p className="font-medium text-lg text-white text-center">Right-click (or long-press) playlists and albums to pin them to your home page.</p>
                     </div>
                   ) : (
                     <motion.div layout className="flex flex-wrap justify-center items-center gap-8 md:gap-14 py-0 px-4">

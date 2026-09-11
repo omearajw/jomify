@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useUserStore } from '../../store/userStore'; 
 import { usePlayerStore } from '../../store/playerStore';
+import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
+import { ChevronUp as StageUpIcon, ChevronDown as StageDownIcon } from 'lucide-react';
 import { fetchPlaylistDetails, fetchMoreTracks, addTracksToPlaylist, playPlaylistTrack, fetchSevenTrackMeta, spotifyFetch } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Play, X, LayoutPanelLeft, ArrowRight, Loader2, Disc3 } from 'lucide-react';
@@ -29,11 +31,13 @@ export default function PlaylistView_2() {
     navigateToArtist, navigateToAlbum, sevens, updateSeven
   } = useUserStore();
   
-  const { deviceId, playbackState } = usePlayerStore();
+  const { playbackState } = usePlayerStore();
   const [playlist, setPlaylist] = useState(null);
   
   // Workspace States
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
+  // Which of the three panes a narrow screen shows; wide screens show all three side by side
+  const [workspacePane, setWorkspacePane] = useState('staging');
   const [poolPlaylist, setPoolPlaylist] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
@@ -251,17 +255,20 @@ const turnIndicator = useMemo(() => {
   };
 
   const handleTrackSelect = (trackUri) => {
-    if (!token || !deviceId || !playlist) return;
+    if (!token || !playlist) return;
+    const deviceId = resolvePlaybackDeviceId();
+    if (!deviceId) return;
     const realIndex = playlist.tracks.items.findIndex(item => item.track?.uri === trackUri);
     if (realIndex !== -1) {
-      playPlaylistTrack(token, deviceId, activePlaylistId, realIndex).catch(console.error);
+      playPlaylistTrack(token, deviceId, activePlaylistId, realIndex).catch(handlePlaybackError);
     }
   };
 
   // --- SCROLL TRANSLATOR ---
   useEffect(() => {
     const container = horizontalScrollRef.current;
-    if (!container || isWorkspaceOpen) return;
+    // Below md the batches stack vertically and scroll normally; only the wide layout is horizontal
+    if (!container || isWorkspaceOpen || !window.matchMedia('(min-width: 768px)').matches) return;
 
     const handleWheel = (e) => {
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
@@ -283,10 +290,10 @@ const turnIndicator = useMemo(() => {
     const reversedMainItems = [...playlist.tracks.items].reverse();
 
     return (
-      <div className="flex flex-col h-[calc(90vh-140px)] w-full px-6 pt-2 pb-6 overflow-hidden">
-        <div className="flex justify-between items-end mb-6 shrink-0">
+      <div className="flex flex-col lg:h-[calc(90vh-140px)] w-full px-2 md:px-6 pt-2 pb-6 lg:overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3 mb-4 md:mb-6 shrink-0">
           <div>
-            <h1 className="text-4xl font-extrabold text-white tracking-tighter">{playlist.name} Workspace</h1>
+            <h1 className="text-2xl md:text-4xl font-extrabold text-white tracking-tighter">{playlist.name} Workspace</h1>
             <p className="text-neutral-400 font-medium mt-1">{turnIndicator}</p>
           </div>
           <button 
@@ -297,10 +304,26 @@ const turnIndicator = useMemo(() => {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0 overflow-hidden">
-          
+        {/* Narrow screens: one pane at a time */}
+        <div role="tablist" aria-label="Workspace panes" className="lg:hidden flex rounded-full bg-neutral-900 border border-neutral-800 p-1 mb-4 shrink-0">
+          {[['playlist', 'Playlist'], ['staging', `Staging ${stagedSeven.length}/7`], ['pool', 'Pool']].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={workspacePane === id}
+              onClick={() => setWorkspacePane(id)}
+              className={`flex-1 rounded-full py-2 text-sm font-bold transition-colors ${workspacePane === id ? 'bg-white text-black' : 'text-neutral-400'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0 lg:overflow-hidden">
+
           {/* PANE 1: MAIN PLAYLIST */}
-          <div className="flex flex-col h-full bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl min-h-0">
+          <div className={`${workspacePane === 'playlist' ? 'flex' : 'hidden'} lg:flex flex-col h-[65dvh] lg:h-full bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl min-h-0`}>
             <div className="p-4 border-b border-neutral-800 bg-black/20 shrink-0">
               <h2 className="font-bold text-white tracking-wide">{playlist.name}</h2>
               <p className="text-xs text-neutral-500">{playlist.tracks.total} total tracks</p>
@@ -351,7 +374,7 @@ const turnIndicator = useMemo(() => {
           </div>
 
           {/* PANE 2: 7UP STAGING AREA (DRAG & DROP, PERFECT FLEX-FIT) */}
-          <div className="flex flex-col h-full bg-brand-gradient/10 border border-[var(--brand-mid)]/30 rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(249,19,98,0.1)] relative min-h-0">
+          <div className={`${workspacePane === 'staging' ? 'flex' : 'hidden'} lg:flex flex-col h-[65dvh] lg:h-full bg-brand-gradient/10 border border-[var(--brand-mid)]/30 rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(249,19,98,0.1)] relative min-h-0`}>
             <div className="p-4 border-b border-[var(--brand-mid)]/20 bg-black/40 flex justify-between items-center shrink-0">
               <div className="min-w-0">
                 <h2 className="font-bold text-white tracking-wide text-brand-gradient">7up Staging</h2>
@@ -372,6 +395,15 @@ const turnIndicator = useMemo(() => {
             <div className="flex-1 flex flex-col gap-2 p-4 min-h-0 overflow-hidden">
               {Array.from({ length: 7 }).map((_, idx) => {
                 const track = stagedSeven[idx];
+                // Same splice the drop handler below performs, driven by a button instead
+                const moveStaged = (from, delta) => {
+                  const to = from + delta;
+                  if (to < 0 || to >= stagedSeven.length) return;
+                  const newStaged = [...stagedSeven];
+                  const [movedItem] = newStaged.splice(from, 1);
+                  newStaged.splice(to, 0, movedItem);
+                  setStagedSeven(newStaged);
+                };
                 const isDraggingThis = draggedIdx === idx;
                 const isDragOver = dragOverIdx === idx;
 
@@ -424,7 +456,28 @@ const turnIndicator = useMemo(() => {
                           <span className="text-sm font-bold text-white truncate">{track.name}</span>
                           <span className="text-xs text-neutral-400 truncate">{track.artists.map(a => a.name).join(', ')}</span>
                         </div>
-                        <button 
+                        {/* Touch screens can't drag the slots; nudge one step instead */}
+                        <div className="hidden pointer-coarse:flex flex-col shrink-0 -my-1">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            aria-label="Move up"
+                            onClick={(e) => { e.stopPropagation(); moveStaged(idx, -1); }}
+                            className="p-1 rounded text-white/60 active:bg-white/10 disabled:opacity-20"
+                          >
+                            <StageUpIcon className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx >= stagedSeven.length - 1}
+                            aria-label="Move down"
+                            onClick={(e) => { e.stopPropagation(); moveStaged(idx, 1); }}
+                            className="p-1 rounded text-white/60 active:bg-white/10 disabled:opacity-20"
+                          >
+                            <StageDownIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
                             removeStagedTrack(track.uri);
@@ -449,7 +502,7 @@ const turnIndicator = useMemo(() => {
           </div>
 
           {/* PANE 3: POOL PLAYLIST */}
-          <div className="flex flex-col h-full bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl min-h-0">
+          <div className={`${workspacePane === 'pool' ? 'flex' : 'hidden'} lg:flex flex-col h-[65dvh] lg:h-full bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl min-h-0`}>
             <div className="p-4 border-b border-neutral-800 bg-black/20 flex flex-col gap-2 shrink-0">
               <select 
                 value={poolPlaylistId} 
@@ -511,8 +564,10 @@ const turnIndicator = useMemo(() => {
                         className="relative w-8 h-8 rounded shadow-sm shrink-0 overflow-hidden cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (!token || !deviceId || !poolPlaylist) return;
-                          playPlaylistTrack(token, deviceId, poolPlaylistId, idx).catch(console.error);
+                          if (!token || !poolPlaylist) return;
+                          const deviceId = resolvePlaybackDeviceId();
+                          if (!deviceId) return;
+                          playPlaylistTrack(token, deviceId, poolPlaylistId, idx).catch(handlePlaybackError);
                         }}
                       >
                         <img src={item.track.album.images?.[0]?.url} className="w-full h-full object-cover" alt="" />
@@ -554,20 +609,20 @@ const turnIndicator = useMemo(() => {
   // VIEW: HORIZONTAL SCROLL (REVERSE CHRONOLOGICAL)
   // ==========================================
   return (
-    <div className="flex flex-col h-[calc(90vh-140px)] w-full overflow-hidden">
+    <div className="flex flex-col md:h-[calc(90vh-140px)] w-full md:overflow-hidden">
       {/* Header */}
-      <div className="flex items-end justify-between mb-4 mt-6 px-8 select-none shrink-0">
-        <div className="flex items-end space-x-6">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-4 mt-2 md:mt-6 px-2 md:px-8 select-none shrink-0">
+        <div className="flex items-end gap-4 md:gap-6 min-w-0">
           {playlist.images?.length > 0 ? (
-            <img src={playlist.images[0].url} alt={playlist.name} className="w-32 h-32 shadow-2xl shadow-black/50 rounded-xl object-cover" />
+            <img src={playlist.images[0].url} alt={playlist.name} className="w-24 h-24 md:w-32 md:h-32 shadow-2xl shadow-black/50 rounded-xl object-cover shrink-0" />
           ) : (
-            <div className="w-32 h-32 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded-xl"> 🎵 </div>
+            <div className="w-24 h-24 md:w-32 md:h-32 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded-xl shrink-0"> 🎵 </div>
           )}
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2 flex items-center gap-2">
               The Seven
             </p>
-            <h1 className="text-5xl font-extrabold text-white tracking-tighter mb-2">{playlist.name}</h1>
+            <h1 className="text-3xl md:text-5xl font-extrabold text-white tracking-tighter mb-2 break-words">{playlist.name}</h1>
             <p className="text-neutral-400 text-sm font-medium">
               {turnIndicator} • {chunks.length} Batches
             </p>
@@ -584,7 +639,7 @@ const turnIndicator = useMemo(() => {
       {/* Horizontal Free Scroll Container */}
       <div 
         ref={horizontalScrollRef}
-        className="flex items-start overflow-x-auto overflow-y-hidden gap-8 px-8 pb-8 pt-4 flex-1 min-h-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className="flex flex-col md:flex-row md:items-start md:overflow-x-auto md:overflow-y-hidden gap-6 md:gap-8 px-2 md:px-8 pb-8 pt-4 flex-1 min-h-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {chunks.map((chunk, chunkIdx) => {
           const collaborator = collaborators[chunk.adderId];
@@ -595,7 +650,7 @@ const turnIndicator = useMemo(() => {
             <div 
               key={chunkIdx} 
               // Added group/batch and responsive hover widths to expand on hover
-              className="group/batch shrink-0 w-[max-content] hover:w-[max-content] transition-all duration-500 ease-out h-fit max-h-full flex flex-col bg-neutral-900/40 border border-white/5 backdrop-blur-md rounded-3xl overflow-hidden shadow-2xl min-h-0"
+              className="group/batch shrink-0 w-full md:w-[max-content] md:hover:w-[max-content] transition-all duration-500 ease-out h-fit md:max-h-full flex flex-col bg-neutral-900/40 border border-white/5 backdrop-blur-md rounded-3xl overflow-hidden shadow-2xl min-h-0"
             >
               {/* Batch Header (User Profile) */}
               <div className="flex justify-between items-center px-6 py-4 border-b border-white/10 bg-black/30 shrink-0">
@@ -692,7 +747,7 @@ const turnIndicator = useMemo(() => {
                       </div>
                       
                       {/* 4. Album Name (EXPANDS ON BATCH HOVER) */}
-                      <div className="flex flex-col justify-center w-0 opacity-0 group-hover/batch:w-[max-content] group-hover/batch:opacity-100 group-hover/batch:ml-2 overflow-hidden transition-all duration-500 ease-out shrink-0">
+                      <div className="flex flex-col justify-center w-0 opacity-0 group-hover/batch:w-[max-content] group-hover/batch:opacity-100 group-hover/batch:ml-2 pointer-coarse:w-[max-content] pointer-coarse:opacity-100 pointer-coarse:ml-2 overflow-hidden transition-all duration-500 ease-out shrink-0">
                         {track.album?.id ? (
                           <button
                             type="button"

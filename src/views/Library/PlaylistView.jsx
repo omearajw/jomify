@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useUserStore } from '../../store/userStore'; 
 import { usePlayerStore } from '../../store/playerStore';
+import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
+import MoreButton from '../../components/MoreButton';
 import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Clock3, Play, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users } from 'lucide-react';
@@ -18,7 +20,7 @@ export default function PlaylistView() {
     playlistSortSettings, setPlaylistSortSettings // Destructured from your updated store
   } = useUserStore();
   
-  const { deviceId, playbackState } = usePlayerStore();
+  const { playbackState } = usePlayerStore();
   const [playlist, setPlaylist] = useState(null);
   
   // --- COLLABORATOR STATES ---
@@ -341,14 +343,16 @@ export default function PlaylistView() {
   }, [playlist?.tracks.items, isCollaborative, token]);
 
   const handleTrackSelect = (originalIndex) => {
-    if (!token || !deviceId || !playlist) return;
+    if (!token || !playlist) return;
+    const deviceId = resolvePlaybackDeviceId();
+    if (!deviceId) return;
 
     // A sorted view plays in the order on screen. That means sending explicit URIs (Spotify caps
     // the list at ~100, so it's a window from the clicked row) rather than the playlist context,
     // which would continue in Spotify's stored order regardless of what's displayed.
     if (sortBy !== 'custom') {
       const uris = sortedTracks.slice(originalIndex, originalIndex + 100).map(item => item.track?.uri).filter(Boolean);
-      if (uris.length > 0) playUris(token, deviceId, uris, 0).catch(console.error);
+      if (uris.length > 0) playUris(token, deviceId, uris, 0).catch(handlePlaybackError);
       return;
     }
 
@@ -359,7 +363,7 @@ export default function PlaylistView() {
     let realIndex = playlist.tracks.items.indexOf(targetTrack);
     if (realIndex === -1) realIndex = playlist.tracks.items.findIndex(item => item.track?.uri === targetTrack.track?.uri);
     if (realIndex !== -1) {
-      playPlaylistTrack(token, deviceId, activePlaylistId, realIndex).catch(console.error);
+      playPlaylistTrack(token, deviceId, activePlaylistId, realIndex).catch(handlePlaybackError);
     }
   };
 
@@ -448,19 +452,20 @@ export default function PlaylistView() {
     return <p className="text-neutral-400 animate-pulse text-lg mt-8">Loading playlist...</p>;
   }
 
-  const gridColumns = isCollaborative 
-    ? "grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_120px_140px_80px]" 
-    : "grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_140px_80px]";
+  // Phone: art, title/artists, like + duration + menu. Desktop keeps the full table.
+  const gridColumns = isCollaborative
+    ? "grid-cols-[48px_minmax(0,1fr)_auto] md:grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_120px_140px_80px]"
+    : "grid-cols-[48px_minmax(0,1fr)_auto] md:grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_140px_80px]";
 
   return (
     <div className="flex flex-col pb-8">
       {/* Playlist Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-8 mt-4 select-none gap-6">
-        <div className="flex items-end space-x-6">
+        <div className="flex flex-col md:flex-row md:items-end gap-4 md:gap-6 min-w-0">
           {playlist.images?.length > 0 ? (
-            <img src={playlist.images[0].url} alt={playlist.name} className="w-48 h-48 shadow-2xl shadow-black/50 rounded" />
+            <img src={playlist.images[0].url} alt={playlist.name} className="w-40 h-40 md:w-48 md:h-48 shadow-2xl shadow-black/50 rounded shrink-0" />
           ) : (
-            <div className="w-48 h-48 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded"> 🎵 </div>
+            <div className="w-40 h-40 md:w-48 md:h-48 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded shrink-0"> 🎵 </div>
           )}
           <div>
             <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2 flex items-center gap-2">
@@ -472,14 +477,14 @@ export default function PlaylistView() {
                 </span>
               )}
             </p>
-            <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tighter mb-4">{playlist.name}</h1>
+            <h1 className="text-3xl md:text-5xl lg:text-7xl font-extrabold text-white tracking-tighter mb-4 break-words">{playlist.name}</h1>
             <p className="text-neutral-400 text-sm font-medium">
               {playlist.description && <span className="mr-2">{playlist.description} •</span>}
               {playlist.owner.display_name} • {playlist.tracks.total} songs
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {isUnaddedSongsPlaylist && (
             <>
               <button
@@ -619,7 +624,7 @@ export default function PlaylistView() {
       </div>
 
       {/* Tracklist Header */}
-      <div className={`grid ${gridColumns} gap-4 px-4 py-2 border-b border-neutral-800 text-neutral-400 text-sm mb-4 items-center select-none`}>
+      <div className={`hidden md:grid ${gridColumns} gap-4 px-4 py-2 border-b border-neutral-800 text-neutral-400 text-sm mb-4 items-center select-none`}>
         <span>#</span>
         <span />
         <span>Title</span>
@@ -704,7 +709,7 @@ export default function PlaylistView() {
               style={getCollaboratorStyle(adderId, isCollaborative, isFirstInGroup, isLastInGroup)}
               className={`grid ${gridColumns} gap-4 px-4 py-3 group text-sm items-center transition-colors cursor-pointer ${bgHoverClass} ${radiusClass} ${marginClass}`}
             >
-              <div className="text-neutral-400 w-4 h-4 flex items-center justify-center">
+              <div className="text-neutral-400 w-4 h-4 hidden md:flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
                   <span className="text-brand-gradient font-bold animate-pulse">🔊</span>
                 ) : (
@@ -750,7 +755,7 @@ export default function PlaylistView() {
                 </div>
               </div>
               
-              <div className="truncate pr-4">
+              <div className="hidden md:block truncate pr-4">
                 {track.album?.id ? (
                   <button
                     type="button"
@@ -767,13 +772,13 @@ export default function PlaylistView() {
                 )}
               </div>
 
-              <div className="text-neutral-400 text-xs truncate">
+              <div className="hidden md:block text-neutral-400 text-xs truncate">
                 {formatDateAdded(item.added_at)}
               </div>
 
               {/* Collborator Tag Column */}
               {isCollaborative && (
-                <div className="flex items-center space-x-2 truncate pr-4" title={collaboratorProfile?.display_name || adderId}>
+                <div className="hidden md:flex items-center space-x-2 truncate pr-4" title={collaboratorProfile?.display_name || adderId}>
                   {collaboratorProfile?.images?.[0]?.url ? (
                     <img src={collaboratorProfile.images[0].url} className="w-6 h-6 rounded-full object-cover shrink-0" alt="" />
                   ) : (
@@ -814,6 +819,7 @@ export default function PlaylistView() {
                     <LikeButton trackId={track.id} />
                 </div>
                 <span className="text-neutral-400 w-8 text-right">{formatTime(track.duration_ms)}</span>
+                <MoreButton onOpen={(e) => handleRightClick(e, track)} />
               </div>
             </div>
           );
