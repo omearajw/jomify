@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Upload, Terminal, ChevronDown, ChevronRight, FolderInput } from 'lucide-react';
+import { X, Upload, Terminal, ChevronDown, ChevronRight, FolderInput, FolderSearch, Loader2 } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { toast } from '../store/toastStore';
 import { parseSpotifyFolders, planImport, ImportFormatError } from '../import/spotifyFolders';
+import { extractSpotifyFolders, CacheReadError } from '../import/spotifyCache';
 import { storeToDoc } from '../sync/transform';
 import { getMeta } from '../sync/meta';
 import { MAX_DOC_CHARS } from '../sync/mergeSyncDoc';
@@ -24,6 +25,14 @@ const CLI_STEPS = `1. Quit Spotify so its cache is fully written.
 3. Run:  spotifyfolders > spotify-folders.json
    (if it asks for the "snappy" library, follow its instructions and run again)
 4. Upload spotify-folders.json here, or paste its contents.`;
+
+// Where the Spotify desktop app keeps the folder tree. Windows first: that's where most of
+// Jomify's users are.
+const CACHE_LOCATIONS = [
+  { os: 'Windows', path: '%LOCALAPPDATA%\\Spotify\\Users', hint: 'Paste this into the address bar at the top of the window that opens, press Enter, then choose Users.' },
+  { os: 'Windows (Spotify from the Microsoft Store)', path: '%LOCALAPPDATA%\\Packages\\SpotifyAB.SpotifyMusic_zpdnekdrzrea0\\LocalState\\Spotify\\Users', hint: 'Same steps; only the path differs.' },
+  { os: 'Mac', path: '~/Library/Application Support/Spotify/PersistentCache/Users', hint: 'Press Cmd+Shift+G in the window that opens, paste this, press Enter, then choose Users.' }
+];
 
 // Sync refuses documents over the server's cap; leave headroom for clocks and tombstones the
 // exact figure can't know about yet
@@ -50,6 +59,7 @@ function ImportFoldersDialogBody({ onClose }) {
   const playlists = useUserStore((s) => s.playlists);
   const customFolders = useUserStore((s) => s.customFolders);
   const pinnedItems = useUserStore((s) => s.pinnedItems);
+  const profile = useUserStore((s) => s.profile);
   const importFolderTree = useUserStore((s) => s.importFolderTree);
 
   const [step, setStep] = useState('input');
@@ -58,8 +68,11 @@ function ImportFoldersDialogBody({ onClose }) {
   const [mode, setMode] = useState('replace');
   const [root, setRoot] = useState(null);
   const [showSkipped, setShowSkipped] = useState(false);
+  const [showCli, setShowCli] = useState(false);
+  const [reading, setReading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const fileInputRef = useRef(null);
+  const dirInputRef = useRef(null);
 
   const plan = useMemo(() => {
     if (!root) return null;
@@ -86,6 +99,34 @@ function ImportFoldersDialogBody({ onClose }) {
     if (!file) return;
     setText(await file.text());
     setError('');
+  };
+
+  // The directory picker hands over every file under the chosen folder; only the handful of
+  // LevelDB files for the signed-in account are actually read, and nothing leaves the browser
+  const onDirectoryChosen = async (e) => {
+    const picked = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (picked.length === 0) return;
+    setError('');
+    setReading(true);
+    try {
+      const files = picked.map(f => ({
+        path: f.webkitRelativePath || f.name,
+        lastModified: f.lastModified,
+        bytes: async () => new Uint8Array(await f.arrayBuffer())
+      }));
+      const { root: rawRoot } = await extractSpotifyFolders(files, { userId: profile?.id || null });
+      setRoot(parseSpotifyFolders(JSON.stringify(rawRoot)).root);
+      setStep('preview');
+    } catch (err) {
+      if (err instanceof CacheReadError || err instanceof ImportFormatError) setError(err.message);
+      else {
+        console.error('[import] cache read failed:', err);
+        setError("Couldn't read Spotify's files. Quit Spotify and try again, or use the command-line tool below.");
+      }
+    } finally {
+      setReading(false);
+    }
   };
 
   const apply = () => {
@@ -126,12 +167,46 @@ function ImportFoldersDialogBody({ onClose }) {
         <div className="p-6 space-y-5 overflow-y-auto">
           {step === 'input' ? (
             <>
-              <div className="rounded-2xl border border-white/10 bg-neutral-900/60 p-4">
-                <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-                  <Terminal className="w-3.5 h-3.5" /> Spotify doesn't expose folders through its API, so this reads them from the desktop app
-                </p>
-                <pre className="text-xs text-neutral-300 whitespace-pre-wrap leading-relaxed font-mono">{CLI_STEPS}</pre>
+              <div className="rounded-2xl border border-[var(--brand-mid)]/40 bg-[var(--brand-mid)]/5 p-4 space-y-3">
+                <p className="text-sm text-white font-semibold">Read them from the Spotify app on this computer</p>
+                <ol className="text-sm text-neutral-300 list-decimal pl-5 space-y-1">
+                  <li>Quit Spotify completely (on Windows, also from the tray icon by the clock).</li>
+                  <li>Click the button below and find Spotify's <span className="text-white font-semibold">Users</span> folder:</li>
+                </ol>
+                <ul className="text-xs text-neutral-400 space-y-2 pl-5">
+                  {CACHE_LOCATIONS.map(loc => (
+                    <li key={loc.os}>
+                      <span className="text-neutral-300 font-semibold">{loc.os}:</span>{' '}
+                      <code className="text-white bg-black/40 rounded px-1.5 py-0.5 font-mono select-all">{loc.path}</code>
+                      <span className="block mt-0.5">{loc.hint}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-neutral-500">If the browser asks whether to upload the files, choose Upload. They are read here in your browser and never sent anywhere.</p>
+                <button
+                  type="button"
+                  disabled={reading}
+                  onClick={() => dirInputRef.current?.click()}
+                  className="flex items-center gap-2 rounded-full bg-brand-gradient text-white px-5 py-2 text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {reading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderSearch className="w-4 h-4" />}
+                  {reading ? 'Reading…' : 'Choose Spotify folder'}
+                </button>
+                <input ref={dirInputRef} type="file" webkitdirectory="" directory="" multiple onChange={onDirectoryChosen} className="hidden" />
               </div>
+
+              {error && <p className="text-sm text-red-400 font-medium">{error}</p>}
+
+              <button type="button" onClick={() => setShowCli(v => !v)} className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2 hover:text-white transition-colors">
+                {showCli ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                <Terminal className="w-3.5 h-3.5" /> Or use the command-line tool and paste its output
+              </button>
+
+              {showCli && (
+                <div className="rounded-2xl border border-white/10 bg-neutral-900/60 p-4">
+                  <pre className="text-xs text-neutral-300 whitespace-pre-wrap leading-relaxed font-mono">{CLI_STEPS}</pre>
+                </div>
+              )}
 
               <textarea
                 value={text}
@@ -141,8 +216,6 @@ function ImportFoldersDialogBody({ onClose }) {
                 spellCheck={false}
                 className="w-full rounded-2xl bg-neutral-900 border border-white/10 px-4 py-3 text-xs text-white font-mono placeholder:text-neutral-600 focus:border-[#f91362] outline-none focus:ring-2 focus:ring-[#f91362]/20"
               />
-
-              {error && <p className="text-sm text-red-400 font-medium">{error}</p>}
 
               <div className="flex items-center justify-between gap-3">
                 <button
