@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { fetchQueue } from '../services/spotify/api';
@@ -48,8 +48,6 @@ const removeManualMatchesFromQueue = (queueTracks, manualTracks) => {
 export default function QueuePanel() {
   const { token, isQueueOpen, toggleQueue, queueRefreshTrigger, manuallyQueuedTracks, queueData, setQueueData } = useUserStore();
   const { playbackState } = usePlayerStore();
-  const [regularQueueEntries, setRegularQueueEntries] = useState([]);
-
   const currentTrackUid = playbackState?.track_window?.current_track?.uid;
 
   const manualQueueEntries = useMemo(() => manuallyQueuedTracks.map((track, index) => ({
@@ -57,15 +55,12 @@ export default function QueuePanel() {
     track,
   })), [manuallyQueuedTracks]);
 
-  useEffect(() => {
+  const regularQueueEntries = useMemo(() => {
     const tracksOnly = (queueData?.queue || []).filter(isRenderableTrack);
-    const filteredQueue = removeManualMatchesFromQueue(tracksOnly, manuallyQueuedTracks);
-    // Since we no longer need complex stable keys for drag-and-drop, we can map directly
-    const nextEntries = filteredQueue.map((track, index) => ({
+    return removeManualMatchesFromQueue(tracksOnly, manuallyQueuedTracks).map((track, index) => ({
       key: `queue-${index}-${track.id || cleanString(track.name)}`,
       track
     }));
-    setRegularQueueEntries(nextEntries);
   }, [queueData?.queue, manuallyQueuedTracks]);
 
   useEffect(() => {

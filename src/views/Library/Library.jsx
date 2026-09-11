@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { fetchUserPlaylists, addTracksToPlaylist, unfollowPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../../services/spotify/api';
-import { Heart, Folder, Maximize2, ChevronLeft, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2 } from 'lucide-react';
+import { Heart, Folder, Maximize2, ChevronLeft, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2, FolderX } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
@@ -83,7 +83,7 @@ function ItemCard({
       onDrop={(e) => onDropOnItem(e, item.id, parentFolderId)}
       onClick={() => (isAlbum ? onOpenAlbum(item.id) : onOpenPlaylist(item.id))}
       onContextMenu={(e) => onMenu(e, item, parentFolderId)}
-      className={`p-4 rounded-xl hover:bg-neutral-800 transition-all duration-300 cursor-pointer group shadow-lg flex flex-col h-full relative cursor-grab active:cursor-grabbing ${isDragTarget ? 'ring-2 ring-[#f91362] bg-brand-gradient text-white/10 scale-[1.02]' : isSubItem ? 'bg-neutral-800/40 border border-neutral-700/30 hover:border-neutral-500/50' : 'bg-neutral-800/40'}`}
+      className={`p-4 rounded-xl hover:bg-neutral-800 transition-all duration-300 cursor-pointer group shadow-lg flex flex-col h-full relative cursor-grab active:cursor-grabbing ${isDragTarget ? 'ring-2 ring-[#f91362] bg-[var(--brand-mid)]/15 scale-[1.02]' : isSubItem ? 'bg-neutral-800/40 border border-neutral-700/30 hover:border-neutral-500/50' : 'bg-neutral-800/40'}`}
     >
       <button type="button" onClick={(e) => onMenu(e, item, parentFolderId)} className="absolute top-6 right-6 z-10 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md">
         <MoreVertical className="w-4 h-4" />
@@ -102,7 +102,7 @@ function ItemCard({
 
 function ManageCard({ item, action, onClick }) {
   return (
-    <div onClick={onClick} className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border border-transparent flex flex-col h-full ${action === 'add' ? 'bg-neutral-800/20 hover:border-[#f91362]/50 hover:bg-brand-gradient text-white/10' : 'bg-neutral-800/40 hover:border-red-500/50 hover:bg-red-500/10'}`}>
+    <div onClick={onClick} className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border border-transparent flex flex-col h-full ${action === 'add' ? 'bg-neutral-800/20 hover:border-[#f91362]/50 hover:bg-[var(--brand-mid)]/15' : 'bg-neutral-800/40 hover:border-red-500/50 hover:bg-red-500/10'}`}>
       <div className="relative aspect-square w-full mb-4 rounded-md overflow-hidden bg-neutral-800 flex items-center justify-center shadow-md shrink-0">
         {item.images?.length > 0 ? <img src={item.images[0].url} draggable="false" alt={item.name} className="object-cover w-full h-full opacity-60 group-hover:opacity-100 transition-opacity duration-300" /> : <span className="text-3xl opacity-60 group-hover:opacity-100">💿</span>}
         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -119,7 +119,8 @@ export default function Library() {
     token, profile, playlists, albums, setPlaylists, setCurrentView, setActivePlaylistId, navigateToPlaylist, navigateToAlbum,
     customFolders, addPlaylistToFolder, removePlaylistFromFolder, deleteFolder, deletePlaylist, createFolder,
     draggedItem, setDraggedItem, reorderFolders, reorderPlaylistInFolder,
-    libraryGridSize, setLibraryGridSize, setContextMenu, activeFolderId, setActiveFolderId
+    libraryGridSize, setLibraryGridSize, setContextMenu, activeFolderId, setActiveFolderId,
+    manageFolderId, clearManageRequest, removeMissingFolderItems
   } = useUserStore();
 
   const [loading, setLoading] = useState(playlists.length === 0);
@@ -127,7 +128,7 @@ export default function Library() {
   const isolatedFolderId = activeFolderId;
   const setIsolatedFolderId = setActiveFolderId;
   const [expandedFolders, setExpandedFolders] = useState([]);
-  const [isManaging, setIsManaging] = useState(false); 
+  const [isManagingRequested, setIsManagingRequested] = useState(false);
   const [confirmState, setConfirmState] = useState({ open: false, type: null, playlist: null, folderId: null });
   
   const [dragOverId, setDragOverId] = useState(null);
@@ -143,6 +144,11 @@ export default function Library() {
 
   const allItems = [...playlists, ...(albums || [])];
 
+  // Only trustworthy once the library has actually loaded; before that every id looks missing
+  const missingItemCount = (activeFolder && playlists.length > 0)
+    ? activeFolder.playlistIds.filter(id => !allItems.some(item => item.id === id)).length
+    : 0;
+
   // Depends on the COUNT, not the array. Depending on the array identity meant an account with
   // zero playlists got setPlaylists([]) -> new array -> effect re-runs -> fetch again, forever,
   // until Spotify rate-limited it.
@@ -156,10 +162,12 @@ export default function Library() {
         console.error(err);
         setLoading(false);
       });
-    } else setLoading(false);
+    }
   }, [token, playlistCount, setPlaylists]);
 
-  useEffect(() => { if (!activeFolder) setIsManaging(false); }, [activeFolder]);
+  // Manage mode is only meaningful inside a folder, and the sidebar's "+" can request it
+  const isManaging = Boolean(activeFolder) && (isManagingRequested || manageFolderId === activeFolder.id);
+  const stopManaging = () => { setIsManagingRequested(false); clearManageRequest(); };
 
   const toggleFolderExpand = (e, folderId) => {
     e.stopPropagation(); 
@@ -352,7 +360,9 @@ export default function Library() {
     }
   };
 
-  if (loading) return <p className="text-neutral-400 animate-pulse text-lg">Loading your collection...</p>;
+  // `loading` only ever flips false from this view's own fetch; if App's load lands first the
+  // count is already non-zero and there is nothing to wait for
+  if (loading && playlistCount === 0) return <p className="text-neutral-400 animate-pulse text-lg">Loading your collection...</p>;
 
   // Everything the module-scope ItemCard needs from this render, spread at each call site
   const itemCardProps = {
@@ -424,7 +434,7 @@ export default function Library() {
             onDrop={(e) => handleDropOnFolder(e, folder.id)}
             onClick={() => setIsolatedFolderId(folder.id)} 
             onContextMenu={(e) => handleFolderContextMenu(e, folder)}
-            className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border relative flex flex-col h-full cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-brand-gradient text-white/10 border-[#f91362] scale-[1.02]' : 'bg-neutral-800/40 border-transparent hover:border-neutral-700 hover:bg-neutral-800/80'} ${(draggedItem?.type === 'playlist' || draggedItem?.type === 'album') && !isDragTarget ? 'border-dashed border-[#f91362]/50 bg-brand-gradient text-white/5' : ''}`}
+            className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border relative flex flex-col h-full cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/15 border-[#f91362] scale-[1.02]' : 'bg-neutral-800/40 border-transparent hover:border-neutral-700 hover:bg-neutral-800/80'} ${(draggedItem?.type === 'playlist' || draggedItem?.type === 'album') && !isDragTarget ? 'border-dashed border-[#f91362]/50 bg-[var(--brand-mid)]/10' : ''}`}
           >
             <button onClick={(e) => toggleFolderExpand(e, folder.id)} className="absolute top-4 right-4 z-100 w-8 h-8 bg-black/40 hover:bg-black/80 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors" title="Expand Inline">
               <Maximize2 className="w-4 h-4 text-white transition-transform duration-300" />
@@ -473,7 +483,7 @@ export default function Library() {
             </div>
             <div className="flex items-center space-x-4">
               <SizingControls libraryGridSize={libraryGridSize} setLibraryGridSize={setLibraryGridSize} />
-              <button onClick={() => setIsManaging(!isManaging)} className={`px-6 py-2 rounded-full font-bold text-sm transition-colors ${isManaging ? 'bg-white text-black hover:scale-105' : 'border border-white/20 text-white hover:border-white'}`}>
+              <button onClick={() => (isManaging ? stopManaging() : setIsManagingRequested(true))} className={`px-6 py-2 rounded-full font-bold text-sm transition-colors ${isManaging ? 'bg-white text-black hover:scale-105' : 'border border-white/20 text-white hover:border-white'}`}>
                 {isManaging ? 'Done Editing' : 'Manage Folder'}
               </button>
             </div>
@@ -484,6 +494,20 @@ export default function Library() {
                <div>
                 <h2 className="text-xl font-bold text-white mb-4">Click to Remove</h2>
                 {activeFolder.playlistIds.length === 0 && <p className="text-neutral-500 italic">No items in this folder.</p>}
+                {missingItemCount > 0 && (
+                  <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+                    <p className="text-sm text-amber-200">
+                      {missingItemCount} {missingItemCount === 1 ? 'entry' : 'entries'} in this folder {missingItemCount === 1 ? 'points' : 'point'} at something no longer in your library.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => removeMissingFolderItems(activeFolder.id, allItems.map(i => i.id))}
+                      className="shrink-0 flex items-center gap-2 rounded-full border border-amber-400/40 px-3 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-500/20 transition-colors"
+                    >
+                      <FolderX className="w-3.5 h-3.5" /> Remove missing
+                    </button>
+                  </div>
+                )}
                 <div className={`grid ${getGridClass()}`}>
                   {activeFolder.playlistIds.map(id => {
                     const item = allItems.find(p => p.id === id);
@@ -514,7 +538,7 @@ export default function Library() {
                 <div className="col-span-full py-12 flex flex-col items-center justify-center text-neutral-500 border-2 border-dashed border-neutral-800 rounded-xl">
                   <Folder className="w-12 h-12 mb-4 opacity-50" />
                   <p>This folder is empty.</p>
-                  <button onClick={() => setIsManaging(true)} className="mt-4 text-white font-bold hover:underline">Add Items</button>
+                  <button onClick={() => setIsManagingRequested(true)} className="mt-4 text-white font-bold hover:underline">Add Items</button>
                 </div>
               )}
               {activeFolder.playlistIds.map((id) => {

@@ -184,13 +184,9 @@ export default function ZenMode() {
 
   // --- UNIFIED BULLETPROOF LYRICS ENGINE ---
   useEffect(() => {
-    if (!showLyrics || !currentTrack) {
-      setSyncedLyrics(null);
-      setPlainLyrics([]);
-      setActiveIndex(-1);
-      setLyricsError('');
-      return;
-    }
+    // Nothing to clear here: fetchLyrics resets every lyric state on its next run, and the
+    // panel is hidden while showLyrics is false, so stale state is never visible
+    if (!showLyrics || !currentTrack) return;
 
     let isMounted = true;
     // Used to pick the right VERSION from lrclib -- the first hit is often a live cut or a remix
@@ -263,6 +259,9 @@ export default function ZenMode() {
     fetchLyrics();
 
     return () => { isMounted = false; };
+  // Deliberately keyed on the track id, not the track object or playbackState.duration: those
+  // change on every position tick and would refetch lyrics several times a second
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack?.id, showLyrics]);
 
   // --- AUTO-SCROLL ON LINE CHANGE ---

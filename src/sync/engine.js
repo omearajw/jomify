@@ -2,7 +2,7 @@ import { shallow } from 'zustand/shallow';
 import { useUserStore } from '../store/userStore';
 import { useSyncStore } from '../store/syncStore';
 import { pullDoc, pushDoc, SyncApiError } from '../services/sync/client';
-import { mergeSyncDoc } from './mergeSyncDoc';
+import { mergeSyncDoc, isFolderLive } from './mergeSyncDoc';
 import { storeToDoc, docToStore, docToMetaClocks, docHasContent } from './transform';
 import {
   getMeta, saveMeta, resetMeta, setServerTime, syncNow,
@@ -29,6 +29,10 @@ let pushUnlocked = false;
 // Set while a remote document is being written into the store, so the change tracker can tell
 // "the server told us this" apart from "the user did this".
 let isApplyingRemote = false;
+
+// A first-sync pull whose merge is waiting on the user to choose (both sides had folders).
+// While it's set, no pull may apply and no push may run.
+let pendingConflict = null;
 
 let debounceTimer = null;
 let maxWaitTimer = null;
@@ -180,7 +184,7 @@ async function flushPush({ keepalive = false } = {}) {
   debounceTimer = null;
   maxWaitTimer = null;
 
-  if (!running || !pushUnlocked || !dirty || inFlight) return;
+  if (!running || !pushUnlocked || !dirty || inFlight || pendingConflict) return;
   if (getDataOwnerId() !== userId) return; // never push one account's data under another's token
 
   inFlight = true;
@@ -235,9 +239,9 @@ function handleFailure(err, phase) {
 
 // --- pulling ----------------------------------------------------------------
 
-async function pull({ force = false } = {}) {
-  if (!running || inFlight) return;
-  if (!force && Date.now() - lastPullAt < PULL_THROTTLE_MS) return;
+async function pull({ force = false, apply = true } = {}) {
+  if (!running || inFlight || pendingConflict) return null;
+  if (!force && Date.now() - lastPullAt < PULL_THROTTLE_MS) return null;
 
   inFlight = true;
   lastPullAt = Date.now();
@@ -249,11 +253,13 @@ async function pull({ force = false } = {}) {
 
     const local = storeToDoc(useUserStore.getState(), getMeta());
     const merged = mergeSyncDoc(local, result.doc);
-    applyRemoteDoc(merged);
-    saveMeta({ lastRevision: result.revision });
+    if (apply) {
+      applyRemoteDoc(merged);
+      saveMeta({ lastRevision: result.revision });
+    }
 
     backoffMs = BACKOFF_START_MS;
-    return { remote: result.doc, merged };
+    return { remote: result.doc, merged, revision: result.revision };
   } catch (err) {
     handleFailure(err, 'pull');
     return null;
@@ -349,7 +355,11 @@ export async function start(currentUserId) {
 
   // --- first pull, then unlock pushing ---
   const localBefore = storeToDoc(useUserStore.getState(), getMeta());
-  const result = await pull({ force: true });
+  // On a device's very first sync with folders of its own, don't apply anything until we know
+  // whether the account also has folders -- if it does, the user chooses how to reconcile.
+  const needsChoice = !getMeta().firstSyncDone && docHasContent(localBefore);
+
+  const result = await pull({ force: true, apply: !needsChoice });
 
   if (!result) {
     // The pull failed. Stay in local-only mode: DO NOT push. A device that has not heard from
@@ -357,15 +367,30 @@ export async function start(currentUserId) {
     return;
   }
 
-  const meta = getMeta();
-  if (!meta.firstSyncDone) {
-    saveMeta({
-      firstSyncDone: true,
-      // Recorded so the UI can mention it if two populated devices ever meet
-      firstSyncHadConflict: docHasContent(localBefore) && docHasContent(result.remote)
+  if (needsChoice && docHasContent(result.remote)) {
+    pendingConflict = result;
+    useSyncStore.getState().setFirstSyncConflict({
+      localFolders: countLiveFolders(localBefore),
+      remoteFolders: countLiveFolders(result.remote)
     });
+    useSyncStore.getState().setStatus('idle');
+    return;
   }
 
+  if (needsChoice) {
+    applyRemoteDoc(result.merged);
+    saveMeta({ lastRevision: result.revision });
+  }
+
+  finishFirstSync(result);
+}
+
+function countLiveFolders(doc) {
+  return Object.values(doc?.folders || {}).filter(isFolderLive).length;
+}
+
+function finishFirstSync(result) {
+  if (!getMeta().firstSyncDone) saveMeta({ firstSyncDone: true });
   pushUnlocked = true;
 
   // If this device contributed anything the server didn't have, send the merged result up.
@@ -378,10 +403,25 @@ export async function start(currentUserId) {
   }
 }
 
+export function resolveFirstSyncConflict(choice) {
+  if (!pendingConflict || !running) return;
+  const result = pendingConflict;
+  pendingConflict = null;
+
+  // 'useRemote' adopts the account's document as-is: this device's own folders are dropped
+  // locally, and because they never had tombstones nothing about them reaches the server.
+  applyRemoteDoc(choice === 'useRemote' ? result.remote : result.merged);
+  saveMeta({ lastRevision: result.revision });
+  useSyncStore.getState().setFirstSyncConflict(null);
+  finishFirstSync(result);
+}
+
 export function stop() {
   running = false;
   pushUnlocked = false;
   userId = null;
+  pendingConflict = null;
+  useSyncStore.getState().setFirstSyncConflict(null);
   clearTimers();
 
   if (unsubscribeStore) {

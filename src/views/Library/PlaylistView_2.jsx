@@ -314,7 +314,7 @@ const turnIndicator = useMemo(() => {
                 const isFirst = adderId !== prevAdderId;
                 const isLast = adderId !== nextAdderId;
 
-                let radiusClass = 'rounded-md';
+                let radiusClass;
                 let marginClass = '';
                 
                 if (isFirst && isLast) {
@@ -620,7 +620,7 @@ const turnIndicator = useMemo(() => {
                   const isFirst = idx === 0;
                   const isLast = idx === chunk.tracks.length - 1;
 
-                  let radiusClass = 'rounded-md';
+                  let radiusClass;
                   let marginClass = '';
                   
                   if (isFirst && isLast) {

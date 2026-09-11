@@ -259,7 +259,9 @@ export default function PlaylistView() {
   }, [token, activePlaylistId]); 
 
   // --- BACKGROUND STREAMING ---
-  const loadRestOfTracks = async (initialNextUrl) => {
+  // A declaration so the load effect above can call it: declarations hoist, and it only runs
+  // after mount anyway
+  async function loadRestOfTracks(initialNextUrl) {
     isFetchingMore.current = true;
     let nextUrl = initialNextUrl;
 
@@ -287,7 +289,7 @@ export default function PlaylistView() {
         
         checkLikesForChunk(nextData.items);
         nextUrl = nextData.next; 
-      } catch (err) {
+      } catch {
         break;
       }
     }

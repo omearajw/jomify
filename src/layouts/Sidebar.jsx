@@ -39,7 +39,7 @@ function formatAgo(timestamp) {
 export default function Sidebar() {
   const { 
     token, profile, currentView, setCurrentView, logout, playlists, albums, navigateToAlbum,
-    navigateToPlaylist, customFolders, createFolder, activeFolderId, setActiveFolderId,
+    navigateToPlaylist, customFolders, createFolder, activeFolderId, setActiveFolderId, requestFolderManage,
     draggedItem, setDraggedItem, reorderFolders, 
     addPlaylistToFolder, removePlaylistFromFolder, reorderPlaylistInFolder, setContextMenu, setPlaylists, deleteFolder
   } = useUserStore();
@@ -395,7 +395,22 @@ export default function Sidebar() {
                       {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </button>
                     <Folder className="w-4 h-4 mr-3 shrink-0 pointer-events-none" />
-                    <span className="truncate pointer-events-none">{folder.name}</span>
+                    <span className="truncate pointer-events-none flex-1">{folder.name}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Navigate first so the history frame records where you came from
+                        setCurrentView('library');
+                        setIsolatedFolderId(folder.id);
+                        requestFolderManage(folder.id);
+                      }}
+                      aria-label={`Add items to ${folder.name}`}
+                      title="Add items"
+                      className="ml-2 p-0.5 rounded text-neutral-500 hover:text-white hover:bg-neutral-700 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all shrink-0"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
                   </div>
                   
                   {isExpanded && (

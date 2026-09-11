@@ -13,6 +13,10 @@ export const useSyncStore = create((set) => ({
   // escalate to a banner once sync has genuinely been broken for a while.
   failingSince: null,
   pendingChanges: false,
+  // { localFolders, remoteFolders } while a first-sync choice is waiting on the user
+  firstSyncConflict: null,
+
+  setFirstSyncConflict: (firstSyncConflict) => set({ firstSyncConflict }),
 
   setStatus: (status, errorMessage = null) => set((state) => {
     const isFailure = status === 'error' || status === 'offline';

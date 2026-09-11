@@ -130,6 +130,9 @@ export default function LyricsView() {
 
     fetchLyrics();
     return () => { cancelled = true; };
+  // Deliberately keyed on the track id, not the track object or playbackState.duration: those
+  // change on every position tick and would refetch lyrics several times a second
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack?.id]);
 
   // --- 3. AUTO-SCROLL ON LINE CHANGE ---

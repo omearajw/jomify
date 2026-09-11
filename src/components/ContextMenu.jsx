@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, unsaveAlbum } from '../services/spotify/api';
-import { ListPlus, Plus, ChevronRight, ChevronDown, Folder, Trash2, FolderPlus, Pin, PinOff } from 'lucide-react';
+import { ListPlus, Plus, ChevronRight, ChevronDown, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil } from 'lucide-react';
+import FolderFormDialog from './FolderFormDialog';
+import { toast } from '../store/toastStore';
 
 const MENU_WIDTH = 224;     // w-56
 const SUBMENU_WIDTH = 256;  // w-64
@@ -16,7 +18,7 @@ export default function ContextMenu() {
     contextMenu, setContextMenu, token, triggerQueueRefresh, 
     addManuallyQueuedTrack, 
     playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId, activePlaylistId,
-    removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder,
+    removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder, renameFolder, createFolder,
     pinnedItems, togglePin
   } = useUserStore();
 
@@ -25,6 +27,10 @@ export default function ContextMenu() {
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmFolderOpen, setConfirmFolderOpen] = useState(false);
+  // Which folder dialog is open, and what it should do with the name it collects. The menu
+  // itself has usually closed by the time the dialog is on screen, so the item id is captured
+  // here rather than read from contextMenu later.
+  const [folderDialog, setFolderDialog] = useState(null); // { mode: 'rename', folderId, name } | { mode: 'create', itemId }
 
   // Which folder groups in the "Add to Playlist" submenu are expanded. Every folder starts
   // closed each time the menu opens, so a big library is a short list of folders rather than
@@ -84,6 +90,22 @@ export default function ContextMenu() {
   const userPlaylists = playlists.filter(p => p.owner?.id === profile?.id || p.collaborative);
   const { playlists: unfolderedPlaylists } = getUnfolderedItems(userPlaylists, [], customFolders);
 
+  // Last row of every "Move to..." list. With no folders at all it is the only row, so the
+  // heading no longer sits over an empty box.
+  const newFolderEntry = (itemId) => (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        setFolderDialog({ mode: 'create', itemId });
+        setContextMenu(null);
+      }}
+      className="w-full text-left px-4 py-2 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors flex items-center gap-2"
+    >
+      <Plus className="w-3.5 h-3.5 text-neutral-500" /> New folder…
+    </button>
+  );
+
   const toggleFolderOpen = (folderId) => {
     setOpenFolderIds(prev => {
       const next = new Set(prev);
@@ -114,18 +136,24 @@ export default function ContextMenu() {
 
       setTimeout(() => triggerQueueRefresh(), 750);
       closeMenu();
+      toast(`Queued "${track.name}"`, { tone: 'success' });
     } catch (err) {
       console.error(err);
+      toast("Couldn't add to the queue", { tone: 'error' });
     }
   };
 
   const handleAddToPlaylist = async (playlistId) => {
     if (!token || !contextMenu.track) return;
+    const playlistName = playlists.find(p => p.id === playlistId)?.name || 'playlist';
+    const trackName = contextMenu.track.name;
     try {
       await addTracksToPlaylist(token, playlistId, [contextMenu.track.uri]);
       closeMenu();
+      toast(`Added "${trackName}" to ${playlistName}`, { tone: 'success' });
     } catch (err) {
       console.error(err);
+      toast(`Couldn't add to ${playlistName}`, { tone: 'error' });
     }
   };
 
@@ -357,6 +385,7 @@ export default function ContextMenu() {
                 {folder.name}
               </button>
             ))}
+            {newFolderEntry(contextMenu.playlistId)}
           </div>
         </>
       )}
@@ -405,12 +434,24 @@ export default function ContextMenu() {
                 {folder.name}
               </button>
             ))}
+            {newFolderEntry(contextMenu.albumId)}
           </div>
         </>
       )}
 
       {contextMenu?.type === 'folder' && folder && (
         <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setFolderDialog({ mode: 'rename', folderId: folder.id, name: folder.name });
+              setContextMenu(null);
+            }}
+            className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+          >
+            <Pencil className="w-4 h-4 text-neutral-400" />
+            <span>Rename folder</span>
+          </button>
           <button
             onClick={handleDeleteFolder}
             className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
@@ -420,6 +461,19 @@ export default function ContextMenu() {
           </button>
         </>
       )}
+
+      <FolderFormDialog
+        open={Boolean(folderDialog)}
+        title={folderDialog?.mode === 'rename' ? 'Rename folder' : 'New folder'}
+        submitLabel={folderDialog?.mode === 'rename' ? 'Rename' : 'Create'}
+        initialName={folderDialog?.mode === 'rename' ? folderDialog.name : ''}
+        onSubmit={({ name }) => {
+          if (folderDialog?.mode === 'rename') renameFolder(folderDialog.folderId, name);
+          else createFolder(name, [folderDialog.itemId]);
+          setFolderDialog(null);
+        }}
+        onCancel={() => setFolderDialog(null)}
+      />
       
       <ConfirmDialog
         open={confirmOpen}

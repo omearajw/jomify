@@ -265,12 +265,13 @@ export default function Browse() {
                         <p className="text-neutral-400 text-xs truncate">
                           {track.artists.map((artist, i) => (
                             <span key={artist.id}>
-                              <span 
+                              <button
+                                type="button"
                                 onClick={(e) => handleArtistClick(e, artist.id)}
                                 className="hover:underline hover:text-white"
                               >
                                 {artist.name}
-                              </span>
+                              </button>
                               {i < track.artists.length - 1 ? ', ' : ''}
                             </span>
                           ))}
@@ -370,6 +371,7 @@ export default function Browse() {
                 <div 
                   key={artist.id} 
                   onClick={(e) => handleArtistClick(e, artist.id)}
+                  {...rowButtonProps(() => navigateToArtist(artist.id))}
                   className="bg-neutral-800/30 p-4 rounded-xl flex flex-col items-center text-center cursor-pointer hover:bg-neutral-800/60 transition-colors"
                 >
                   <div className="w-32 h-32 bg-neutral-700 rounded-full mb-3 overflow-hidden shadow-md">
@@ -536,12 +538,13 @@ export default function Browse() {
                           <p className="text-neutral-400 text-xs truncate">
                             {track.artists.map((artist, i) => (
                               <span key={artist.id}>
-                                <span 
+                                <button
+                                  type="button"
                                   onClick={(e) => handleArtistClick(e, artist.id)}
                                   className="hover:underline hover:text-white"
                                 >
                                   {artist.name}
-                                </span>
+                                </button>
                                 {i < track.artists.length - 1 ? ', ' : ''}
                               </span>
                             ))}
@@ -623,6 +626,7 @@ export default function Browse() {
                   <div 
                     key={artist.id} 
                     onClick={(e) => handleArtistClick(e, artist.id)}
+                    {...rowButtonProps(() => navigateToArtist(artist.id))}
                     className="bg-neutral-800/30 p-4 rounded-xl flex flex-col items-center text-center cursor-pointer hover:bg-neutral-800/60 transition-colors"
                   >
                     <div className="w-24 h-24 bg-neutral-700 rounded-full mb-3 overflow-hidden shadow-md">

@@ -61,7 +61,10 @@ export const useUserStore = create(
       libraryGridSize: 'medium',
       
       setLibraryGridSize: (size) => set({ libraryGridSize: size }),
-      setActiveFolderId: (folderId) => set({ activeFolderId: folderId }),
+      setActiveFolderId: (folderId) => set((state) => ({
+        activeFolderId: folderId,
+        manageFolderId: folderId ? state.manageFolderId : null
+      })),
 
       // --- GLOBAL DRAG AND DROP STATE ---
       draggedItem: null, 
@@ -124,21 +127,52 @@ export const useUserStore = create(
         return { sevens: [...state.sevens, ...seeded], sevensSeeded: true };
       }),
 
-      createFolder: (name) => set((state) => {
+      // `initialItemIds` lets "New folder…" in a context menu create the folder with the item
+      // already inside, in one state change. The items are pulled out of any other folder so
+      // the one-folder-per-item invariant holds.
+      createFolder: (name, initialItemIds = []) => set((state) => {
         const highestOrder = state.customFolders.reduce((max, f) => Math.max(max, f.order ?? 0), 0);
+        const moving = new Set(initialItemIds);
         return {
-          customFolders: [...state.customFolders, {
-            // The random suffix matters: Date.now() alone collides when two folders are created
-            // in the same millisecond, and colliding ids make every folder action hit both.
-            // It doubles as the sync id, so it must also be unique across devices.
-            id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            name,
-            playlistIds: [],
-            parentId: null,      // reserved for nested folders; the UI is flat for now
-            order: highestOrder + 1000
-          }]
+          customFolders: [
+            ...state.customFolders.map(f => (
+              moving.size ? { ...f, playlistIds: f.playlistIds.filter(id => !moving.has(id)) } : f
+            )),
+            {
+              // The random suffix matters: Date.now() alone collides when two folders are created
+              // in the same millisecond, and colliding ids make every folder action hit both.
+              // It doubles as the sync id, so it must also be unique across devices.
+              id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              name,
+              playlistIds: [...moving],
+              parentId: null,      // reserved for nested folders; the UI is flat for now
+              order: highestOrder + 1000
+            }
+          ]
         };
       }),
+
+      renameFolder: (folderId, name) => set((state) => ({
+        customFolders: state.customFolders.map(f => (f.id === folderId ? { ...f, name } : f))
+      })),
+
+      // Drops folder entries whose id resolves to nothing in the loaded library. Only ever
+      // called from an explicit button, never automatically: during a transient load failure
+      // "missing" and "not loaded yet" look identical.
+      removeMissingFolderItems: (folderId, presentIds) => set((state) => {
+        const present = new Set(presentIds);
+        return {
+          customFolders: state.customFolders.map(f => (
+            f.id === folderId ? { ...f, playlistIds: f.playlistIds.filter(id => present.has(id)) } : f
+          ))
+        };
+      }),
+
+      // Set by the sidebar's "+" on a folder so Library opens that folder straight into manage
+      // mode. Cleared when the folder is left.
+      manageFolderId: null,
+      requestFolderManage: (folderId) => set({ manageFolderId: folderId }),
+      clearManageRequest: () => set({ manageFolderId: null }),
 
       deleteFolder: (folderId) => {
         // THE ONLY TOMBSTONE MINT SITE IN THE APP. This is also the only code path anywhere that

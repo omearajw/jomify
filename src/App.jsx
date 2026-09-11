@@ -263,10 +263,7 @@ function App() {
     if (!token || !profile) return;
 
     const activeSevens = sevens.filter(s => s.active);
-    if (activeSevens.length === 0) {
-      setSevenTurns([]);
-      return;
-    }
+    if (activeSevens.length === 0) return; // stale entries are filtered out at render instead
 
     const checkSevens = async () => {
       const turns = [];
@@ -307,6 +304,9 @@ function App() {
 
     checkSevens();
   }, [token, profile, sevens]);
+
+  // A Seven marked finished after its turn was fetched must stop nagging without a refetch
+  const activeSevenTurns = sevenTurns.filter(turn => sevens.some(s => s.playlistId === turn.id && s.active));
 
   // --- FETCH STATS ON DEMAND ---
   const toggleAndLoadStats = async () => {
@@ -470,9 +470,9 @@ function App() {
                 </AnimatePresence>
 
                 {/* 3. Sevens Turn Alerts */}
-                {sevenTurns.length > 0 && (
+                {activeSevenTurns.length > 0 && (
                   <div className="w-full flex flex-col gap-4 mb-5 mt-2">
-                    {sevenTurns.map(playlist => (
+                    {activeSevenTurns.map(playlist => (
                       <div 
                         key={playlist.id}
                         onClick={() => { navigateToPlaylist(playlist.id); }}

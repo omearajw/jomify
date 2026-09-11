@@ -95,6 +95,9 @@ export default function PlayerBar() {
     if (currentTrack) {
       consumeManuallyQueuedTrack(currentTrack);
     }
+  // Keyed on the SDK's per-play uid rather than the track object, so a track that repeats is
+  // consumed once per play and a position tick doesn't re-run this
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrackUid, consumeManuallyQueuedTrack]);
 
   // One place that maps slider value -> audible volume; the cubic curve must match the value
