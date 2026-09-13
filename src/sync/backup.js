@@ -16,6 +16,7 @@ const BACKED_UP_KEYS = [
   'sevens',
   'sevensSeeded',
   'stagedSeven',
+  'friends',
   'playlistSortSettings',
   'libraryGridSize',
   'savedVolume'

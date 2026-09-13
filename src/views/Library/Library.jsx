@@ -1,28 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { fetchUserPlaylists, addTracksToPlaylist, unfollowPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../../services/spotify/api';
 import { Heart, Folder, Maximize2, ChevronLeft, ChevronRight, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2, FolderX, FolderInput, FolderOutput } from 'lucide-react';
-import { motion } from 'framer-motion';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
 import FolderFormDialog from '../../components/FolderFormDialog';
-import ImportFoldersDialog from '../../components/ImportFoldersDialog';
-import { getUnfolderedItems, childrenOf, descendantIds, descendantItemIds, folderPath, isDescendant } from '../../utils/library';
+import { getUnfolderedItems, descendantIds, descendantItemIds, folderPath, isDescendant, byOrder } from '../../utils/library';
 import { rowButtonProps } from '../../utils/a11y';
+import { useSlice } from '../../store/selectors';
+import { artUrl } from '../../utils/images';
+
+// Pulls in the LevelDB reader and snappy; only needed once someone opens Import
+const ImportFoldersDialog = lazy(() => import('../../components/ImportFoldersDialog'));
 
 // --- VISUAL UPGRADE: Safely Bounded Right-to-Left Fan Stack ---
-// Covers come from the whole subtree, so a folder that only holds subfolders still shows art
+// Covers come from the whole subtree, so a folder that only holds subfolders still shows art.
+// `items` is a Map by id; only the first four resolvable covers are looked up.
 const FolderStack = ({ folder, folders, items }) => {
   const coverIds = folders ? descendantItemIds(folders, folder.id) : folder.playlistIds;
-  const folderItems = coverIds.map(id => items.find(p => p.id === id)).filter(Boolean);
-  
+  const folderItems = [];
+  for (const id of coverIds) {
+    const item = items.get(id);
+    if (item) folderItems.push(item);
+    if (folderItems.length === 4) break;
+  }
+
   if (folderItems.length === 0) {
     return <div className="w-full h-full flex items-center justify-center bg-neutral-800"><Folder className="w-16 h-16 text-neutral-700" /></div>;
   }
   
   return (
     <div className="relative w-full h-full flex items-center overflow-hidden bg-neutral-800/50">
-      {folderItems.slice(0, 4).reverse().map((item, i, arr) => {
+      {folderItems.reverse().map((item, i, arr) => {
         const index = arr.length - 1 - i; 
         const rightOffset = 5 + (index * 14); 
         const scale = 1 - (index * 0.15); 
@@ -33,7 +42,7 @@ const FolderStack = ({ folder, folders, items }) => {
             style={{ right: `${rightOffset}%`, transform: `scale(${scale})`, zIndex: 10 - index }}
           >
             {item.images?.[0]?.url ? (
-              <img src={item.images[0].url} draggable="false" className="w-full h-full object-cover pointer-events-none" alt="" />
+              <img src={artUrl(item.images, 160)} draggable="false" loading="lazy" decoding="async" className="w-full h-full object-cover pointer-events-none" alt="" />
             ) : (
               <span className="text-2xl flex items-center justify-center w-full h-full opacity-30">💿</span>
             )}
@@ -94,7 +103,7 @@ function ItemCard({
       </button>
 
       <div className="relative aspect-square w-full mb-4 rounded-md overflow-hidden bg-neutral-800 flex items-center justify-center shadow-md shrink-0 pointer-events-none">
-        {item.images?.length > 0 ? <img src={item.images[0].url} draggable="false" alt={item.name} className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300" /> : <span className="text-3xl">💿</span>}
+        {item.images?.length > 0 ? <img src={artUrl(item.images, 300)} draggable="false" alt={item.name} loading="lazy" decoding="async" className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300" /> : <span className="text-3xl">💿</span>}
       </div>
       <h3 className="font-bold text-sm text-white truncate mb-1 pointer-events-none">{item.name}</h3>
       <p className="text-xs text-neutral-400 truncate mt-auto pointer-events-none">
@@ -108,7 +117,7 @@ function ManageCard({ item, action, onClick }) {
   return (
     <div onClick={onClick} className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border border-transparent flex flex-col h-full ${action === 'add' ? 'bg-neutral-800/20 hover:border-[#f91362]/50 hover:bg-[var(--brand-mid)]/15' : 'bg-neutral-800/40 hover:border-red-500/50 hover:bg-red-500/10'}`}>
       <div className="relative aspect-square w-full mb-4 rounded-md overflow-hidden bg-neutral-800 flex items-center justify-center shadow-md shrink-0">
-        {item.images?.length > 0 ? <img src={item.images[0].url} draggable="false" alt={item.name} className="object-cover w-full h-full opacity-60 group-hover:opacity-100 transition-opacity duration-300" /> : <span className="text-3xl opacity-60 group-hover:opacity-100">💿</span>}
+        {item.images?.length > 0 ? <img src={artUrl(item.images, 300)} draggable="false" alt={item.name} loading="lazy" decoding="async" className="object-cover w-full h-full opacity-60 group-hover:opacity-100 transition-opacity duration-300" /> : <span className="text-3xl opacity-60 group-hover:opacity-100">💿</span>}
         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
           {action === 'add' ? <Plus className="w-12 h-12 text-brand-gradient" /> : <Minus className="w-12 h-12 text-red-500" />}
         </div>
@@ -122,9 +131,9 @@ const subfolderLabel = (count) => (count ? ` · ${count} folder${count === 1 ? '
 
 // Collapsed folder tile. Module scope for the same reason as ItemCard above.
 function FolderCard({ folder, ctx }) {
-  const { customFolders, allItems, dragOverId, draggedItem } = ctx;
+  const { customFolders, itemsById, dragOverId, draggedItem } = ctx;
   const isDragTarget = dragOverId === folder.id;
-  const subfolders = childrenOf(customFolders, folder.id).length;
+  const subfolders = ctx.childrenOf(folder.id).length;
   // A folder can't be dropped into itself or anything beneath it
   const forbidden = draggedItem?.type === 'folder'
     && (draggedItem.id === folder.id || isDescendant(customFolders, folder.id, draggedItem.id));
@@ -151,7 +160,7 @@ function FolderCard({ folder, ctx }) {
         <Maximize2 className="w-4 h-4 text-white transition-transform duration-300" />
       </button>
       <div className="aspect-square w-full mb-4 rounded-md shadow-md shrink-0 pointer-events-none">
-        <FolderStack folder={folder} folders={customFolders} items={allItems} />
+        <FolderStack folder={folder} folders={customFolders} items={itemsById} />
       </div>
       <h3 className="font-bold text-sm text-white truncate mb-1 flex items-center pointer-events-none">
         <Folder className="w-4 h-4 mr-2 text-brand-gradient fill-current shrink-0" />
@@ -165,8 +174,8 @@ function FolderCard({ folder, ctx }) {
 // Expanded folder: a full-width panel whose grid holds subfolders first, then items. Recursive,
 // so an expanded subfolder opens its own panel inside.
 function FolderPanel({ folder, ctx }) {
-  const { customFolders, allItems, expandedFolders, getGridClass, itemCardProps } = ctx;
-  const children = childrenOf(customFolders, folder.id);
+  const { itemsById, expandedFolders, getGridClass, itemCardProps } = ctx;
+  const children = ctx.childrenOf(folder.id);
 
   return (
     <div className="col-span-full bg-neutral-800/30 border border-neutral-700/50 rounded-2xl p-6 shadow-inner animate-fade-in mb-4">
@@ -183,7 +192,7 @@ function FolderPanel({ folder, ctx }) {
         </button>
       </div>
 
-      <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} className={`grid ${getGridClass()}`}>
+      <div className={`grid ${getGridClass()} animate-fade-in`}>
         {folder.playlistIds.length === 0 && children.length === 0 && <p className="text-neutral-500 italic col-span-full py-4 text-center">Empty folder</p>}
         {children.map(child => (
           expandedFolders.includes(child.id)
@@ -191,27 +200,29 @@ function FolderPanel({ folder, ctx }) {
             : <FolderCard key={child.id} folder={child} ctx={ctx} />
         ))}
         {folder.playlistIds.map((id) => {
-          const item = allItems.find(p => p.id === id);
+          const item = itemsById.get(id);
           if (!item) return null;
-          return (
-            <motion.div key={item.id} variants={{ hidden: { opacity: 0, y: 30, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 300, damping: 24 } } }}>
-              <ItemCard item={item} isSubItem={true} parentFolderId={folder.id} {...itemCardProps} />
-            </motion.div>
-          );
+          return <ItemCard key={item.id} item={item} isSubItem={true} parentFolderId={folder.id} {...itemCardProps} />;
         })}
-      </motion.div>
+      </div>
     </div>
   );
 }
 
 export default function Library() {
-  const { 
+  const {
     token, profile, playlists, albums, setPlaylists, setCurrentView, setActivePlaylistId, navigateToPlaylist, navigateToAlbum,
     customFolders, addPlaylistToFolder, removePlaylistFromFolder, deleteFolder, deletePlaylist, createFolder,
     draggedItem, setDraggedItem, moveFolder, reorderPlaylistInFolder,
     libraryGridSize, setLibraryGridSize, setContextMenu, activeFolderId, setActiveFolderId,
     manageFolderId, clearManageRequest, removeMissingFolderItems
-  } = useUserStore();
+  } = useSlice(useUserStore, [
+    'token', 'profile', 'playlists', 'albums', 'setPlaylists', 'setCurrentView', 'setActivePlaylistId', 'navigateToPlaylist', 'navigateToAlbum',
+    'customFolders', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'deleteFolder', 'deletePlaylist', 'createFolder',
+    'draggedItem', 'setDraggedItem', 'moveFolder', 'reorderPlaylistInFolder',
+    'libraryGridSize', 'setLibraryGridSize', 'setContextMenu', 'activeFolderId', 'setActiveFolderId',
+    'manageFolderId', 'clearManageRequest', 'removeMissingFolderItems'
+  ]);
 
   const [loading, setLoading] = useState(playlists.length === 0);
   // Shared with the sidebar via the store; see the note there
@@ -232,13 +243,30 @@ export default function Library() {
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 
   const activeFolder = customFolders.find(f => f.id === isolatedFolderId);
-  const { playlists: unfolderedPlaylists, albums: unfolderedAlbums } = getUnfolderedItems(playlists, albums, customFolders);
+  const { playlists: unfolderedPlaylists, albums: unfolderedAlbums } = useMemo(
+    () => getUnfolderedItems(playlists, albums, customFolders),
+    [playlists, albums, customFolders]
+  );
 
-  const allItems = [...playlists, ...(albums || [])];
+  // Built once per data change and handed to every card: the old per-card `allItems.find`
+  // inside the folder tree walk was quadratic in library size on every render
+  const allItems = useMemo(() => [...playlists, ...(albums || [])], [playlists, albums]);
+  const itemsById = useMemo(() => new Map(allItems.map(item => [item.id, item])), [allItems]);
+  const byParent = useMemo(() => {
+    const map = new Map();
+    for (const folder of customFolders) {
+      const key = folder.parentId ?? null;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(folder);
+    }
+    for (const list of map.values()) list.sort(byOrder);
+    return map;
+  }, [customFolders]);
+  const childrenOf = (parentId) => byParent.get(parentId ?? null) || [];
 
   // Only trustworthy once the library has actually loaded; before that every id looks missing
   const missingItemCount = (activeFolder && playlists.length > 0)
-    ? activeFolder.playlistIds.filter(id => !allItems.some(item => item.id === id)).length
+    ? activeFolder.playlistIds.filter(id => !itemsById.has(id)).length
     : 0;
 
   // Depends on the COUNT, not the array. Depending on the array identity meant an account with
@@ -476,12 +504,12 @@ export default function Library() {
 
   // Everything the module-scope FolderCard / FolderPanel need from this render
   const folderCtx = {
-    customFolders, allItems, expandedFolders, dragOverId, draggedItem, getGridClass, itemCardProps,
+    customFolders, itemsById, childrenOf, expandedFolders, dragOverId, draggedItem, getGridClass, itemCardProps,
     toggleFolderExpand, handleDragStart, handleDragOver, handleDragLeave, handleDragEnd,
     handleDropOnFolder, setIsolatedFolderId, handleFolderContextMenu
   };
 
-  const activeChildren = activeFolder ? childrenOf(customFolders, activeFolder.id) : [];
+  const activeChildren = activeFolder ? childrenOf(activeFolder.id) : [];
   const activePath = activeFolder ? folderPath(customFolders, activeFolder.id) : [];
 
   const gridItems = [];
@@ -495,7 +523,7 @@ export default function Library() {
       </div>
     );
 
-    childrenOf(customFolders, null).forEach((folder) => {
+    childrenOf(null).forEach((folder) => {
       gridItems.push(
         expandedFolders.includes(folder.id)
           ? <FolderPanel key={`expanded-${folder.id}`} folder={folder} ctx={folderCtx} />
@@ -503,9 +531,13 @@ export default function Library() {
       );
     });
 
-    unfolderedPlaylists.forEach((pl) => gridItems.push(<ItemCard key={pl.id} item={pl} {...itemCardProps} />));
+    unfolderedPlaylists.filter(pl => pl.owner?.id !== 'spotify').forEach((pl) => gridItems.push(<ItemCard key={pl.id} item={pl} {...itemCardProps} />));
     unfolderedAlbums.forEach((album) => gridItems.push(<ItemCard key={album.id} item={album} {...itemCardProps} />));
   }
+
+  // Spotify's own playlists (Top Songs, Blend, Discover Weekly...) that the user has saved.
+  // Grouped apart because Spotify's API refuses to open them for third-party apps like this one.
+  const madeForYou = unfolderedPlaylists.filter(pl => pl.owner?.id === 'spotify');
 
   return (
     <div 
@@ -538,7 +570,7 @@ export default function Library() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-10 gap-4">
             <div className="flex items-center">
               <div className="w-16 h-16 bg-neutral-800 rounded-lg flex items-center justify-center mr-4 shadow-lg shrink-0 overflow-hidden">
-                <FolderStack folder={activeFolder} folders={customFolders} items={allItems} />
+                <FolderStack folder={activeFolder} folders={customFolders} items={itemsById} />
               </div>
               <div className="min-w-0">
                 <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Folder</span>
@@ -603,7 +635,7 @@ export default function Library() {
                 )}
                 <div className={`grid ${getGridClass()}`}>
                   {activeFolder.playlistIds.map(id => {
-                    const item = allItems.find(p => p.id === id);
+                    const item = itemsById.get(id);
                     if (!item) return null;
                     return <ManageCard key={item.id} item={item} action="remove" onClick={() => removePlaylistFromFolder(activeFolder.id, item.id)} />;
                   })}
@@ -626,7 +658,7 @@ export default function Library() {
               </div>
             </div>
           ) : (
-            <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} className={`grid ${getGridClass()}`}>
+            <div className={`grid ${getGridClass()} animate-fade-in`}>
               {activeFolder.playlistIds.length === 0 && activeChildren.length === 0 && (
                 <div className="col-span-full py-12 flex flex-col items-center justify-center text-neutral-500 border-2 border-dashed border-neutral-800 rounded-xl">
                   <Folder className="w-12 h-12 mb-4 opacity-50" />
@@ -640,15 +672,11 @@ export default function Library() {
                   : <FolderCard key={child.id} folder={child} ctx={folderCtx} />
               ))}
               {activeFolder.playlistIds.map((id) => {
-                const item = allItems.find(p => p.id === id);
+                const item = itemsById.get(id);
                 if (!item) return null;
-                return (
-                  <motion.div key={item.id} variants={{ hidden: { opacity: 0, y: 30, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 300, damping: 24 } } }}>
-                    <ItemCard item={item} parentFolderId={activeFolder.id} {...itemCardProps} />
-                  </motion.div>
-                );
+                return <ItemCard key={item.id} item={item} parentFolderId={activeFolder.id} {...itemCardProps} />;
               })}
-            </motion.div>
+            </div>
           )}
         </div>
       ) : (
@@ -674,9 +702,24 @@ export default function Library() {
           <div className={`grid ${getGridClass()}`}>
             {gridItems}
           </div>
+          {madeForYou.length > 0 && (
+            <div className="mt-12">
+              <h2 className="text-2xl font-bold text-white">Made for you</h2>
+              <p className="text-sm text-neutral-400 mt-1 mb-4 max-w-2xl">
+                Spotify's own playlists you've saved. Spotify's API doesn't let Jomify open these yet; tap one to see why and jump to it in Spotify.
+              </p>
+              <div className={`grid ${getGridClass()}`}>
+                {madeForYou.map((pl) => <ItemCard key={pl.id} item={pl} {...itemCardProps} />)}
+              </div>
+            </div>
+          )}
         </>
       )}
-      <ImportFoldersDialog open={importOpen} onClose={() => setImportOpen(false)} />
+      {importOpen && (
+        <Suspense fallback={null}>
+          <ImportFoldersDialog open onClose={() => setImportOpen(false)} />
+        </Suspense>
+      )}
       <PlaylistFormDialog
         open={playlistDialogOpen}
         title="Create playlist"

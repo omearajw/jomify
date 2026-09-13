@@ -42,7 +42,8 @@ export function emptyDoc() {
     sevens: { v: { list: [], seeded: false }, t: 0 },
     stagedSeven: { v: [], t: 0 },
     playlistSortSettings: {},
-    unaddedCheckPlaylists: { v: [], t: 0 }
+    unaddedCheckPlaylists: { v: [], t: 0 },
+    friends: { v: [], t: 0 }
   };
 }
 
@@ -211,7 +212,8 @@ export function mergeSyncDoc(aRaw, bRaw) {
     sevens,
     stagedSeven: mergeRegister(a.stagedSeven, b.stagedSeven, []),
     playlistSortSettings: mergeRegisterMap(a.playlistSortSettings, b.playlistSortSettings),
-    unaddedCheckPlaylists: mergeRegister(a.unaddedCheckPlaylists, b.unaddedCheckPlaylists, [])
+    unaddedCheckPlaylists: mergeRegister(a.unaddedCheckPlaylists, b.unaddedCheckPlaylists, []),
+    friends: mergeRegister(a.friends, b.friends, [])
   };
 
   // Sorted rather than "first non-empty" so that merge stays commutative even in the
@@ -259,7 +261,7 @@ export function clampFutureTimestamps(doc, serverNow, skewMs = 60000) {
     pin.t = clamp(pin.t);
     if (pin.deletedAt) pin.deletedAt = clamp(pin.deletedAt);
   }
-  for (const register of [doc.sevens, doc.stagedSeven, doc.unaddedCheckPlaylists]) {
+  for (const register of [doc.sevens, doc.stagedSeven, doc.unaddedCheckPlaylists, doc.friends]) {
     if (register) register.t = clamp(register.t);
   }
   for (const register of Object.values(doc.playlistSortSettings || {})) {

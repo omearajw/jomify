@@ -2,6 +2,8 @@ import { useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { useSlice } from '../store/selectors';
+import { artUrl } from '../utils/images';
 import { usePlayerStore } from '../store/playerStore';
 import { fetchQueue } from '../services/spotify/api';
 import { formatTime } from '../utils/formatTime';
@@ -48,9 +50,8 @@ const removeManualMatchesFromQueue = (queueTracks, manualTracks) => {
 };
 
 export default function QueuePanel() {
-  const { token, isQueueOpen, toggleQueue, queueRefreshTrigger, manuallyQueuedTracks, queueData, setQueueData } = useUserStore();
-  const { playbackState } = usePlayerStore();
-  const currentTrackUid = playbackState?.track_window?.current_track?.uid;
+  const { token, isQueueOpen, toggleQueue, queueRefreshTrigger, manuallyQueuedTracks, queueData, setQueueData } = useSlice(useUserStore, ['token', 'isQueueOpen', 'toggleQueue', 'queueRefreshTrigger', 'manuallyQueuedTracks', 'queueData', 'setQueueData']);
+  const currentTrackUid = usePlayerStore((s) => s.playbackState?.track_window?.current_track?.uid);
   const isMobile = useIsMobile();
 
   const manualQueueEntries = useMemo(() => manuallyQueuedTracks.map((track, index) => ({
@@ -95,7 +96,7 @@ export default function QueuePanel() {
             <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-4">Now Playing</h3>
             <div className="flex items-center space-x-3">
               <img
-                src={queueData.currently_playing.album?.images?.[0]?.url || queueData.currently_playing.images?.[0]?.url}
+                src={artUrl(queueData.currently_playing.album?.images || queueData.currently_playing.images, 48)}
                 alt=""
                 className="w-12 h-12 rounded object-cover shadow-md bg-neutral-800"
               />
@@ -118,7 +119,7 @@ export default function QueuePanel() {
               {manualQueueEntries.map(({ key, track }) => (
                 <div key={key} className="flex items-center space-x-3 group cursor-default rounded-md px-2 py-1.5 border border-[var(--brand-mid)]/15 bg-[var(--brand-mid)]/5">
                   <ListPlus className="w-4 h-4 text-[var(--brand-mid)] shrink-0" title="Queued item" />
-                  <img src={track.album?.images?.[0]?.url} alt="" className="w-10 h-10 rounded object-cover bg-neutral-800" draggable="false" />
+                  <img src={artUrl(track.album?.images, 40)} alt="" width="40" height="40" loading="lazy" decoding="async" className="w-10 h-10 rounded object-cover bg-neutral-800" draggable="false" />
                   <div className="flex flex-col truncate flex-1 pr-2 min-w-0">
                     <span className="text-white text-sm font-medium truncate">{track.name}</span>
                     <span className="text-neutral-400 text-xs truncate">{(track.artists || []).map(a => a.name).join(', ')}</span>
@@ -141,7 +142,7 @@ export default function QueuePanel() {
                   key={key}
                   className="flex items-center space-x-3 group cursor-default rounded-md px-2 py-1.5 border border-transparent hover:bg-white/5 transition-colors"
                 >
-                  <img src={track.album?.images?.[0]?.url} alt="" className="w-10 h-10 rounded object-cover bg-neutral-800" draggable="false" />
+                  <img src={artUrl(track.album?.images, 40)} alt="" width="40" height="40" loading="lazy" decoding="async" className="w-10 h-10 rounded object-cover bg-neutral-800" draggable="false" />
                   <div className="flex flex-col truncate flex-1 pr-2 min-w-0">
                     <div className="flex items-center space-x-2 min-w-0">
                       <span className="text-white text-sm font-medium truncate">{track.name}</span>

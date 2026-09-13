@@ -468,6 +468,20 @@ section('nested folders: fuzzed docToStore(merge) is order-independent and fully
   check('every live folder is reachable from a root after repair', reachable);
 }
 
+// --- friends register -------------------------------------------------------
+
+{
+  const older = { friends: { v: [{ id: 'anna', name: 'Anna' }], t: 5000 } };
+  const newer = { friends: { v: [{ id: 'anna', name: 'Anna' }, { id: 'ben', name: 'Ben' }], t: 9000 } };
+  const ab = mergeSyncDoc(older, newer);
+  const ba = mergeSyncDoc(newer, older);
+  check('friends: newer list wins', ab.friends.v.length === 2 && ab.friends.t === 9000);
+  check('friends: commutative', JSON.stringify(ab.friends) === JSON.stringify(ba.friends));
+  check('friends: idempotent', JSON.stringify(mergeSyncDoc(ab, newer).friends) === JSON.stringify(ab.friends));
+  check('friends: missing on one side keeps the other', mergeSyncDoc({}, newer).friends.v.length === 2);
+  check('friends: absent everywhere normalises to an empty register', JSON.stringify(mergeSyncDoc({}, {}).friends) === JSON.stringify({ v: [], t: 0 }));
+}
+
 // --- report -----------------------------------------------------------------
 
 console.log(`\n${pass} passed, ${fail} failed`);

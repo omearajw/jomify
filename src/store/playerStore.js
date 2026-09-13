@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 
+const DEVICE_FIELDS = ['id', 'name', 'type', 'supportsVolume', 'volumePercent', 'isActive', 'isLocal'];
+const sameDevice = (a, b) => (a === b) || (Boolean(a) && Boolean(b) && DEVICE_FIELDS.every(k => a[k] === b[k]));
+const sameDeviceList = (a, b) => a.length === b.length && a.every((d, i) => sameDevice(d, b[i]));
+
 export const usePlayerStore = create((set) => ({
   player: null,          // the Web Playback SDK instance, once created
   deviceId: null,        // this browser's own Connect device id
@@ -39,10 +43,15 @@ export const usePlayerStore = create((set) => ({
   setShufflePending: (pending) => set({ shufflePending: Boolean(pending) }),
   setRepeatMode: (mode) => set({ repeatMode: mode }),
   setSdkStatus: (sdkStatus, sdkError = null) => set({ sdkStatus, sdkError }),
-  setActiveDevice: (device) => set({ activeDevice: device }),
-  setDevices: (devices) => set({ devices: Array.isArray(devices) ? devices : [] }),
-  setIsLocalActive: (value) => set({ isLocalActive: Boolean(value) }),
-  setRemoteVolume: (volume) => set({ remoteVolume: volume }),
+  // The remote poller calls these every few seconds with freshly built objects. Returning the
+  // current state when nothing actually changed keeps selector subscribers from re-rendering.
+  setActiveDevice: (device) => set((current) => (sameDevice(current.activeDevice, device) ? current : { activeDevice: device })),
+  setDevices: (devices) => set((current) => {
+    const next = Array.isArray(devices) ? devices : [];
+    return sameDeviceList(current.devices, next) ? current : { devices: next };
+  }),
+  setIsLocalActive: (value) => set((current) => (current.isLocalActive === Boolean(value) ? current : { isLocalActive: Boolean(value) })),
+  setRemoteVolume: (volume) => set((current) => (current.remoteVolume === volume ? current : { remoteVolume: volume })),
 
   // Kept for callers that still use the old name; prefer setShuffle + setShufflePending so a
   // failure can restore the real previous value instead of blindly flipping again.

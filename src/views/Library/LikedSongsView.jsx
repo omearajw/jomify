@@ -8,15 +8,22 @@ import { Clock3, Play, Heart, Shuffle } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import { rowButtonProps } from '../../utils/a11y';
 import MoreButton from '../../components/MoreButton';
+import { useSlice, usePlaybackSummary } from '../../store/selectors';
+
+const ROW_PAGE = 150;
 
 export default function LikedSongsView() {
-  const { token, setLikedTracks, setContextMenu } = useUserStore();
-  const { playbackState, isShuffled } = usePlayerStore();
+  const { token, setLikedTracks, setContextMenu } = useSlice(useUserStore, ['token', 'setLikedTracks', 'setContextMenu']);
+  const isShuffled = usePlayerStore((s) => s.isShuffled);
+  const { currentPlayingTrack: currentTrack, isCurrentTrackPaused } = usePlaybackSummary();
   const [trackData, setTrackData] = useState(null);
-  
+  const [visibleCount, setVisibleCount] = useState(ROW_PAGE);
+  const sentinelRef = useRef(null);
+
   const isFetchingMore = useRef(false);
 
-  const isCurrentTrackPaused = playbackState ? playbackState.paused : true;
+  // Hoisted out of the row loop: the same split/lowercase used to run once per row per render
+  const currentKey = currentTrack ? currentTrack.name.split(/[-(]/)[0].trim().toLowerCase() : '';
 
   // Set when a page fails to load partway; the header then says how much is actually here
   const [loadError, setLoadError] = useState('');
@@ -26,6 +33,7 @@ export default function LikedSongsView() {
       isFetchingMore.current = false;
       fetchInitialLikedSongs(token).then((data) => {
         setTrackData(data);
+        setVisibleCount(ROW_PAGE);
         
         // Globally mark as liked
         const updates = {};
@@ -95,6 +103,17 @@ export default function LikedSongsView() {
     playLikedSongsQueue(token, deviceId, allUris, index, userId).catch(handlePlaybackError);
   };
 
+  const totalRows = trackData?.items.length ?? 0;
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || visibleCount >= totalRows) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) setVisibleCount(n => Math.min(n + ROW_PAGE, totalRows));
+    }, { rootMargin: '800px 0px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [visibleCount, totalRows]);
+
   if (!trackData) {
     return <p className="text-neutral-400 animate-pulse text-lg mt-8">Loading your collection...</p>;
   }
@@ -133,14 +152,12 @@ export default function LikedSongsView() {
 
       {/* Action Bar (Play & Shuffle) */}
       <div className="flex items-center space-x-4 mb-8 pl-4">
-        <div className="flex items-center space-x-4 mb-8 pl-4">
-          <button onClick={() => handleTrackSelect(0)} aria-label="Play Liked Songs" className="w-14 h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-xl">
-            <Play className="w-6 h-6 fill-current ml-1" />
-          </button>
-          <button onClick={handleToggleShuffle} className={`w-10 h-10 flex items-center justify-center hover:scale-110 transition-all ${isShuffled ? 'text-brand-gradient' : 'text-neutral-400 hover:text-white'}`}>
-            <Shuffle className="w-6 h-6" />
-          </button>
-        </div>
+        <button onClick={() => handleTrackSelect(0)} aria-label="Play Liked Songs" className="w-14 h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-xl">
+          <Play className="w-6 h-6 fill-current ml-1" />
+        </button>
+        <button onClick={handleToggleShuffle} aria-label={isShuffled ? 'Disable shuffle' : 'Enable shuffle'} aria-pressed={isShuffled} className={`w-11 h-11 flex items-center justify-center hover:scale-110 transition-all ${isShuffled ? 'text-brand-gradient' : 'text-neutral-400 hover:text-white'}`}>
+          <Shuffle className="w-6 h-6" />
+        </button>
       </div>
 
       {/* Tracklist Header */}
@@ -150,18 +167,16 @@ export default function LikedSongsView() {
 
       {/* Tracklist */}
       <div className="flex flex-col">
-        {trackData.items.map((item, index) => {
+        {trackData.items.slice(0, visibleCount).map((item, index) => {
           const track = item.track;
           if (!track) return null;
 
-          const currentTrack = playbackState?.track_window?.current_track;
-          
           // ROBUST MATCH: Checks ID, URI, and falls back to exact Title + Artist match
           const isCurrentTrack = currentTrack && (
-            track.id === currentTrack.id || 
+            track.id === currentTrack.id ||
             track.uri === currentTrack.uri ||
             (track.linked_from && track.linked_from.id === currentTrack.id) ||
-            (track.name.split(/[-(]/)[0].trim().toLowerCase() === currentTrack.name.split(/[-(]/)[0].trim().toLowerCase() && 
+            (track.name.split(/[-(]/)[0].trim().toLowerCase() === currentKey &&
              track.artists?.[0]?.name === currentTrack.artists?.[0]?.name)
           );
 
@@ -171,7 +186,7 @@ export default function LikedSongsView() {
               onClick={() => handleTrackSelect(index)}
               {...rowButtonProps(() => handleTrackSelect(index))}
               onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track }); }}
-              className="grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[16px_minmax(0,1fr)_minmax(0,1fr)_80px] gap-4 px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer"
+              className="grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[16px_minmax(0,1fr)_minmax(0,1fr)_80px] gap-4 px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_64px]"
             >
               <div className="text-neutral-400 w-4 h-4 hidden md:flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
@@ -193,6 +208,11 @@ export default function LikedSongsView() {
             </div>
           );
         })}
+        {visibleCount < totalRows && (
+          <div ref={sentinelRef} className="py-6 text-center text-xs text-neutral-500">
+            {totalRows - visibleCount} more…
+          </div>
+        )}
       </div>
     </div>
   );

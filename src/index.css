@@ -19,6 +19,7 @@
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
+    touch-action: manipulation;
   }
   ::selection {
     background-color: var(--brand-mid);
@@ -80,7 +81,13 @@
       radial-gradient(circle at 15% 0%, var(--brand-start) 0%, transparent 45%),
       radial-gradient(circle at 85% 100%, var(--brand-end) 0%, transparent 50%);
     background-size: 150% 150%;
-    animation: aurora-shift 60s ease-in-out infinite alternate;
+  }
+  /* The drift animates background-position, which repaints the whole viewport every frame.
+     Phones can't afford that under a scrolling list; wide screens keep it. */
+  @media (min-width: 768px) and (prefers-reduced-motion: no-preference) {
+    .bg-aurora {
+      animation: aurora-shift 60s ease-in-out infinite alternate;
+    }
   }
 
   /* The Premium Noise Overlay */
@@ -112,6 +119,19 @@
 
 .animate-fade-in {
   animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ZenMode film grain: a transform-only jitter the compositor can run without repainting */
+@keyframes grain-jitter {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-6px, 4px); }
+  40% { transform: translate(4px, -5px); }
+  60% { transform: translate(-3px, 3px); }
+  80% { transform: translate(5px, 2px); }
+  100% { transform: translate(0, 0); }
+}
+.animate-grain {
+  animation: grain-jitter 0.6s steps(5) infinite;
 }
 
 /* Custom overlay vignette pattern */

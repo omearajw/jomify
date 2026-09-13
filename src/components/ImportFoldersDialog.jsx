@@ -28,10 +28,12 @@ const CLI_STEPS = `1. Quit Spotify so its cache is fully written.
 
 // Where the Spotify desktop app keeps the folder tree. Windows first: that's where most of
 // Jomify's users are.
+// The whole data folder, not a subfolder: the reader finds the account folder inside it at any
+// depth, and where Spotify keeps things differs between the Store and the download versions.
 const CACHE_LOCATIONS = [
-  { os: 'Windows', path: '%LOCALAPPDATA%\\Spotify\\Users', hint: 'Paste this into the address bar at the top of the window that opens, press Enter, then choose Users.' },
-  { os: 'Windows (Spotify from the Microsoft Store)', path: '%LOCALAPPDATA%\\Packages\\SpotifyAB.SpotifyMusic_zpdnekdrzrea0\\LocalState\\Spotify\\Users', hint: 'Same steps; only the path differs.' },
-  { os: 'Mac', path: '~/Library/Application Support/Spotify/PersistentCache/Users', hint: 'Press Cmd+Shift+G in the window that opens, paste this, press Enter, then choose Users.' }
+  { os: 'Windows (Spotify from the Microsoft Store, the usual case)', path: '%LOCALAPPDATA%\\Packages\\SpotifyAB.SpotifyMusic_zpdnekdrzrea0', hint: 'Paste this into the address bar of the window that opens, press Enter, then click "Select Folder" with that folder itself open. If Windows says it can\'t find it, use the next path.' },
+  { os: 'Windows (Spotify downloaded from spotify.com)', path: '%LOCALAPPDATA%\\Spotify', hint: 'Same steps: paste, Enter, then "Select Folder" on the Spotify folder itself.' },
+  { os: 'Mac', path: '~/Library/Application Support/Spotify', hint: 'Press Cmd+Shift+G in the window that opens, paste this, press Enter, then click Open.' }
 ];
 
 // Sync refuses documents over the server's cap; leave headroom for clocks and tombstones the
@@ -171,7 +173,7 @@ function ImportFoldersDialogBody({ onClose }) {
                 <p className="text-sm text-white font-semibold">Read them from the Spotify app on this computer</p>
                 <ol className="text-sm text-neutral-300 list-decimal pl-5 space-y-1">
                   <li>Quit Spotify completely (on Windows, also from the tray icon by the clock).</li>
-                  <li>Click the button below and find Spotify's <span className="text-white font-semibold">Users</span> folder:</li>
+                  <li>Click the button below and pick Spotify's <span className="text-white font-semibold">data folder</span>. The whole thing is fine; Jomify finds your account inside it:</li>
                 </ol>
                 <ul className="text-xs text-neutral-400 space-y-2 pl-5">
                   {CACHE_LOCATIONS.map(loc => (
@@ -182,7 +184,7 @@ function ImportFoldersDialogBody({ onClose }) {
                     </li>
                   ))}
                 </ul>
-                <p className="text-xs text-neutral-500">If the browser asks whether to upload the files, choose Upload. They are read here in your browser and never sent anywhere.</p>
+                <p className="text-xs text-neutral-500">Your browser will ask something like "Upload 2,000 files?". Choose Upload. Only Spotify's small index files are read, in your browser; nothing is sent anywhere.</p>
                 <button
                   type="button"
                   disabled={reading}

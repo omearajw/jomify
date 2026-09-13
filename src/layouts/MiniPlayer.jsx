@@ -5,6 +5,7 @@ import { useProgress } from '../hooks/useProgress';
 import { togglePlay, next } from '../services/spotify/playbackController';
 import LikeButton from '../components/LikeButton';
 import { rowButtonProps } from '../utils/a11y';
+import { artUrl } from '../utils/images';
 
 // The strip above the tab bar on a phone. Tapping it opens the full Now Playing sheet.
 export default function MiniPlayer() {
@@ -29,7 +30,7 @@ export default function MiniPlayer() {
     );
   }
 
-  const art = track.album?.images?.[0]?.url;
+  const art = artUrl(track.album?.images, 40);
   const open = () => setNowPlayingOpen(true);
 
   return (
@@ -45,7 +46,7 @@ export default function MiniPlayer() {
           className="flex-1 min-w-0 flex items-center gap-3 cursor-pointer"
         >
           {art
-            ? <img src={art} alt="" className="w-10 h-10 rounded object-cover shadow-md shrink-0" draggable="false" />
+            ? <img src={art} alt="" width="40" height="40" decoding="async" className="w-10 h-10 rounded object-cover shadow-md shrink-0" draggable="false" />
             : <div className="w-10 h-10 rounded bg-neutral-800 shrink-0" />}
           <div className="min-w-0">
             <p className="text-sm font-bold text-white truncate">{track.name}</p>

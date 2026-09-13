@@ -12,6 +12,7 @@ import { formatTime } from '../utils/formatTime';
 import LikeButton from '../components/LikeButton';
 import TrackArtists from '../components/TrackArtists';
 import { idFromUri } from '../utils/spotifyUri';
+import { useSlice } from '../store/selectors';
 
 // Outer component only decides whether the sheet exists; the body mounts fresh each time it
 // opens so its scrub state starts clean (same split as the dialogs).
@@ -24,8 +25,8 @@ export default function NowPlayingSheet() {
 }
 
 function NowPlayingSheetBody() {
-  const { setNowPlayingOpen, setQueueOpen, setDevicePickerOpen, setCurrentView, navigateToAlbum, setContextMenu } = useUserStore();
-  const { isShuffled, repeatMode, activeDevice, sdkStatus } = usePlayerStore();
+  const { setNowPlayingOpen, setQueueOpen, setDevicePickerOpen, setCurrentView, navigateToAlbum, setContextMenu } = useSlice(useUserStore, ['setNowPlayingOpen', 'setQueueOpen', 'setDevicePickerOpen', 'setCurrentView', 'navigateToAlbum', 'setContextMenu']);
+  const { isShuffled, repeatMode, activeDevice, sdkStatus } = useSlice(usePlayerStore, ['isShuffled', 'repeatMode', 'activeDevice', 'sdkStatus']);
   const { position, duration, paused, track } = useProgress();
   const [scrub, setScrub] = useState(null);
 

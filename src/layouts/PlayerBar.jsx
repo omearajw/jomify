@@ -7,19 +7,26 @@ import { useUserStore } from '../store/userStore';
 import LikeButton from '../components/LikeButton';
 import TrackArtists from '../components/TrackArtists';
 import { idFromUri } from '../utils/spotifyUri';
+import { useSlice } from '../store/selectors';
+import { artUrl } from '../utils/images';
 import {
   togglePlay, next as nextTrack, previous as previousTrack, seek, setVolume as setPlaybackVolume,
   toggleShuffle, cycleRepeat
 } from '../services/spotify/playbackController';
 
 export default function PlayerBar() {
-  const { playbackState, isShuffled, repeatMode, activeDevice, sdkStatus, isLocalActive, remoteVolume } = usePlayerStore();
+  const { playbackState, isShuffled, repeatMode, activeDevice, sdkStatus, isLocalActive, remoteVolume } = useSlice(usePlayerStore, ['playbackState', 'isShuffled', 'repeatMode', 'activeDevice', 'sdkStatus', 'isLocalActive', 'remoteVolume']);
   const {
     token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack,
     toggleZenMode, savedVolume, setSavedVolume, setDevicePickerOpen,
     currentView, setCurrentView, goBack, navigateToAlbum, viewHistory,
     isQueueOpen, isZenMode
-  } = useUserStore();
+  } = useSlice(useUserStore, [
+    'token', 'setLikedTracks', 'toggleQueue', 'consumeManuallyQueuedTrack',
+    'toggleZenMode', 'savedVolume', 'setSavedVolume', 'setDevicePickerOpen',
+    'currentView', 'setCurrentView', 'goBack', 'navigateToAlbum', 'viewHistory',
+    'isQueueOpen', 'isZenMode'
+  ]);
 
   const [progressMs, setProgressMs] = useState(0);
   const [prevVolume, setPrevVolume] = useState(50);
@@ -167,8 +174,11 @@ export default function PlayerBar() {
   const albumId = idFromUri(currentTrack?.album?.uri, 'album');
   const albumArt = currentTrack?.album?.images?.[0]?.url ? (
     <img
-      src={currentTrack.album.images[0].url}
+      src={artUrl(currentTrack.album.images, 56)}
       alt={currentTrack.name}
+      width="56"
+      height="56"
+      decoding="async"
       className="w-14 h-14 rounded shadow-md object-cover"
     />
   ) : (

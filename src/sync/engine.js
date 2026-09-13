@@ -126,6 +126,9 @@ function stampChanges(prev, next) {
   if (prev.unaddedCheckPlaylists !== next.unaddedCheckPlaylists) {
     patch.unaddedT = at;
   }
+  if (prev.friends !== next.friends) {
+    patch.friendsT = at;
+  }
   if (prev.playlistSortSettings !== next.playlistSortSettings) {
     const sortT = { ...meta.sortT };
     for (const id of Object.keys(next.playlistSortSettings || {})) {
@@ -320,7 +323,7 @@ export async function start(currentUserId) {
     try {
       useUserStore.setState({
         customFolders: [], pinnedItems: [], sevens: [], sevensSeeded: false,
-        stagedSeven: [], playlistSortSettings: {}, unaddedCheckPlaylists: []
+        stagedSeven: [], playlistSortSettings: {}, unaddedCheckPlaylists: [], friends: []
       });
     } finally {
       isApplyingRemote = false;
@@ -338,7 +341,8 @@ export async function start(currentUserId) {
       sevensSeeded: state.sevensSeeded,
       stagedSeven: state.stagedSeven,
       playlistSortSettings: state.playlistSortSettings,
-      unaddedCheckPlaylists: state.unaddedCheckPlaylists
+      unaddedCheckPlaylists: state.unaddedCheckPlaylists,
+      friends: state.friends
     }),
     (next, prev) => {
       if (isApplyingRemote) return;

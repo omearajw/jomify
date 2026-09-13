@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useUserStore } from '../../store/userStore';
-import { usePlayerStore } from '../../store/playerStore';
+import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
 import { playSingleTrack, checkTracksLiked, fetchMoreTracks, spotifyFetch, saveAlbumToLibrary, unsaveAlbum } from '../../services/spotify/api';
@@ -12,14 +12,13 @@ import { cleanString } from '../../utils/strings';
 import { rowButtonProps } from '../../utils/a11y';
 
 export default function Album() {
-  const { token, setLikedTracks, currentAlbumId, setContextMenu, albums, setAlbums, removeAlbumFromLibrary } = useUserStore();
-  const { playbackState } = usePlayerStore();
+  const { token, setLikedTracks, currentAlbumId, setContextMenu, albums, setAlbums, removeAlbumFromLibrary } = useSlice(useUserStore, ['token', 'setLikedTracks', 'currentAlbumId', 'setContextMenu', 'albums', 'setAlbums', 'removeAlbumFromLibrary']);
+  const { currentPlayingTrack } = usePlaybackSummary();
   const [album, setAlbum] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const currentPlayingTrack = playbackState?.track_window?.current_track;
 
   useEffect(() => {
     if (!token || !currentAlbumId) return;

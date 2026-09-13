@@ -8,6 +8,7 @@ import FolderFormDialog from './FolderFormDialog';
 import { toast } from '../store/toastStore';
 import { flattenFolderTree, descendantIds, childrenOf } from '../utils/library';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { useSlice } from '../store/selectors';
 
 // One picker for every "Move to…" list: playlists, albums and folders. Rows are indented by
 // depth and labelled with their path so two "Favourites" folders in different places can be
@@ -52,14 +53,21 @@ import ConfirmDialog from './ConfirmDialog';
 import { getUnfolderedItems } from '../utils/library';
 
 export default function ContextMenu() {
-  const { 
-    contextMenu, setContextMenu, token, triggerQueueRefresh, 
-    addManuallyQueuedTrack, 
+  const {
+    contextMenu, setContextMenu, token, triggerQueueRefresh,
+    addManuallyQueuedTrack,
     playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId, activePlaylistId,
     removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder, renameFolder, createFolder, moveFolder,
     reorderFolders, reorderPlaylistInFolder,
     pinnedItems, togglePin
-  } = useUserStore();
+  } = useSlice(useUserStore, [
+    'contextMenu', 'setContextMenu', 'token', 'triggerQueueRefresh',
+    'addManuallyQueuedTrack',
+    'playlists', 'customFolders', 'profile', 'deletePlaylist', 'deleteFolder', 'setCurrentView', 'setActivePlaylistId', 'activePlaylistId',
+    'removeAlbumFromLibrary', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'renameFolder', 'createFolder', 'moveFolder',
+    'reorderFolders', 'reorderPlaylistInFolder',
+    'pinnedItems', 'togglePin'
+  ]);
 
   const menuRef = useRef(null);
   const isMobile = useIsMobile();

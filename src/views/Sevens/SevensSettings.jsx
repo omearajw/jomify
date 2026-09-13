@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
+import { useSlice } from '../../store/selectors';
+import { artUrl } from '../../utils/images';
 import {
   fetchPlaylistDetails,
   fetchSevenTrackMeta,
@@ -18,7 +20,7 @@ export default function SevensSettings() {
     token, profile, playlists, sevens,
     addSeven, removeSeven, updateSeven,
     navigateToPlaylist
-  } = useUserStore();
+  } = useSlice(useUserStore, ['token', 'profile', 'playlists', 'sevens', 'addSeven', 'removeSeven', 'updateSeven', 'navigateToPlaylist']);
 
   const [query, setQuery] = useState('');
   const [isPickerOpen, setIsPickerOpen] = useState(false);
@@ -153,7 +155,7 @@ export default function SevensSettings() {
         >
           <div className={`w-16 h-16 rounded-xl overflow-hidden bg-black/40 shrink-0 shadow-lg flex items-center justify-center ${seven.active ? '' : 'grayscale opacity-60'}`}>
             {playlist?.images?.[0]?.url
-              ? <img src={playlist.images[0].url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+              ? <img src={artUrl(playlist.images, 128)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
               : <span className="text-2xl">🎵</span>}
           </div>
           <div className="min-w-0">
@@ -162,7 +164,7 @@ export default function SevensSettings() {
             </h3>
             <div className="flex items-center gap-2 text-sm text-neutral-400 mt-0.5">
               {partnerUser?.images?.[0]?.url && (
-                <img src={partnerUser.images[0].url} alt="" className="w-5 h-5 rounded-full object-cover" />
+                <img src={artUrl(partnerUser.images, 20)} alt="" width="20" height="20" loading="lazy" decoding="async" className="w-5 h-5 rounded-full object-cover" />
               )}
               {isAnalysing && !partner ? (
                 <span className="flex items-center gap-1.5 text-neutral-500">
@@ -315,7 +317,7 @@ export default function SevensSettings() {
                       >
                         <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/40 shrink-0 flex items-center justify-center">
                           {p.images?.[0]?.url
-                            ? <img src={p.images[0].url} alt="" className="w-full h-full object-cover" />
+                            ? <img src={artUrl(p.images, 48)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                             : <span className="text-sm">🎵</span>}
                         </div>
                         <div className="min-w-0 flex-1">

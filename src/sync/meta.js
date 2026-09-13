@@ -36,6 +36,7 @@ function freshMeta() {
     sevensT: 0,
     stagedSevenT: 0,
     unaddedT: 0,
+    friendsT: 0,
     sortT: {},            // playlistId -> clock
     lastRevision: 0,
     lastSyncedAt: null,

@@ -27,7 +27,8 @@ const pushHistory = (state) => [
     playlistId: state.activePlaylistId,
     artistId: state.currentArtistId,
     albumId: state.currentAlbumId,
-    folderId: state.activeFolderId
+    folderId: state.activeFolderId,
+    userId: state.currentUserId
   }
 ].slice(-HISTORY_CAP);
 
@@ -46,6 +47,7 @@ export const useUserStore = create(
       activePlaylistId: null,
       currentArtistId: null,
       currentAlbumId: null,
+      currentUserId: null,
       likedTracks: {}, 
       isQueueOpen: false,
       isNowPlayingOpen: false,
@@ -87,6 +89,23 @@ export const useUserStore = create(
       // tracks, but it never prompts you that it is your turn.
       sevens: [],
       sevensSeeded: false,
+
+      // --- FRIENDS ---
+      // Spotify offers no way to list who you follow, so this is a hand-built, synced list:
+      // { id, name, image, addedAt }. Profiles are re-fetched live; only the identity is stored.
+      friends: [],
+      addFriend: (profile) => set((state) => {
+        if (!profile?.id || state.friends.some(f => f.id === profile.id)) return state;
+        return {
+          friends: [...state.friends, {
+            id: profile.id,
+            name: profile.display_name || profile.name || profile.id,
+            image: profile.images?.[0]?.url || profile.image || null,
+            addedAt: Date.now()
+          }]
+        };
+      }),
+      removeFriend: (userId) => set((state) => ({ friends: state.friends.filter(f => f.id !== userId) })),
 
       addSeven: (playlistId) => set((state) => {
         if (!playlistId || state.sevens.some(s => s.playlistId === playlistId)) return state;
@@ -427,6 +446,7 @@ export const useUserStore = create(
           stagedSeven: [],
           playlistSortSettings: {},
           unaddedCheckPlaylists: [],
+          friends: [],
           likedTracks: {},
           manuallyQueuedTracks: []
         } : {})
@@ -530,6 +550,15 @@ export const useUserStore = create(
         currentAlbumId: albumId
       })),
 
+      navigateToUser: (userId) => set((state) => {
+        if (!userId || (state.currentView === 'user' && state.currentUserId === userId)) return {};
+        return {
+          viewHistory: pushHistory(state),
+          currentView: 'user',
+          currentUserId: userId
+        };
+      }),
+
       // Playlist navigation used to be `setActivePlaylistId(id); setCurrentView('playlist')` at
       // nine call sites. That never recorded history when already on a playlist (setCurrentView
       // early-returns for the same view), and even when it did, the frame captured the NEW id
@@ -554,7 +583,8 @@ export const useUserStore = create(
           activePlaylistId: prev.playlistId,
           currentArtistId: prev.artistId,
           currentAlbumId: prev.albumId,
-          activeFolderId: prev.folderId 
+          activeFolderId: prev.folderId,
+          currentUserId: prev.userId ?? null
         };
       }),
     }),
@@ -608,7 +638,8 @@ export const useUserStore = create(
         stagedSeven : state.stagedSeven,
         sevens: state.sevens,
         sevensSeeded: state.sevensSeeded,
-        unaddedCheckPlaylists: state.unaddedCheckPlaylists
+        unaddedCheckPlaylists: state.unaddedCheckPlaylists,
+        friends: state.friends
       }),
     }
   ))

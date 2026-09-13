@@ -55,18 +55,21 @@ export function installLongPressContextMenu() {
     if (e.pointerType === 'touch' || (start === null && e.button === 0)) return;
   };
 
-  document.addEventListener('pointerdown', onPointerDown, true);
-  document.addEventListener('pointermove', onPointerMove, true);
-  document.addEventListener('pointerup', cancel, true);
-  document.addEventListener('pointercancel', cancel, true);
+  // Passive: none of the pointer handlers call preventDefault, and a non-passive pointermove on
+  // the document makes the browser wait for the main thread before every scroll can start
+  const passive = { capture: true, passive: true };
+  document.addEventListener('pointerdown', onPointerDown, passive);
+  document.addEventListener('pointermove', onPointerMove, passive);
+  document.addEventListener('pointerup', cancel, passive);
+  document.addEventListener('pointercancel', cancel, passive);
   document.addEventListener('contextmenu', onNativeContextMenu, true);
 
   return () => {
     cancel();
-    document.removeEventListener('pointerdown', onPointerDown, true);
-    document.removeEventListener('pointermove', onPointerMove, true);
-    document.removeEventListener('pointerup', cancel, true);
-    document.removeEventListener('pointercancel', cancel, true);
+    document.removeEventListener('pointerdown', onPointerDown, passive);
+    document.removeEventListener('pointermove', onPointerMove, passive);
+    document.removeEventListener('pointerup', cancel, passive);
+    document.removeEventListener('pointercancel', cancel, passive);
     document.removeEventListener('contextmenu', onNativeContextMenu, true);
   };
 }

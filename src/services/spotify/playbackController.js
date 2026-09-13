@@ -348,17 +348,21 @@ export function setVolume(percent) {
 
 // Shuffle and repeat have no SDK setters; they always go through the Web API, with the flip
 // shown immediately and undone if Spotify refuses.
-export function toggleShuffle() {
+export function setShuffle(on, deviceId = null) {
   const t = token();
   const s = player();
-  if (!t) return;
+  const nextValue = Boolean(on);
+  if (!t || s.isShuffled === nextValue) return Promise.resolve();
   const previous_ = s.isShuffled;
-  const nextValue = !previous_;
   s.setShufflePending(true);
   s.setShuffle(nextValue);
-  toggleShuffleState(t, s.activeDevice?.id || null, nextValue)
-    .catch((err) => { handlePlaybackError(err); player().setShuffle(previous_); })
+  return toggleShuffleState(t, deviceId || s.activeDevice?.id || null, nextValue)
+    .catch((err) => { handlePlaybackError(err); player().setShuffle(previous_); throw err; })
     .finally(() => { player().setShufflePending(false); if (!player().isLocalActive) refreshSoon(); });
+}
+
+export function toggleShuffle() {
+  return setShuffle(!player().isShuffled).catch(() => {});
 }
 
 export function cycleRepeat() {

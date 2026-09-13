@@ -5,6 +5,7 @@ import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { refreshDevices, transferTo } from '../services/spotify/playbackController';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { useSlice } from '../store/selectors';
 
 const ICONS = {
   Computer: Laptop,
@@ -31,7 +32,7 @@ export default function DevicePicker() {
 
 function DevicePickerBody() {
   const setDevicePickerOpen = useUserStore((s) => s.setDevicePickerOpen);
-  const { devices, activeDevice, sdkStatus, deviceId } = usePlayerStore();
+  const { devices, activeDevice, sdkStatus, deviceId } = useSlice(usePlayerStore, ['devices', 'activeDevice', 'sdkStatus', 'deviceId']);
   const isMobile = useIsMobile();
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(null);

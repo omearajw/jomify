@@ -1,21 +1,30 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { redirectToAuthCodeFlow, getAccessToken, refreshAccessToken } from './services/spotify/auth';
 import { fetchUserProfile, fetchUserPlaylists, fetchUserAlbums, spotifyFetch } from './services/spotify/api';
 import { useUserStore } from './store/userStore';
+import { useSlice } from './store/selectors';
+import { artUrl } from './utils/images';
 import MainLayout from './layouts/MainLayout';
 import Library from './views/Library/Library';
 import PlaylistView from './views/Library/PlaylistView';
-import PlaylistView_2 from './views/Library/PlaylistView_2';
-import LyricsView from './views/Lyrics/LyricsView';
 import { startPlaybackController } from './services/spotify/playbackController';
 import { installHistorySync, syncSheetWithHistory } from './pwa/historySync';
 import { isMobileViewport } from './hooks/useMediaQuery';
-import Browse from './views/Browse/Browse';
 import Artist from './views/Artist/Artist';
 import Album from './views/Album/Album';
 import LikedSongsView from './views/Library/LikedSongsView';
-import SevensSettings from './views/Sevens/SevensSettings';
 import * as syncEngine from './sync/engine';
+
+// Views that aren't on the first screen load as their own chunks, so a phone doesn't parse the
+// Sevens workspace, the lyrics engines and search before it can show Home
+const PlaylistView_2 = lazy(() => import('./views/Library/PlaylistView_2'));
+const LyricsView = lazy(() => import('./views/Lyrics/LyricsView'));
+const Browse = lazy(() => import('./views/Browse/Browse'));
+const SevensSettings = lazy(() => import('./views/Sevens/SevensSettings'));
+const Friends = lazy(() => import('./views/Friends/Friends'));
+const UserView = lazy(() => import('./views/User/UserView'));
+
+const ViewFallback = () => <p className="text-neutral-400 animate-pulse text-lg mt-8">Loading…</p>;
 import { childrenOf } from './utils/library';
 import { BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -25,14 +34,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 const LEGACY_SEVEN_PLAYLIST_IDS = ['5kJPA0nczW9zoQs7jcQ5ok', '2KmKTCZFO9wofPRwqJ3y5F'];
 
 function App() {
-  const { 
-    token, refreshToken, tokenExpiresAt, logout, profile, 
-    setToken, setRefreshToken, setProfile, setPlaylists, 
+  const {
+    token, refreshToken, tokenExpiresAt, logout, profile,
+    setToken, setRefreshToken, setProfile, setPlaylists,
     currentView, setCurrentView,
-    pinnedItems, playlists, albums, customFolders, 
+    pinnedItems, playlists, albums, customFolders,
     activePlaylistId, navigateToAlbum, navigateToPlaylist, setContextMenu, setActiveFolderId,
-    sevens, seedLegacySevens
-  } = useUserStore();
+    sevens, seedLegacySevens, friends, navigateToUser
+  } = useSlice(useUserStore, [
+    'token', 'refreshToken', 'tokenExpiresAt', 'logout', 'profile',
+    'setToken', 'setRefreshToken', 'setProfile', 'setPlaylists',
+    'currentView', 'setCurrentView',
+    'pinnedItems', 'playlists', 'albums', 'customFolders',
+    'activePlaylistId', 'navigateToAlbum', 'navigateToPlaylist', 'setContextMenu', 'setActiveFolderId',
+    'sevens', 'seedLegacySevens', 'friends', 'navigateToUser'
+  ]);
   
   const isAuthenticating = useRef(false);
   const hydratedPinnedIds = useRef(new Set());
@@ -444,7 +460,7 @@ function App() {
                                 {statsData.tracks.map((track, idx) => (
                                   <div key={track.id} className="flex items-center space-x-4 group cursor-default">
                                     <span className="text-xl font-extrabold text-neutral-700 w-6 group-hover:text-brand-gradient transition-colors">{idx + 1}</span>
-                                    <img src={track.album.images[0]?.url} className="w-12 h-12 rounded-md shadow-md group-hover:scale-105 transition-transform" />
+                                    <img src={artUrl(track.album.images, 48)} alt="" width="48" height="48" loading="lazy" decoding="async" className="w-12 h-12 rounded-md shadow-md group-hover:scale-105 transition-transform" />
                                     <div className="truncate flex-1">
                                       <p className="text-white font-bold text-sm truncate">{track.name}</p>
                                       <p className="text-neutral-400 text-xs truncate">{track.artists.map(a => a.name).join(', ')}</p>
@@ -513,6 +529,39 @@ function App() {
                     ))}
                   </div>
                 )}
+
+                {/* Friends: the phone's way into the Friends page, since the tab bar has no slot for it */}
+                <div className="w-full mb-8">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">Friends</h3>
+                    <button type="button" onClick={() => setCurrentView('friends')} className="text-xs font-bold text-white hover:underline">
+                      {friends.length ? 'See all' : 'Add friends'}
+                    </button>
+                  </div>
+                  {friends.length > 0 ? (
+                    <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      {friends.slice(0, 12).map((friend) => (
+                        <button
+                          key={friend.id}
+                          type="button"
+                          onClick={() => navigateToUser(friend.id)}
+                          className="flex flex-col items-center gap-1.5 shrink-0 w-16 group"
+                        >
+                          {friend.image ? (
+                            <img src={friend.image} alt="" loading="lazy" decoding="async" className="w-14 h-14 rounded-full object-cover shadow-md group-hover:scale-105 transition-transform" />
+                          ) : (
+                            <div className="w-14 h-14 rounded-full bg-neutral-700 flex items-center justify-center text-lg font-bold text-white shadow-md">
+                              {String(friend.name || friend.id).charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="text-[11px] text-neutral-300 truncate w-full text-center">{friend.name || friend.id}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-neutral-500">Add people to see their public playlists and follow them.</p>
+                  )}
+                </div>
 
                 {/* 4. The Custom Floating Pinned Sandbox (Dynamically Scaled) */}
                 <div className="w-full pt-4">
@@ -627,18 +676,22 @@ function App() {
               </div>
             )}
 
-            {currentView === 'library' && <Library />}
-            {currentView === 'playlist' && (
-              sevens.some(s => s.playlistId === activePlaylistId)
-                ? <PlaylistView_2 /> 
-                : <PlaylistView />
-            )}
-            {currentView === 'browse' && <Browse />}
-            {currentView === 'artist' && <Artist />}
-            {currentView === 'album' && <Album />}
-            {currentView === 'liked-songs' && <LikedSongsView />}
-            {currentView === 'lyrics' && <LyricsView />}
-            {currentView === 'sevens' && <SevensSettings />}
+            <Suspense fallback={<ViewFallback />}>
+              {currentView === 'library' && <Library />}
+              {currentView === 'playlist' && (
+                sevens.some(s => s.playlistId === activePlaylistId)
+                  ? <PlaylistView_2 />
+                  : <PlaylistView />
+              )}
+              {currentView === 'browse' && <Browse />}
+              {currentView === 'artist' && <Artist />}
+              {currentView === 'album' && <Album />}
+              {currentView === 'liked-songs' && <LikedSongsView />}
+              {currentView === 'lyrics' && <LyricsView />}
+              {currentView === 'sevens' && <SevensSettings />}
+              {currentView === 'friends' && <Friends />}
+              {currentView === 'user' && <UserView />}
+            </Suspense>
           </>
         ) : (
           <div className="flex flex-col items-center justify-center h-full relative z-10 gap-4">

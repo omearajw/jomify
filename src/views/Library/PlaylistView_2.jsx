@@ -1,9 +1,19 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useUserStore } from '../../store/userStore'; 
+import { useSlice, usePlaybackSummary } from '../../store/selectors';
+import { artUrl } from '../../utils/images';
+import { resolvePlaybackDeviceId, handlePlaybackError, setShuffle } from '../../services/spotify/playbackController';
+import { ChevronUp as StageUpIcon, ChevronDown as StageDownIcon, Shuffle as ShuffleIcon } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
-import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
-import { ChevronUp as StageUpIcon, ChevronDown as StageDownIcon } from 'lucide-react';
-import { fetchPlaylistDetails, fetchMoreTracks, addTracksToPlaylist, playPlaylistTrack, fetchSevenTrackMeta, spotifyFetch } from '../../services/spotify/api';
+import { collaboratorStyleFor } from '../../utils/collaboratorStyle';
+import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
+
+const formatBatchDate = (iso) => {
+  if (!iso) return '';
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+};
+import { fetchPlaylistDetails, fetchMoreTracks, addTracksToPlaylist, playPlaylistTrack, fetchSevenTrackMeta } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Play, X, LayoutPanelLeft, ArrowRight, Loader2, Disc3 } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
@@ -25,13 +35,34 @@ async function fetchEntirePlaylist(token, playlistId) {
 }
 
 export default function PlaylistView_2() {
-  const { 
+  const {
     token, activePlaylistId, playlists, profile,
     stagedSeven, addStagedTrack, removeStagedTrack, clearStagedTracks, setStagedSeven,
     navigateToArtist, navigateToAlbum, sevens, updateSeven
-  } = useUserStore();
+  } = useSlice(useUserStore, [
+    'token', 'activePlaylistId', 'playlists', 'profile',
+    'stagedSeven', 'addStagedTrack', 'removeStagedTrack', 'clearStagedTracks', 'setStagedSeven',
+    'navigateToArtist', 'navigateToAlbum', 'sevens', 'updateSeven'
+  ]);
   
-  const { playbackState } = usePlayerStore();
+  const { currentPlayingTrack, isCurrentTrackPaused } = usePlaybackSummary();
+  const isShuffled = usePlayerStore((s) => s.isShuffled);
+
+  const playFromTop = () => {
+    if (!token || !playlist) return;
+    const deviceId = resolvePlaybackDeviceId();
+    if (!deviceId) return;
+    playPlaylistTrack(token, deviceId, activePlaylistId, 0).catch(handlePlaybackError);
+  };
+
+  const shufflePlay = async () => {
+    if (!token || !playlist) return;
+    const deviceId = resolvePlaybackDeviceId();
+    if (!deviceId) return;
+    try { await setShuffle(true, deviceId); } catch { return; }
+    const count = playlist.tracks?.items?.length || 1;
+    playPlaylistTrack(token, deviceId, activePlaylistId, Math.floor(Math.random() * count)).catch(handlePlaybackError);
+  };
   const [playlist, setPlaylist] = useState(null);
   
   // Workspace States
@@ -61,21 +92,24 @@ export default function PlaylistView_2() {
   const [draggedIdx, setDraggedIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
 
-  // Collaborator State for Header Profiles
-  const [collaborators, setCollaborators] = useState({});
-  const fetchedUserIds = useRef(new Set());
+  // Collaborator profiles come from the shared cache
+  const collaborators = useUserProfilesStore((s) => s.profiles);
+  // { id, message } keyed by playlist so switching Sevens needs no reset
+  const [loadError, setLoadError] = useState(null);
   
   const horizontalScrollRef = useRef(null);
 
-  const currentPlayingTrack = playbackState?.track_window?.current_track;
-  const isCurrentTrackPaused = playbackState ? playbackState.paused : true;
 
   // --- FETCH MAIN PLAYLIST ---
   useEffect(() => {
     if (token && activePlaylistId) {
+      const requestedId = activePlaylistId;
       fetchEntirePlaylist(token, activePlaylistId)
         .then(setPlaylist)
-        .catch(console.error);
+        .catch((err) => {
+          console.error(err);
+          setLoadError({ id: requestedId, message: err?.message === 'RATE_LIMITED' ? 'Spotify is rate-limiting Jomify; try again in a moment.' : "Couldn't load this Seven." });
+        });
     }
   }, [token, activePlaylistId]);
 
@@ -88,39 +122,11 @@ export default function PlaylistView_2() {
     }
   }, [token, poolPlaylistId, isWorkspaceOpen]);
 
-  // --- COLLABORATOR HYDRATION ENGINE ---
+  // --- COLLABORATOR HYDRATION ---
   useEffect(() => {
-    if (!token || !playlist?.tracks.items) return;
-
-    const uniqueIds = [...new Set(playlist.tracks.items.map(i => i.added_by?.id).filter(Boolean))];
-    const idsToFetch = uniqueIds.filter(id => !fetchedUserIds.current.has(id));
-
-    if (idsToFetch.length === 0) return;
-
-    idsToFetch.forEach(id => fetchedUserIds.current.add(id));
-
-    const fetchCollaborators = async () => {
-      try {
-        const responses = await Promise.all(
-          idsToFetch.map(id => spotifyFetch(`https://api.spotify.com/v1/users/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()))
-        );
-        
-        setCollaborators(prev => {
-          const next = { ...prev };
-          responses.forEach(user => {
-            if (user && user.id) {
-              next[user.id] = user;
-            }
-          });
-          return next;
-        });
-      } catch (err) {
-        console.error('Failed to fetch collaborator profiles:', err);
-      }
-    };
-
-    fetchCollaborators();
-  }, [playlist?.tracks.items, token]);
+    if (!token || !playlist?.tracks?.items) return;
+    ensureUserProfiles(token, playlist.tracks.items.map(i => i.added_by?.id));
+  }, [playlist?.tracks?.items, token]);
 
   // --- CROSS-SEVEN DUPLICATE ENGINE ---
   // Sevens with different people are completely independent: a track you gave one person is
@@ -194,12 +200,12 @@ export default function PlaylistView_2() {
       if (adder === currentAdder) {
         currentChunk.push(item);
       } else {
-        result.push({ adderId: currentAdder, tracks: currentChunk });
+        result.push({ adderId: currentAdder, tracks: currentChunk, addedAt: currentChunk[0]?.added_at });
         currentChunk = [item];
         currentAdder = adder;
       }
     }
-    result.push({ adderId: currentAdder, tracks: currentChunk });
+    result.push({ adderId: currentAdder, tracks: currentChunk, addedAt: currentChunk[0]?.added_at });
 
     // Reverse the array so the most recent batch is index 0
     return result.reverse();
@@ -281,7 +287,10 @@ const turnIndicator = useMemo(() => {
     return () => container.removeEventListener('wheel', handleWheel);
   }, [isWorkspaceOpen, chunks]);
 
-  if (!playlist) return <p className="text-neutral-400 animate-pulse text-lg mt-8 px-8">Loading The Seven...</p>;
+  if (!playlist) {
+    if (loadError?.id === activePlaylistId) return <p className="text-neutral-400 text-lg mt-8 px-8">{loadError.message}</p>;
+    return <p className="text-neutral-400 animate-pulse text-lg mt-8 px-8">Loading The Seven...</p>;
+  }
 
   // ==========================================
   // VIEW: 3-PANE WORKSPACE
@@ -362,7 +371,7 @@ const turnIndicator = useMemo(() => {
                     <span className="text-xs font-bold text-neutral-600 w-6 text-center shrink-0">
                       {reversedMainItems.length - idx}
                     </span>
-                    <img src={item.track.album.images?.[0]?.url} className="w-8 h-8 rounded shrink-0 shadow-sm object-cover" alt="" />
+                    <img src={artUrl(item.track.album.images, 32)} width="32" height="32" loading="lazy" decoding="async" className="w-8 h-8 rounded shrink-0 shadow-sm object-cover" alt="" />
                     <div className="flex flex-col truncate flex-1 pr-2">
                       <span className="text-sm font-medium text-white truncate">{item.track.name}</span>
                       <span className="text-xs text-neutral-500 truncate">{item.track.artists.map(a => a.name).join(', ')}</span>
@@ -451,7 +460,7 @@ const turnIndicator = useMemo(() => {
                     <span className={`text-lg font-bold w-4 text-center shrink-0 ${track ? 'text-white' : 'text-neutral-700'}`}>{idx + 1}</span>
                     {track ? (
                       <>
-                        <img src={track.album.images?.[0]?.url} className="w-10 h-10 rounded-md shadow-md shrink-0 pointer-events-none object-cover" alt="" />
+                        <img src={artUrl(track.album.images, 40)} width="40" height="40" decoding="async" className="w-10 h-10 rounded-md shadow-md shrink-0 pointer-events-none object-cover" alt="" />
                         <div className="flex flex-col justify-center truncate flex-1 pointer-events-none">
                           <span className="text-sm font-bold text-white truncate">{track.name}</span>
                           <span className="text-xs text-neutral-400 truncate">{track.artists.map(a => a.name).join(', ')}</span>
@@ -570,7 +579,7 @@ const turnIndicator = useMemo(() => {
                           playPlaylistTrack(token, deviceId, poolPlaylistId, idx).catch(handlePlaybackError);
                         }}
                       >
-                        <img src={item.track.album.images?.[0]?.url} className="w-full h-full object-cover" alt="" />
+                        <img src={artUrl(item.track.album.images, 40)} width="40" height="40" loading="lazy" decoding="async" className="w-full h-full object-cover" alt="" />
                         <div className={`absolute inset-0 bg-black/60 flex items-center justify-center transition-opacity ${isCurrentTrack ? 'opacity-100' : 'opacity-0 group-hover/poolrow:opacity-100'}`}>
                           {isCurrentTrack && !isCurrentTrackPaused ? (
                             <span className="text-brand-gradient font-bold text-[10px] animate-pulse">🔊</span>
@@ -628,12 +637,31 @@ const turnIndicator = useMemo(() => {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setIsWorkspaceOpen(true)}
-          className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-black hover:bg-neutral-200 hover:scale-105 transition-all shadow-xl shrink-0"
-        >
-          <LayoutPanelLeft className="w-4 h-4" /> Open Workspace
-        </button>
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={playFromTop}
+            aria-label={`Play ${playlist.name}`}
+            className="w-12 h-12 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-xl shrink-0"
+          >
+            <Play className="w-5 h-5 fill-current ml-0.5" />
+          </button>
+          <button
+            type="button"
+            onClick={shufflePlay}
+            aria-label="Shuffle play"
+            title="Shuffle play"
+            className={`w-11 h-11 flex items-center justify-center rounded-full hover:scale-110 active:scale-95 transition-all ${isShuffled ? 'text-brand-gradient' : 'text-neutral-400 hover:text-white'}`}
+          >
+            <ShuffleIcon className="w-6 h-6" />
+          </button>
+          <button
+            onClick={() => setIsWorkspaceOpen(true)}
+            className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-black hover:bg-neutral-200 hover:scale-105 transition-all shadow-xl shrink-0"
+          >
+            <LayoutPanelLeft className="w-4 h-4" /> Open Workspace
+          </button>
+        </div>
       </div>
 
       {/* Horizontal Free Scroll Container */}
@@ -650,7 +678,9 @@ const turnIndicator = useMemo(() => {
             <div 
               key={chunkIdx} 
               // Added group/batch and responsive hover widths to expand on hover
-              className="group/batch shrink-0 w-full md:w-[max-content] md:hover:w-[max-content] transition-all duration-500 ease-out h-fit md:max-h-full flex flex-col bg-neutral-900/40 border border-white/5 backdrop-blur-md rounded-3xl overflow-hidden shadow-2xl min-h-0"
+              // A fixed card width on wide screens: one long title no longer widens the whole
+              // batch, and seven rows have room instead of being squashed to fit
+              className="group/batch shrink-0 w-full md:w-[28rem] md:max-h-full flex flex-col bg-neutral-900/40 border border-white/5 backdrop-blur-md rounded-3xl overflow-hidden shadow-2xl min-h-0"
             >
               {/* Batch Header (User Profile) */}
               <div className="flex justify-between items-center px-6 py-4 border-b border-white/10 bg-black/30 shrink-0">
@@ -662,11 +692,14 @@ const turnIndicator = useMemo(() => {
                       {displayName.charAt(0).toUpperCase()}
                     </div>
                   )}
-                  <h3 className="font-bold text-lg text-white tracking-tight truncate max-w-[250px]">{displayName}</h3>
+                  <h3 className="font-bold text-lg text-white tracking-tight truncate min-w-0">{displayName}</h3>
                 </div>
+                {chunk.addedAt && (
+                  <span className="text-xs font-medium text-neutral-500 tabular-nums shrink-0 ml-3">{formatBatchDate(chunk.addedAt)}</span>
+                )}
               </div>
               
-              <div className="flex-1 p-4 flex flex-col gap-1 min-h-0 overflow-hidden justify-center [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex-1 p-3 flex flex-col gap-1 min-h-0 md:overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                 {chunk.tracks.map((item, idx) => {
                   if (!item.track) return null;
                   const track = item.track;
@@ -695,9 +728,10 @@ const turnIndicator = useMemo(() => {
                     <div 
                       key={track.id + idx}
                       onClick={() => handleTrackSelect(track.uri)}
-                      style={getCollaboratorStyle(chunk.adderId, true, isFirst, isLast, false)}
-                      // Converted to flex row to allow for smooth width transitioning
-                      className={`flex-1 min-h-0 flex items-center gap-3 px-3 py-1.5 group/track text-sm cursor-pointer hover:bg-white/10 transition-colors shrink ${radiusClass} ${marginClass}`}
+                      style={collaboratorStyleFor(chunk.adderId, true, isFirst, isLast, false)}
+                      // Rows keep their natural height; they used to be flex-1 min-h-0 and got
+                      // squashed and clipped whenever seven didn't fit the card
+                      className={`min-h-[52px] shrink-0 flex items-center gap-3 px-3 py-1.5 group/track text-sm cursor-pointer hover:bg-white/10 transition-colors ${radiusClass} ${marginClass}`}
                     >
                       {/* 1. Play / Number Indicator */}
                       <div className="text-neutral-400 w-5 h-5 flex items-center justify-center shrink-0">
@@ -716,7 +750,7 @@ const turnIndicator = useMemo(() => {
                       {/* 2. Album Art - Locked to fixed dimensions to prevent clipping */}
                       <div className="w-10 h-10 rounded-md overflow-hidden flex-shrink-0 shadow-sm relative">
                         {track.album?.images?.[0]?.url ? (
-                          <img src={track.album.images[0].url} alt={track.name} className="absolute inset-0 w-full h-full object-cover" />
+                          <img src={artUrl(track.album.images, 40)} alt={track.name} width="40" height="40" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover" />
                         ) : (
                           <div className="absolute inset-0 w-full h-full bg-neutral-800 flex items-center justify-center">🎵</div>
                         )}
@@ -743,28 +777,27 @@ const turnIndicator = useMemo(() => {
                               {aIdx < track.artists.length - 1 && <span className="mr-1">,</span>}
                             </span>
                           ))}
+                          {/* Album on the same line, always visible: it used to hide in a column that only opened on hover */}
+                          {track.album?.name && (
+                            <>
+                              <span className="mx-1 text-neutral-600 shrink-0">•</span>
+                              {track.album.id ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); navigateToAlbum(track.album.id); }}
+                                  className="hover:underline hover:text-white transition-colors text-left truncate min-w-0"
+                                >
+                                  {track.album.name}
+                                </button>
+                              ) : (
+                                <span className="truncate min-w-0">{track.album.name}</span>
+                              )}
+                            </>
+                          )}
                         </div>
                       </div>
                       
-                      {/* 4. Album Name (EXPANDS ON BATCH HOVER) */}
-                      <div className="flex flex-col justify-center w-0 opacity-0 group-hover/batch:w-[max-content] group-hover/batch:opacity-100 group-hover/batch:ml-2 pointer-coarse:w-[max-content] pointer-coarse:opacity-100 pointer-coarse:ml-2 overflow-hidden transition-all duration-500 ease-out shrink-0">
-                        {track.album?.id ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigateToAlbum(track.album.id);
-                            }}
-                            className="text-neutral-400 text-xs hover:text-white hover:underline transition-colors text-left truncate block w-full"
-                          >
-                            {track.album.name}
-                          </button>
-                        ) : (
-                          <span className="text-neutral-400 text-xs truncate">{track.album?.name}</span>
-                        )}
-                      </div>
-
-                      {/* 5. Like Button */}
+                      {/* 4. Like Button */}
                       <div className="flex justify-center items-center h-full w-8 shrink-0" onClick={e => e.stopPropagation()}>
                          <LikeButton trackId={track.id} />
                       </div>

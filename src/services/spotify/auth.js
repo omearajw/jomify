@@ -9,6 +9,8 @@ const scope = [
   'user-top-read',
   'user-read-email',
   'user-read-private',
+  'user-follow-read',
+  'user-follow-modify',
   'user-library-read',
   'user-library-modify',
   'user-read-playback-state',

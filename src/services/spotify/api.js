@@ -565,6 +565,49 @@ export async function fetchSpotifyUser(token, userId) {
   return await response.json();
 }
 
+// --- Other people: public playlists and following --------------------------------------------
+// Spotify has no endpoint that lists the users you follow and no user search, so a friends list
+// is built by hand from profile links; these are the calls a friend's page needs.
+
+const statusError = (message, response) => {
+  const err = new Error(`${message} (${response.status})`);
+  err.status = response.status;
+  return err;
+};
+
+export async function fetchUserPublicPlaylists(token, userId) {
+  const items = [];
+  let url = `https://api.spotify.com/v1/users/${encodeURIComponent(userId)}/playlists?limit=50`;
+  while (url) {
+    const response = await spotifyFetch(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw statusError("Failed to fetch the user's playlists", response);
+    const page = await response.json();
+    items.push(...(page.items || []).filter(Boolean));
+    url = page.next;
+  }
+  return items;
+}
+
+export async function checkFollowingUsers(token, ids) {
+  if (!ids?.length) return [];
+  const response = await spotifyFetch(`https://api.spotify.com/v1/me/following/contains?type=user&ids=${ids.map(encodeURIComponent).join(',')}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) throw statusError('Failed to check following', response);
+  return await response.json();
+}
+
+async function setFollowingUsers(token, ids, method) {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/me/following?type=user&ids=${ids.map(encodeURIComponent).join(',')}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) throw statusError(method === 'PUT' ? 'Failed to follow' : 'Failed to unfollow', response);
+}
+export const followUsers = (token, ids) => setFollowingUsers(token, ids, 'PUT');
+export const unfollowUsers = (token, ids) => setFollowingUsers(token, ids, 'DELETE');
+
 // Works out who a Seven is *with*: everyone who has ever added a track except you.
 // Returns the candidates in order of how many tracks they contributed, so the most
 // likely partner is first.

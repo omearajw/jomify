@@ -1,31 +1,79 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { useUserStore } from '../../store/userStore'; 
+import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
+import { resolvePlaybackDeviceId, handlePlaybackError, setShuffle } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
 import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
-import { Clock3, Play, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users } from 'lucide-react';
+import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink } from 'lucide-react';
+import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
+import UserChip from '../../components/UserChip';
 import LikeButton from '../../components/LikeButton';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
 import { cleanString } from '../../utils/strings';
-import { getCollaboratorStyle } from '../../utils/collaboratorStyle';
+import { collaboratorStyleFor } from '../../utils/collaboratorStyle';
 import { rowButtonProps } from '../../utils/a11y';
+import { useSlice, usePlaybackSummary } from '../../store/selectors';
+import { artUrl } from '../../utils/images';
+
+// Rows rendered at once; more appear as you scroll. A 1000-track playlist used to mount every
+// row (25k DOM nodes) up front.
+const ROW_PAGE = 150;
+
+// Shown instead of a blank page when Spotify refuses the playlist. Since November 2024 Spotify
+// blocks its own playlists (Discover Weekly, Blend, Daily Mix, Release Radar, Your Top Songs)
+// for apps in development mode, which Jomify is.
+function PlaylistLoadError({ playlistId, name, status, isSpotifyOwned }) {
+  const blocked = isSpotifyOwned && (status === 403 || status === 404);
+  return (
+    <div className="mt-8 max-w-xl rounded-3xl border border-white/10 bg-neutral-900/60 p-8 animate-fade-in">
+      <p className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">{blocked ? 'Made by Spotify' : 'Playlist'}</p>
+      <h1 className="text-3xl font-extrabold text-white tracking-tight mb-4 break-words">{name || 'This playlist'}</h1>
+      {blocked ? (
+        <p className="text-neutral-300 text-sm leading-relaxed">
+          Spotify blocks this one for Jomify. Since November 2024 Spotify's API refuses its own playlists
+          (Discover Weekly, Blend, Daily Mix, Release Radar, Your Top Songs) to apps that haven't been
+          granted extended quota, and Jomify hasn't. The playlist still works in Spotify itself.
+        </p>
+      ) : (
+        <p className="text-neutral-300 text-sm">Couldn't load this playlist (Spotify answered {status}). Try again in a moment.</p>
+      )}
+      <a
+        href={`https://open.spotify.com/playlist/${encodeURIComponent(playlistId)}`}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-bold text-black hover:bg-neutral-200 transition-colors"
+      >
+        <ExternalLink className="w-4 h-4" /> Open in Spotify
+      </a>
+    </div>
+  );
+}
 
 export default function PlaylistView() {
-  const { 
-    token, updatePlaylistImage, playlists, activePlaylistId, 
-    setLikedTracks, setContextMenu, setDraggedItem, setPlaylists, 
+  const {
+    token, updatePlaylistImage, playlists, activePlaylistId,
+    setLikedTracks, setContextMenu, setDraggedItem, setPlaylists,
     navigateToArtist, navigateToAlbum,
-    playlistSortSettings, setPlaylistSortSettings // Destructured from your updated store
-  } = useUserStore();
-  
-  const { playbackState } = usePlayerStore();
+    playlistSortSettings, setPlaylistSortSettings
+  } = useSlice(useUserStore, [
+    'token', 'updatePlaylistImage', 'playlists', 'activePlaylistId',
+    'setLikedTracks', 'setContextMenu', 'setDraggedItem', 'setPlaylists',
+    'navigateToArtist', 'navigateToAlbum',
+    'playlistSortSettings', 'setPlaylistSortSettings'
+  ]);
+
+  const { currentPlayingTrack, isCurrentTrackPaused } = usePlaybackSummary();
+  const isShuffled = usePlayerStore((s) => s.isShuffled);
   const [playlist, setPlaylist] = useState(null);
-  
-  // --- COLLABORATOR STATES ---
-  const [collaborators, setCollaborators] = useState({});
-  const fetchedUserIds = useRef(new Set());
+  // Keyed by playlist id so switching playlists needs no reset; { id, status }
+  const [loadError, setLoadError] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(ROW_PAGE);
+  const sentinelRef = useRef(null);
+
+  // Collaborator profiles come from the shared cache (PlaylistView_2 and the Sevens page read
+  // the same people)
+  const collaborators = useUserProfilesStore((s) => s.profiles);
 
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const sortMenuRef = useRef(null);
@@ -50,13 +98,14 @@ export default function PlaylistView() {
 
   const updateSortSettings = (newSortBy, newSortOrder) => {
     if (!activePlaylistId) return;
+    setVisibleCount(ROW_PAGE);
     setPlaylistSortSettings(activePlaylistId, { sortBy: newSortBy, sortOrder: newSortOrder });
   };
 
   const isFetchingMore = useRef(false);
 
-  const currentPlayingTrack = playbackState?.track_window?.current_track;
-  const isCurrentTrackPaused = playbackState ? playbackState.paused : true;
+  // Computed once per render, not once per row
+  const currentPlayingKey = currentPlayingTrack ? cleanString(currentPlayingTrack.name) : '';
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [isUpdatingPlaylist, setIsUpdatingPlaylist] = useState(false);
 
@@ -238,16 +287,22 @@ export default function PlaylistView() {
   // --- INITIAL LOAD ---
   useEffect(() => {
     if (token && activePlaylistId) {
-      setPlaylist(null); 
-      setCollaborators({});
-      fetchedUserIds.current.clear();
+      setPlaylist(null);
+      setVisibleCount(ROW_PAGE);
       isFetchingMore.current = false;
 
+      const requestedId = activePlaylistId;
       spotifyFetch(`https://api.spotify.com/v1/playlists/${activePlaylistId}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
-        .then(res => res.json())
+        .then(async (res) => {
+          // Spotify-owned playlists come back 403/404 for apps in development mode; say so
+          // instead of spinning forever
+          if (!res.ok) { setLoadError({ id: requestedId, status: res.status }); return null; }
+          return res.json();
+        })
         .then(async (data) => {
+          if (!data) return;
           setPlaylist(data);
           checkLikesForChunk(data.tracks.items);
 
@@ -308,39 +363,11 @@ export default function PlaylistView() {
     );
   }, [playlist]);
 
-  // --- COLLABORATOR HYDRATION ENGINE ---
+  // --- COLLABORATOR HYDRATION ---
   useEffect(() => {
-    if (!token || !isCollaborative || !playlist.tracks.items) return;
-
-    const uniqueIds = [...new Set(playlist.tracks.items.map(i => i.added_by?.id).filter(Boolean))];
-    const idsToFetch = uniqueIds.filter(id => !fetchedUserIds.current.has(id));
-
-    if (idsToFetch.length === 0) return;
-
-    idsToFetch.forEach(id => fetchedUserIds.current.add(id));
-
-    const fetchCollaborators = async () => {
-      try {
-        const responses = await Promise.all(
-          idsToFetch.map(id => spotifyFetch(`https://api.spotify.com/v1/users/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()))
-        );
-        
-        setCollaborators(prev => {
-          const next = { ...prev };
-          responses.forEach(user => {
-            if (user && user.id) {
-              next[user.id] = user;
-            }
-          });
-          return next;
-        });
-      } catch (err) {
-        console.error('Failed to fetch collaborator profiles:', err);
-      }
-    };
-
-    fetchCollaborators();
-  }, [playlist?.tracks.items, isCollaborative, token]);
+    if (!token || !isCollaborative || !playlist?.tracks?.items) return;
+    ensureUserProfiles(token, playlist.tracks.items.map(i => i.added_by?.id));
+  }, [playlist?.tracks?.items, isCollaborative, token]);
 
   const handleTrackSelect = (originalIndex) => {
     if (!token || !playlist) return;
@@ -448,7 +475,40 @@ export default function PlaylistView() {
     });
   }, [playlist, sortBy, sortOrder]);
 
+  // Reveal the next page of rows when the sentinel below the list scrolls near the viewport
+  const totalRows = sortedTracks.length;
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || visibleCount >= totalRows) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) setVisibleCount(n => Math.min(n + ROW_PAGE, totalRows));
+    }, { rootMargin: '800px 0px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [visibleCount, totalRows]);
+
+  // Shuffle play: switch shuffle on, then start somewhere random so it doesn't always open on
+  // the first track like a plain Play with shuffle would
+  const handleShufflePlay = async () => {
+    if (!token || !playlist || sortedTracks.length === 0) return;
+    const deviceId = resolvePlaybackDeviceId();
+    if (!deviceId) return;
+    try { await setShuffle(true, deviceId); } catch { return; }
+    handleTrackSelect(Math.floor(Math.random() * sortedTracks.length));
+  };
+
   if (!playlist) {
+    if (loadError?.id === activePlaylistId) {
+      const summary = playlists.find(p => p.id === activePlaylistId);
+      return (
+        <PlaylistLoadError
+          playlistId={activePlaylistId}
+          name={summary?.name}
+          status={loadError.status}
+          isSpotifyOwned={summary?.owner?.id === 'spotify'}
+        />
+      );
+    }
     return <p className="text-neutral-400 animate-pulse text-lg mt-8">Loading playlist...</p>;
   }
 
@@ -573,6 +633,27 @@ export default function PlaylistView() {
       )}
 
       {/* FILTER & SORT CONTROLS BAR */}
+      {/* Play / Shuffle: same on desktop and phone */}
+      <div className="flex items-center gap-4 mb-6 px-4 select-none">
+        <button
+          type="button"
+          onClick={() => handleTrackSelect(0)}
+          aria-label={`Play ${playlist.name}`}
+          className="w-14 h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-xl shrink-0"
+        >
+          <Play className="w-6 h-6 fill-current ml-1" />
+        </button>
+        <button
+          type="button"
+          onClick={handleShufflePlay}
+          aria-label="Shuffle play"
+          title="Shuffle play"
+          className={`w-11 h-11 flex items-center justify-center rounded-full hover:scale-110 active:scale-95 transition-all ${isShuffled ? 'text-brand-gradient' : 'text-neutral-400 hover:text-white'}`}
+        >
+          <Shuffle className="w-6 h-6" />
+        </button>
+      </div>
+
       <div className="flex items-center justify-end mb-4 px-4 select-none">
         <div className="relative" ref={sortMenuRef}>
           <button
@@ -647,15 +728,15 @@ export default function PlaylistView() {
           onCancel={() => setEditDialogOpen(false)}
           isSubmitting={isUpdatingPlaylist}
         />
-        {sortedTracks.map((item, index) => {
+        {sortedTracks.slice(0, visibleCount).map((item, index) => {
           if (!item || !item.track) return null;
           const track = item.track;
 
           const isCurrentTrack = currentPlayingTrack && (
-            track.id === currentPlayingTrack.id || 
+            track.id === currentPlayingTrack.id ||
             track.uri === currentPlayingTrack.uri ||
             (track.linked_from && track.linked_from.id === currentPlayingTrack.id) ||
-            (cleanString(track.name) === cleanString(currentPlayingTrack.name) && 
+            (cleanString(track.name) === currentPlayingKey &&
              track.artists?.[0]?.name === currentPlayingTrack.artists?.[0]?.name)
           );
 
@@ -678,7 +759,7 @@ export default function PlaylistView() {
           const collaboratorProfile = collaborators[adderId];
 
           const bgHoverClass = isCollaborative 
-            ? 'bg-[hsla(var(--track-hue),40%,40%,0.02)] hover:bg-[hsla(var(--track-hue),40%,40%,0.06)] backdrop-blur-sm'
+            ? 'bg-[hsla(var(--track-hue),40%,40%,0.02)] hover:bg-[hsla(var(--track-hue),40%,40%,0.06)]'
             : 'hover:bg-neutral-800/50';
 
           let radiusClass = 'rounded-md';
@@ -706,8 +787,8 @@ export default function PlaylistView() {
               onClick={() => handleTrackSelect(index)}
               {...rowButtonProps(() => handleTrackSelect(index))}
               onContextMenu={(e) => handleRightClick(e, track)}
-              style={getCollaboratorStyle(adderId, isCollaborative, isFirstInGroup, isLastInGroup)}
-              className={`grid ${gridColumns} gap-4 px-4 py-3 group text-sm items-center transition-colors cursor-pointer ${bgHoverClass} ${radiusClass} ${marginClass}`}
+              style={collaboratorStyleFor(adderId, isCollaborative, isFirstInGroup, isLastInGroup)}
+              className={`grid ${gridColumns} gap-4 px-4 py-3 group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${bgHoverClass} ${radiusClass} ${marginClass}`}
             >
               <div className="text-neutral-400 w-4 h-4 hidden md:flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
@@ -724,7 +805,7 @@ export default function PlaylistView() {
               
               <div className="w-12 h-12 rounded-md overflow-hidden flex-shrink-0">
                 {track.album?.images?.[0]?.url ? (
-                  <img src={track.album.images[0].url} alt={track.name} className="w-full h-full object-cover" />
+                  <img src={artUrl(track.album.images, 48)} alt={track.name} width="48" height="48" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full bg-neutral-800 flex items-center justify-center">🎵</div>
                 )}
@@ -778,17 +859,8 @@ export default function PlaylistView() {
 
               {/* Collborator Tag Column */}
               {isCollaborative && (
-                <div className="hidden md:flex items-center space-x-2 truncate pr-4" title={collaboratorProfile?.display_name || adderId}>
-                  {collaboratorProfile?.images?.[0]?.url ? (
-                    <img src={collaboratorProfile.images[0].url} className="w-6 h-6 rounded-full object-cover shrink-0" alt="" />
-                  ) : (
-                    <div className="w-6 h-6 rounded-full bg-neutral-700 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
-                      {(collaboratorProfile?.display_name || adderId || '?').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <span className="text-neutral-400 text-xs truncate">
-                    {collaboratorProfile?.display_name || adderId}
-                  </span>
+                <div className="hidden md:flex items-center truncate pr-4">
+                  <UserChip userId={adderId} fallbackName={collaboratorProfile?.display_name || adderId} size="sm" />
                 </div>
               )}
               
@@ -824,6 +896,11 @@ export default function PlaylistView() {
             </div>
           );
         })}
+        {visibleCount < totalRows && (
+          <div ref={sentinelRef} className="py-6 text-center text-xs text-neutral-500">
+            {totalRows - visibleCount} more…
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useUserStore } from '../../store/userStore';
-import { usePlayerStore } from '../../store/playerStore';
+import { useSlice, usePlaybackSummary } from '../../store/selectors';
+import { artUrl } from '../../utils/images';
 import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
 import { playSingleTrack, checkTracksLiked, spotifyFetch } from '../../services/spotify/api';
@@ -11,15 +12,14 @@ import { cleanString } from '../../utils/strings';
 import { rowButtonProps } from '../../utils/a11y';
 
 export default function Artist() {
-  const { token, setLikedTracks, currentArtistId, setContextMenu, navigateToAlbum } = useUserStore();
-  const { playbackState } = usePlayerStore();
+  const { token, setLikedTracks, currentArtistId, setContextMenu, navigateToAlbum } = useSlice(useUserStore, ['token', 'setLikedTracks', 'currentArtistId', 'setContextMenu', 'navigateToAlbum']);
+  const { currentPlayingTrack } = usePlaybackSummary();
   const [artist, setArtist] = useState(null);
   const [topTracks, setTopTracks] = useState([]);
   const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const currentPlayingTrack = playbackState?.track_window?.current_track;
 
   useEffect(() => {
     if (!token || !currentArtistId) return;
@@ -160,7 +160,7 @@ export default function Artist() {
                   >
                   <div className="flex items-center space-x-4 truncate pr-4">
                     <div className="relative w-12 h-12 bg-neutral-800 rounded flex-shrink-0 flex items-center justify-center">
-                      <img src={track.album.images?.[0]?.url} alt="" className="w-full h-full object-cover rounded" />
+                      <img src={artUrl(track.album.images, 48)} alt="" width="48" height="48" loading="lazy" decoding="async" className="w-full h-full object-cover rounded" />
                       <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center rounded">
                         <Play className="w-4 h-4 text-white fill-current" />
                       </div>
@@ -200,7 +200,7 @@ export default function Artist() {
               >
                 <div className="aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
                   {album.images?.[0]?.url && (
-                    <img src={album.images[0].url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <img src={artUrl(album.images, 300)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   )}
                 </div>
                 <p className="text-white text-sm font-bold truncate w-full">{album.name}</p>

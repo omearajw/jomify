@@ -11,6 +11,20 @@ export function hashCode(str) {
 
 // Generates the subtle, grungy glass styles based on group adjacency. Multiplying by the golden
 // angle (137.508) spreads user hues as far apart as possible.
+// getCollaboratorStyle returns a fresh object per call. Handing React a new style object for
+// every row on every render defeats its diffing, so list rows use this memoised form; the set
+// of (adder, position) combinations is tiny and never grows past a few dozen entries.
+const styleCache = new Map();
+export function collaboratorStyleFor(userId, isCollaborative, isFirst, isLast, isCompact = false) {
+  const key = `${userId}|${isCollaborative}|${isFirst}|${isLast}|${isCompact}`;
+  let style = styleCache.get(key);
+  if (!style) {
+    style = getCollaboratorStyle(userId, isCollaborative, isFirst, isLast, isCompact);
+    styleCache.set(key, style);
+  }
+  return style;
+}
+
 export function getCollaboratorStyle(userId, isCollaborative, isFirst, isLast, isCompact = false) {
   if (!isCollaborative || !userId) return {};
 

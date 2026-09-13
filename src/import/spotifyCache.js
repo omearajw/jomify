@@ -268,7 +268,7 @@ export function groupCacheFiles(files) {
   return accounts;
 }
 
-export const NOT_A_USERS_FOLDER = "That doesn't look like Spotify's Users folder. It should contain a folder whose name ends in \"-user\".";
+export const NOT_A_USERS_FOLDER = "That doesn't look like Spotify's data folder. Somewhere inside it there should be a folder whose name ends in \"-user\". Try picking the whole Spotify folder.";
 export const NO_ROOTLIST = "Couldn't find any folder data in there. Quit Spotify completely, then try again.";
 
 export async function extractSpotifyFolders(files, { userId = null } = {}) {

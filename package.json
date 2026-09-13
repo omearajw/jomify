@@ -15,6 +15,7 @@
     "test:import": "node scripts/import-cases.mjs",
     "test:cache": "node scripts/cache-cases.mjs",
     "test:playback": "node scripts/playback-cases.mjs",
+    "test:friends": "node scripts/friends-cases.mjs",
     "preview": "vite preview",
     "build-app": "vite build && electron-builder -w"
   },

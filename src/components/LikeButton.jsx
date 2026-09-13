@@ -6,12 +6,16 @@ import { toggleTrackLike, checkTracksLiked } from '../services/spotify/api';
 // covered that track, and "not checked yet" is not the same as "not liked": treating it as
 // false meant the first click on an already-saved track sent a PUT for something Spotify
 // already had, and the heart lied until then.
+//
+// One of these sits on every track row, so it subscribes to exactly its own entry: a
+// whole-store subscription here re-rendered a thousand hearts on every drag and every poll.
 export default function LikeButton({ trackId }) {
-  const { token, likedTracks, setLikedTracks } = useUserStore();
+  const token = useUserStore((s) => s.token);
+  const setLikedTracks = useUserStore((s) => s.setLikedTracks);
+  const known = useUserStore((s) => s.likedTracks[trackId]);
 
   if (!trackId) return null;
 
-  const known = likedTracks[trackId];
   const isKnown = known !== undefined;
   const isLiked = known === true;
 

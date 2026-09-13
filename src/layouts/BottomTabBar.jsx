@@ -3,6 +3,8 @@ import { useUserStore } from '../store/userStore';
 
 // Views that live "under" the Library tab, so it stays lit while you're inside one
 const LIBRARY_VIEWS = new Set(['library', 'playlist', 'album', 'artist', 'liked-songs']);
+// Friends and profile pages are reached from Home on a phone, so the Home tab stays lit there
+const HOME_VIEWS = new Set(['home', 'friends', 'user']);
 
 const TABS = [
   { id: 'home', label: 'Home', icon: Home },
@@ -16,7 +18,9 @@ export default function BottomTabBar() {
   const setCurrentView = useUserStore((s) => s.setCurrentView);
   const setActiveFolderId = useUserStore((s) => s.setActiveFolderId);
 
-  const isActive = (id) => currentView === id || (id === 'library' && LIBRARY_VIEWS.has(currentView));
+  const isActive = (id) => currentView === id
+    || (id === 'library' && LIBRARY_VIEWS.has(currentView))
+    || (id === 'home' && HOME_VIEWS.has(currentView));
 
   return (
     <nav

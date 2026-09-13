@@ -6,9 +6,10 @@ import TrackArtists from '../../components/TrackArtists';
 import AudioWaveform from '../../components/AudioWaveform';
 import { parseLrc, pickClosestByDuration, LYRIC_LEAD_IN_MS } from '../../lib/lrc';
 import { seek } from '../../services/spotify/playbackController';
+import { useSlice } from '../../store/selectors';
 
 export default function LyricsView() {
-  const { playbackState, player, isLocalActive, positionAt } = usePlayerStore();
+  const { playbackState, player, isLocalActive, positionAt } = useSlice(usePlayerStore, ['playbackState', 'player', 'isLocalActive', 'positionAt']);
   const currentTrack = playbackState?.track_window?.current_track;
 
   const [plainLyrics, setPlainLyrics] = useState([]);

@@ -51,6 +51,8 @@ check('same track, progress jumped back: new uid (a replay)', restarted.track_wi
 const other = toSdkShape(webState({ item: { ...TRACK, id: 't2' } }), later);
 check('different track: new uid', other.track_window.current_track.uid !== uid1);
 check('tiny backwards jitter within tolerance keeps the uid', nextUid(later, TRACK, 8000) === uid1);
+check('same play keeps the same current_track object, so selectors see no change', later.track_window.current_track === first.track_window.current_track);
+check('a new play gets a new current_track object', restarted.track_window.current_track !== later.track_window.current_track);
 
 section('resolveDeviceId');
 check('active device wins', resolveDeviceId({ activeDevice: { id: 'remote' }, sdkStatus: 'ready', deviceId: 'local' }) === 'remote');

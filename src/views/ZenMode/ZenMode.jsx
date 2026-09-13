@@ -5,13 +5,25 @@ import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, 
 import { motion, AnimatePresence } from 'framer-motion';
 import AudioWaveform from '../../components/AudioWaveform';
 import { parseLrc, pickClosestByDuration, LYRIC_LEAD_IN_MS } from '../../lib/lrc';
+import { useSlice } from '../../store/selectors';
+import { getBlurredBackdrop } from '../../utils/blurBackdrop';
+import { togglePlay, next as nextTrack, previous as previousTrack, seek } from '../../services/spotify/playbackController';
+
+// Lines this far from the active one get the animated depth-of-field treatment; the rest are
+// plain elements with a static style, so a 200-line song doesn't run 200 spring animations
+const ANIMATED_LINE_RADIUS = 10;
 
 export default function ZenMode() {
-  const { isZenMode, toggleZenMode, savedVolume, setSavedVolume } = useUserStore();
-  const { player, playbackState } = usePlayerStore();
-  
+  const { isZenMode, toggleZenMode, savedVolume, setSavedVolume } = useSlice(useUserStore, ['isZenMode', 'toggleZenMode', 'savedVolume', 'setSavedVolume']);
+  const { player, playbackState } = useSlice(usePlayerStore, ['player', 'playbackState']);
+
   const [prevVolume, setPrevVolume] = useState(50);
   const [isActive, setIsActive] = useState(true);
+  // The blurred wash is mounted only once the fullscreen transition has settled, so the
+  // viewport reflow and the first backdrop paint don't share the same frames
+  const [backdropReady, setBackdropReady] = useState(false);
+  // { art, url } so a stale blur for the previous track is never shown: derived below by art url
+  const [backdrop, setBackdrop] = useState(null);
 
   // --- LYRICS STATE ---
   const [showLyrics, setShowLyrics] = useState(false);
@@ -64,6 +76,22 @@ export default function ZenMode() {
     if (isZenMode) document.documentElement.requestFullscreen().catch(() => {});
     else if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   }, [isZenMode]);
+
+  // The component only exists while ZenMode is open, so this runs once per opening
+  useEffect(() => {
+    let done = false;
+    const ready = () => { if (!done) { done = true; setBackdropReady(true); } };
+    document.addEventListener('fullscreenchange', ready, { once: true });
+    const timer = setTimeout(ready, 350); // fullscreen refused or already active
+    return () => { document.removeEventListener('fullscreenchange', ready); clearTimeout(timer); };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (albumArtUrl) getBlurredBackdrop(albumArtUrl).then((url) => { if (!cancelled) setBackdrop({ art: albumArtUrl, url }); });
+    return () => { cancelled = true; };
+  }, [albumArtUrl]);
+  const backdropUrl = backdrop?.art === albumArtUrl ? backdrop.url : null;
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -134,13 +162,18 @@ export default function ZenMode() {
     };
 
     const startClock = async () => {
-      if (player) {
+      const live = usePlayerStore.getState();
+      if (live.isLocalActive && player) {
         const state = await player.getCurrentState();
         if (!cancelled && state) {
           currentPos = state.position;
           progressRef.current = currentPos;
           lastTime = performance.now();
         }
+      } else if (live.playbackState && !live.playbackState.paused) {
+        // Remote playback: advance the last poll to now instead of asking a player that isn't playing
+        currentPos = live.playbackState.position + (Date.now() - live.positionAt);
+        progressRef.current = currentPos;
       }
 
       if (cancelled) return;
@@ -278,9 +311,7 @@ export default function ZenMode() {
     }
   }, [activeIndex, showLyrics]);
 
-  const handleSeek = (timeMs) => {
-    if (player) player.seek(timeMs).catch(console.error);
-  };
+  const handleSeek = (timeMs) => { seek(timeMs); };
 
   // --- HYPER-CINEMATIC ZEN RENDERERS ---
   const renderSyncedEngine = () => {
@@ -321,6 +352,20 @@ export default function ZenMode() {
                   const depthOpacity = isLineActive
                     ? 1
                     : Math.max((isPast ? 0.15 : 0.3) - distance * 0.04, isPast ? 0.08 : 0.12);
+                  const lineClass = `text-2xl md:text-4xl lg:text-5xl font-black tracking-tighter leading-relaxed pb-1 transition-colors duration-200 origin-center group-hover:scale-105 group-hover:opacity-100 group-hover:blur-none ${
+                    isLineActive
+                      ? 'text-white drop-shadow-[0_0_20px_rgba(255,255,255,1)] drop-shadow-[0_0_40px_rgba(255,255,255,0.8)] drop-shadow-[0_0_80px_rgba(249,19,98,0.6)]'
+                      : 'text-neutral-400'
+                  }`;
+
+                  // Far-off lines are static; only the neighbourhood of the active line animates
+                  if (activeIndex >= 0 && distance > ANIMATED_LINE_RADIUS) {
+                    return (
+                      <p className={lineClass} style={{ opacity: depthOpacity, transform: 'scale(0.92)', filter: `blur(${depthBlur}px)` }}>
+                        {line.text}
+                      </p>
+                    );
+                  }
 
                   return (
                     <motion.p
@@ -331,11 +376,7 @@ export default function ZenMode() {
                         filter: `blur(${depthBlur}px)`,
                       }}
                       transition={{ type: "spring", stiffness: 300, damping: 22, mass: 0.5 }}
-                      className={`text-2xl md:text-4xl lg:text-5xl font-black tracking-tighter leading-relaxed pb-1 transition-colors duration-200 origin-center group-hover:scale-105 group-hover:opacity-100 group-hover:blur-none ${
-                        isLineActive 
-                          ? 'text-white drop-shadow-[0_0_20px_rgba(255,255,255,1)] drop-shadow-[0_0_40px_rgba(255,255,255,0.8)] drop-shadow-[0_0_80px_rgba(249,19,98,0.6)]' 
-                          : 'text-neutral-400'
-                      }`}
+                      className={lineClass}
                     >
                       {line.text}
                     </motion.p>
@@ -402,24 +443,36 @@ export default function ZenMode() {
     <div className={`fixed inset-0 z-[100] bg-black overflow-hidden flex items-center justify-center font-sans select-none transition-colors duration-700 ${isActive ? '' : 'cursor-none'}`}>
       
       {/* ATMOSPHERIC CINEMATIC BACKGROUND & HEAVY DIRTY LENS EFFECT */}
-      <AnimatePresence mode="popLayout">
-        {albumArtUrl && (
-          <motion.div 
+      <AnimatePresence>
+        {albumArtUrl && backdropReady && (
+          <motion.div
             key={`bg-${trackId}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 1.5, ease: "easeInOut" } }}
+            exit={{ opacity: 0, transition: { duration: 0.8, ease: "easeInOut" } }}
             transition={{ duration: 2, ease: "easeInOut" }}
             className="absolute inset-0 overflow-hidden pointer-events-none"
           >
-            <div 
-              className="absolute inset-0 bg-cover bg-center opacity-40 scale-125 blur-[120px] saturate-[2] animate-[pulse_12s_ease-in-out_infinite]"
-              style={{ backgroundImage: `url(${albumArtUrl})` }}
-            />
-            <div 
-              className="absolute inset-0 bg-cover bg-center opacity-35 scale-150 blur-[150px] saturate-[2.2] origin-[45%_55%] animate-[spin_90s_linear_infinite]"
-              style={{ backgroundImage: `url(${albumArtUrl})` }}
-            />
+            {backdropUrl ? (
+              <>
+                {/* A 48px pre-blurred copy of the art, stretched: same wash, no per-frame blur */}
+                <div
+                  className="absolute inset-0 bg-cover bg-center opacity-40 scale-125 animate-[pulse_12s_ease-in-out_infinite] will-change-transform"
+                  style={{ backgroundImage: `url(${backdropUrl})` }}
+                />
+                <div
+                  className="absolute inset-0 bg-cover bg-center opacity-35 scale-150 origin-[45%_55%] animate-[spin_90s_linear_infinite] will-change-transform"
+                  style={{ backgroundImage: `url(${backdropUrl})` }}
+                />
+              </>
+            ) : (
+              // No CORS on the image: one modest CSS blur on a small box, scaled up, rather than
+              // two full-viewport 150px blurs
+              <div
+                className="absolute left-1/2 top-1/2 w-[60vmax] h-[60vmax] -translate-x-1/2 -translate-y-1/2 scale-[2] bg-cover bg-center opacity-40 blur-[40px] saturate-[2] animate-[pulse_12s_ease-in-out_infinite] will-change-transform"
+                style={{ backgroundImage: `url(${albumArtUrl})` }}
+              />
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/90" />
             
             {/* ENHANCED DIRTY LENS / ANAMORPHIC FILM GRAIN & HEAVY VIGNETTE */}
@@ -431,23 +484,22 @@ export default function ZenMode() {
             />
             <div className="absolute inset-0 bg-gradient-to-tr from-[var(--brand-mid)]/10 via-transparent to-blue-500/5 mix-blend-color-dodge pointer-events-none" />
 
-            {/* Film grain — self-contained inline noise so it renders even without custom Tailwind config, jittering like real 35mm dirt */}
-            <motion.div
-              className="absolute -inset-[10%] pointer-events-none mix-blend-overlay opacity-[0.16]"
+            {/* Film grain — self-contained inline noise, jittering like real 35mm dirt. A CSS
+                transform keyframe (compositor only) rather than a blended layer re-composited
+                every frame */}
+            <div
+              className="absolute -inset-[10%] pointer-events-none opacity-[0.07] animate-grain will-change-transform"
               style={{
                 backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
                 backgroundSize: '180px 180px',
               }}
-              animate={{ x: [0, -6, 4, -3, 0], y: [0, 4, -5, 3, 0] }}
-              transition={{ duration: 0.6, repeat: Infinity, ease: 'linear' }}
             />
 
-            {/* Anamorphic light leak / lens flare sweep */}
+            {/* Anamorphic light leak / lens flare sweep: softness from wide gradient stops, not a filter */}
             <motion.div
-              className="absolute inset-y-0 -left-1/3 w-2/3 pointer-events-none mix-blend-screen opacity-[0.12]"
+              className="absolute inset-y-0 -left-1/3 w-2/3 pointer-events-none mix-blend-screen opacity-[0.12] will-change-transform"
               style={{
-                background: 'linear-gradient(100deg, transparent 40%, rgba(255,255,255,0.5) 48%, var(--brand-mid) 50%, transparent 62%)',
-                filter: 'blur(40px)',
+                background: 'linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.35) 46%, var(--brand-mid) 52%, transparent 72%)',
               }}
               animate={{ x: ['-10%', '160%'] }}
               transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut', repeatDelay: 6 }}
@@ -491,8 +543,7 @@ export default function ZenMode() {
           {currentTrack ? (
             <>
               {/* LEFT COLUMN: ALBUM ART & METADATA */}
-              <motion.div 
-                layout 
+              <motion.div
                 className={`flex flex-col items-center justify-center transition-all duration-700 ${showLyrics ? 'w-full lg:w-5/12 max-w-xl shrink-0' : 'w-full max-w-4xl shrink-0'}`}
               >
                 <AnimatePresence mode="popLayout">
@@ -504,8 +555,7 @@ export default function ZenMode() {
                     transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
                     className="flex flex-col items-center w-full"
                   >
-                    <motion.div 
-                      layout 
+                    <div
                       className={`relative group mb-8 shadow-[0_30px_80px_-15px_rgba(0,0,0,0.95)] rounded-2xl overflow-hidden transition-all duration-700 hover:shadow-[var(--brand-mid)]/20 hover:shadow-[0_35px_90px_-10px_rgba(34,197,94,0.3)] hover:scale-[1.01] ${showLyrics ? 'w-64 h-64 md:w-80 md:h-80' : 'w-72 h-72 md:w-[380px] md:h-[380px]'}`}
                     >
                       <img 
@@ -515,7 +565,7 @@ export default function ZenMode() {
                       />
                       <div className="absolute inset-0 border border-white/10 rounded-2xl pointer-events-none transition-colors group-hover:border-white/20" />
                       <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/5 shadow-[inset_0_0_60px_rgba(0,0,0,0.6)] pointer-events-none" />
-                    </motion.div>
+                    </div>
                     
                     <div className="w-full flex flex-col items-center text-center">
                       <h1 className={`font-black text-white tracking-tighter mb-2 w-full break-words [text-wrap:balance] leading-tight px-4 drop-shadow-[0_0_25px_rgba(255,255,255,0.5)] drop-shadow-[0_4px_16px_rgba(0,0,0,0.8)] ${showLyrics ? 'text-2xl md:text-3xl lg:text-4xl' : 'text-3xl md:text-5xl lg:text-6xl'}`}>
@@ -569,17 +619,17 @@ export default function ZenMode() {
 
       {/* FIXED PLAYBACK CONTROLS */}
       <div 
-        className={`absolute bottom-[10%] z-20 left-1/2 -translate-x-1/2 flex items-center space-x-8 bg-white/[0.03] border border-white/[0.08] backdrop-blur-2xl px-8 py-4 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.5)] transition-all duration-700 ease-in-out ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'}`}
+        className={`absolute bottom-[10%] z-20 left-1/2 -translate-x-1/2 flex items-center space-x-8 bg-black/30 border border-white/[0.08] px-8 py-4 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.5)] transition-all duration-700 ease-in-out ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'}`}
       >
-        <button 
-          onClick={() => player?.previousTrack()} 
+        <button
+          onClick={previousTrack}
           className="text-white/40 hover:text-white hover:scale-110 active:scale-95 transition-all duration-300"
         >
           <SkipBack className="w-6 h-6 fill-current" />
         </button>
         
-        <button 
-          onClick={() => player?.togglePlay()} 
+        <button
+          onClick={togglePlay}
           className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl shadow-black/50"
         >
           {isPaused ? (
@@ -589,8 +639,8 @@ export default function ZenMode() {
           )}
         </button>
 
-        <button 
-          onClick={() => player?.nextTrack()} 
+        <button
+          onClick={nextTrack}
           className="text-white/40 hover:text-white hover:scale-110 active:scale-95 transition-all duration-300"
         >
           <SkipForward className="w-6 h-6 fill-current" />
@@ -598,7 +648,7 @@ export default function ZenMode() {
       </div>
 
       {/* VOLUME & LYRICS TOGGLE */}
-      <div className={`absolute bottom-8 right-8 z-30 flex items-center space-x-3 bg-neutral-950/20 border border-white/5 hover:border-white/10 hover:bg-neutral-900/40 backdrop-blur-xl px-4 py-3 rounded-xl transition-all duration-500 group ${isActive ? 'opacity-30 hover:opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+      <div className={`absolute bottom-8 right-8 z-30 flex items-center space-x-3 bg-neutral-950/40 border border-white/5 hover:border-white/10 hover:bg-neutral-900/60 px-4 py-3 rounded-xl transition-all duration-500 group ${isActive ? 'opacity-30 hover:opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
         <button 
           onClick={() => setShowLyrics(!showLyrics)} 
           className={`transition-colors ${showLyrics ? 'text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]' : 'text-white/60 hover:text-white'}`}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useUserStore } from '../../store/userStore';
-import { usePlayerStore } from '../../store/playerStore';
+import { useSlice, usePlaybackSummary } from '../../store/selectors';
+import { artUrl } from '../../utils/images';
 import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
 import { searchSpotify, playSingleTrack, checkTracksLiked, fetchSearchPage } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
@@ -38,8 +39,8 @@ const getCachedJSON = (key, defaultVal) => {
 
 export default function Browse() {
   // Added setContextMenu and setDraggedItem here
-  const { token, setLikedTracks, navigateToArtist, navigateToAlbum, setContextMenu, setDraggedItem, navigateToPlaylist } = useUserStore();
-  const { playbackState } = usePlayerStore();
+  const { token, setLikedTracks, navigateToArtist, navigateToAlbum, setContextMenu, setDraggedItem, navigateToPlaylist } = useSlice(useUserStore, ['token', 'setLikedTracks', 'navigateToArtist', 'navigateToAlbum', 'setContextMenu', 'setDraggedItem', 'navigateToPlaylist']);
+  const { currentPlayingTrack } = usePlaybackSummary();
   
   // Initialize state directly from the session cache
   const [query, setQuery] = useState(() => getCachedString('jomify_browse_query', ''));
@@ -57,7 +58,6 @@ export default function Browse() {
   const sentinelRef = useRef(null);
   const isInitialMount = useRef(true);
 
-  const currentPlayingTrack = playbackState?.track_window?.current_track;
 
   // Real-time synchronization to cache. Every write is guarded: after a few "load more" pages
   // the result set can exceed the sessionStorage quota, and an uncaught QuotaExceededError
@@ -256,7 +256,7 @@ export default function Browse() {
                   >
                     <div className="flex items-center space-x-4 truncate pr-4">
                       <div className="relative w-12 h-12 bg-neutral-800 rounded flex-shrink-0 flex items-center justify-center">
-                        <img src={track.album?.images?.[0]?.url} alt="" className="w-full h-full object-cover rounded" />
+                        <img src={artUrl(track.album?.images, 48)} alt="" width="48" height="48" loading="lazy" decoding="async" className="w-full h-full object-cover rounded" />
                         <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center rounded">
                           <Play className="w-4 h-4 text-white fill-current" />
                         </div>
@@ -331,7 +331,7 @@ export default function Browse() {
                   >
                     <div className="w-full aspect-square rounded-md overflow-hidden bg-neutral-700 mb-4">
                       {playlist.images?.[0]?.url ? (
-                        <img src={playlist.images?.[0]?.url} alt={playlist.name} className="w-full h-full object-cover" />
+                        <img src={artUrl(playlist.images, 300)} alt={playlist.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full bg-neutral-800 flex items-center justify-center">💿</div>
                       )}
@@ -378,7 +378,7 @@ export default function Browse() {
                   className="bg-neutral-800/30 p-4 rounded-xl flex flex-col items-center text-center cursor-pointer hover:bg-neutral-800/60 transition-colors"
                 >
                   <div className="w-32 h-32 bg-neutral-700 rounded-full mb-3 overflow-hidden shadow-md">
-                    {artist.images?.[0]?.url && <img src={artist.images[0].url} alt="" className="w-full h-full object-cover" />}
+                    {artist.images?.[0]?.url && <img src={artUrl(artist.images, 160)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />}
                   </div>
                   <p className="text-white text-sm font-bold truncate w-full">{artist.name}</p>
                 </div>
@@ -421,7 +421,7 @@ export default function Browse() {
                   className="bg-neutral-800/30 p-4 rounded-xl cursor-pointer hover:bg-neutral-800/60 transition-colors group"
                 >
                   <div className="aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
-                    {album.images?.[0]?.url && <img src={album.images[0].url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
+                    {album.images?.[0]?.url && <img src={artUrl(album.images, 300)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
                   </div>
                   <p className="text-white text-sm font-bold truncate w-full">{album.name}</p>
                   <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{album.artists[0].name}</p>
@@ -529,7 +529,7 @@ export default function Browse() {
                     >
                       <div className="flex items-center space-x-4 truncate pr-4">
                         <div className="relative w-10 h-10 bg-neutral-800 rounded flex-shrink-0 flex items-center justify-center">
-                          <img src={track.album?.images?.[0]?.url} alt="" className="w-full h-full object-cover rounded" />
+                          <img src={artUrl(track.album?.images, 48)} alt="" width="48" height="48" loading="lazy" decoding="async" className="w-full h-full object-cover rounded" />
                           <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center rounded">
                             <Play className="w-4 h-4 text-white fill-current" />
                           </div>
@@ -593,7 +593,7 @@ export default function Browse() {
                       >
                         <div className="w-16 h-16 rounded-md overflow-hidden bg-neutral-700 flex-shrink-0">
                           {playlist.images?.[0]?.url ? (
-                            <img src={playlist.images?.[0]?.url} alt={playlist.name} className="w-full h-full object-cover" />
+                            <img src={artUrl(playlist.images, 300)} alt={playlist.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full bg-neutral-800 flex items-center justify-center">💿</div>
                           )}
@@ -633,7 +633,7 @@ export default function Browse() {
                     className="bg-neutral-800/30 p-4 rounded-xl flex flex-col items-center text-center cursor-pointer hover:bg-neutral-800/60 transition-colors"
                   >
                     <div className="w-24 h-24 bg-neutral-700 rounded-full mb-3 overflow-hidden shadow-md">
-                      {artist.images?.[0]?.url && <img src={artist.images[0].url} alt="" className="w-full h-full object-cover" />}
+                      {artist.images?.[0]?.url && <img src={artUrl(artist.images, 160)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />}
                     </div>
                     <p className="text-white text-sm font-bold truncate w-full">{artist.name}</p>
                     <p className="text-neutral-400 text-xs uppercase tracking-wider mt-1">Artist</p>
@@ -666,7 +666,7 @@ export default function Browse() {
                     className="bg-neutral-800/30 p-4 rounded-xl cursor-pointer hover:bg-neutral-800/60 transition-colors group"
                   >
                     <div className="aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
-                      {album.images?.[0]?.url && <img src={album.images?.[0]?.url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
+                      {album.images?.[0]?.url && <img src={artUrl(album.images, 300)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
                     </div>
                     <p className="text-white text-sm font-bold truncate w-full">{album.name}</p>
                     <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{album.artists[0].name}</p>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import Sidebar from './Sidebar';
 import PlayerBar from './PlayerBar';
 import QueuePanel from './QueuePanel';
@@ -8,8 +8,11 @@ import SyncConflictDialog from '../components/SyncConflictDialog';
 import { ChevronLeft, AlertTriangle, CloudOff } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { useSyncStore } from '../store/syncStore';
-import ZenMode from '../views/ZenMode/ZenMode';
 import UpdatePrompt from '../pwa/registerServiceWorker';
+import { useSlice } from '../store/selectors';
+
+// Desktop-only and heavy; loaded the first time it is opened
+const ZenMode = lazy(() => import('../views/ZenMode/ZenMode'));
 import { shouldRegisterServiceWorker } from '../pwa/env';
 import BottomTabBar from './BottomTabBar';
 import MiniPlayer from './MiniPlayer';
@@ -26,7 +29,7 @@ const registerServiceWorker = shouldRegisterServiceWorker();
 const SYNC_FAILURE_BANNER_AFTER_MS = 5 * 60 * 1000;
 
 export default function MainLayout({ children }) {
-  const { goBack, viewHistory, apiCooldownUntil, setApiCooldown } = useUserStore();
+  const { goBack, viewHistory, apiCooldownUntil, setApiCooldown, isZenMode } = useSlice(useUserStore, ['goBack', 'viewHistory', 'apiCooldownUntil', 'setApiCooldown', 'isZenMode']);
   const syncStatus = useSyncStore((s) => s.status);
   const syncFailingSince = useSyncStore((s) => s.failingSince);
   const syncErrorMessage = useSyncStore((s) => s.errorMessage);
@@ -70,10 +73,13 @@ export default function MainLayout({ children }) {
   return (
     <div className="flex flex-col h-dvh pt-[env(safe-area-inset-top)] bg-transparent overflow-hidden font-sans">
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar />
+        {/* Not mounted on phones: a hidden sidebar still built the folder tree and fetched every thumbnail */}
+        {!isMobile && <Sidebar />}
 
         <main
-          className="flex-1 overflow-y-auto [scrollbar-gutter:stable] backdrop-blur-sm md:rounded-lg md:my-2 md:mr-2 relative shadow-2xl flex flex-col"
+          // Blur and a viewport-sized shadow on the element that scrolls cost a repaint per frame;
+          // phones get neither, desktop keeps the frosted look
+          className="flex-1 overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable] md:backdrop-blur-sm md:rounded-lg md:my-2 md:mr-2 relative md:shadow-2xl flex flex-col"
           style={{ '--top-bar-h': `${bannerHeight + backBarHeight}px` }}
         >
           {/* One sticky header, so banners and the back button stack instead of all pinning to
@@ -136,7 +142,7 @@ export default function MainLayout({ children }) {
       <ContextMenu />
       <ToastHost />
       <SyncConflictDialog />
-      <ZenMode />
+      {isZenMode && <Suspense fallback={null}><ZenMode /></Suspense>}
       {registerServiceWorker && <UpdatePrompt />}
     </div>
   );

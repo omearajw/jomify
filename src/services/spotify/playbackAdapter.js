@@ -53,6 +53,10 @@ export function toSdkShape(webState, prev = null) {
   const item = webState.item || null;
   const position = webState.progress_ms ?? 0;
   const uid = item ? nextUid(prev, item, position) : null;
+  // Same play as last poll: hand back the same track object, so components that select the
+  // current track don't re-render every few seconds for nothing
+  const prevTrack = prev?.track_window?.current_track;
+  const currentTrack = uid && prevTrack?.uid === uid ? prevTrack : toSdkTrack(item, uid);
   return {
     paused: !webState.is_playing,
     position,
@@ -61,7 +65,7 @@ export function toSdkShape(webState, prev = null) {
     repeat_mode: REPEAT_MODES[webState.repeat_state] ?? 0,
     context: webState.context ? { uri: webState.context.uri, metadata: {} } : null,
     timestamp: webState.timestamp ?? Date.now(),
-    track_window: { current_track: toSdkTrack(item, uid), previous_tracks: [], next_tracks: [] },
+    track_window: { current_track: currentTrack, previous_tracks: [], next_tracks: [] },
     remote: true
   };
 }

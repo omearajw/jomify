@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Home, Library, Disc3, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus, FolderPlus, Users } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Home, Library, Disc3, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus, FolderPlus, Users, UserPlus } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { addTracksToPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../services/spotify/api';
 import PlaylistFormDialog from '../components/PlaylistFormDialog';
@@ -9,8 +9,10 @@ import { downloadBackup, parseBackup, applyBackup } from '../sync/backup';
 import { useSyncStore } from '../store/syncStore';
 import { isSafeToHardLogout } from '../sync/engine';
 import { clearMeta } from '../sync/meta';
-import { getUnfolderedItems, buildFolderTree, childrenOf, folderPath, isDescendant } from '../utils/library';
+import { getUnfolderedItems, buildFolderTree, folderPath, isDescendant, byOrder } from '../utils/library';
 import { rowButtonProps } from '../utils/a11y';
+import { useSlice } from '../store/selectors';
+import { artUrl } from '../utils/images';
 
 const TAGLINES = [
   "All my homies HATE Spotify!",
@@ -71,7 +73,7 @@ function ItemRow({ item, parentFolderId, indent, size = 6, ctx }) {
       className={`w-full text-left pr-2 py-1.5 transition-colors rounded-md flex items-center group cursor-grab active:cursor-grabbing ${isDragTarget ? 'bg-[var(--brand-mid)]/20 border border-[var(--brand-mid)] text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'}`}
     >
       <div className={`${size === 8 ? 'w-8 h-8' : 'w-6 h-6'} rounded bg-neutral-800 overflow-hidden mr-3 shrink-0 shadow-sm pointer-events-none`}>
-        {item.images?.[0]?.url ? <img src={item.images[0].url} draggable="false" alt="" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
+        {item.images?.[0]?.url ? <img src={artUrl(item.images, 32)} draggable="false" alt="" width="32" height="32" loading="lazy" decoding="async" className="w-full h-full object-cover pointer-events-none" /> : <span className="text-[10px] flex items-center justify-center w-full h-full opacity-50">💿</span>}
       </div>
       <span className="truncate pointer-events-none">{item.name}</span>
     </button>
@@ -79,9 +81,9 @@ function ItemRow({ item, parentFolderId, indent, size = 6, ctx }) {
 }
 
 function FolderRow({ folder, depth, ctx }) {
-  const { customFolders, allItems, expandedFolders, draggedItem, dropTarget } = ctx;
+  const { customFolders, itemsById, expandedFolders, draggedItem, dropTarget } = ctx;
   const isExpanded = expandedFolders.includes(folder.id);
-  const children = childrenOf(customFolders, folder.id);
+  const children = ctx.childrenOf(folder.id);
   const target = dropTarget?.id === folder.id ? dropTarget.position : null;
   const forbidden = draggedItem?.type === 'folder'
     && (draggedItem.id === folder.id || isDescendant(customFolders, folder.id, draggedItem.id));
@@ -130,7 +132,7 @@ function FolderRow({ folder, depth, ctx }) {
         <div role="group" className="space-y-1 mt-1 mb-2">
           {children.map(child => <FolderRow key={child.id} folder={child} depth={depth + 1} ctx={ctx} />)}
           {folder.playlistIds.map(id => {
-            const item = allItems.find(p => p.id === id);
+            const item = itemsById.get(id);
             if (!item) return null;
             return <ItemRow key={item.id} item={item} parentFolderId={folder.id} indent={indent + 28} ctx={ctx} />;
           })}
@@ -146,7 +148,12 @@ export default function Sidebar() {
     navigateToPlaylist, customFolders, createFolder, activeFolderId, setActiveFolderId, requestFolderManage,
     draggedItem, setDraggedItem, reorderFolders, moveFolder,
     addPlaylistToFolder, removePlaylistFromFolder, reorderPlaylistInFolder, setContextMenu, setPlaylists, deleteFolder
-  } = useUserStore();
+  } = useSlice(useUserStore, [
+    'token', 'profile', 'currentView', 'setCurrentView', 'logout', 'playlists', 'albums', 'navigateToAlbum',
+    'navigateToPlaylist', 'customFolders', 'createFolder', 'activeFolderId', 'setActiveFolderId', 'requestFolderManage',
+    'draggedItem', 'setDraggedItem', 'reorderFolders', 'moveFolder',
+    'addPlaylistToFolder', 'removePlaylistFromFolder', 'reorderPlaylistInFolder', 'setContextMenu', 'setPlaylists', 'deleteFolder'
+  ]);
   
   // Folder isolation lives in the store so the sidebar and the Library view agree, the global
   // Back button can restore it, and a pinned folder on Home can open it. These aliases keep the
@@ -162,7 +169,21 @@ export default function Sidebar() {
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 
   const activeFolder = customFolders.find(f => f.id === isolatedFolderId);
-  const allItems = [...playlists, ...(albums || [])];
+  const allItems = useMemo(() => [...playlists, ...(albums || [])], [playlists, albums]);
+  const itemsById = useMemo(() => new Map(allItems.map(item => [item.id, item])), [allItems]);
+  const byParent = useMemo(() => {
+    const map = new Map();
+    for (const folder of customFolders) {
+      const key = folder.parentId ?? null;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(folder);
+    }
+    for (const list of map.values()) list.sort(byOrder);
+    return map;
+  }, [customFolders]);
+  const childrenOfMemo = (parentId) => byParent.get(parentId ?? null) || [];
+  // Roots via the tree builder, not byParent(null): orphans and cycle members surface as roots
+  const rootFolders = useMemo(() => buildFolderTree(customFolders).roots, [customFolders]);
   const { playlists: unfolderedPlaylists, albums: unfolderedAlbums } = getUnfolderedItems(playlists, albums, customFolders);
   
   const [tagline] = useState(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)]);
@@ -427,20 +448,21 @@ export default function Sidebar() {
 
   // Everything the module-scope rows need from this render
   const rowCtx = {
-    customFolders, allItems, expandedFolders, draggedItem, dropTarget, dragOverId,
+    customFolders, itemsById, childrenOf: childrenOfMemo, expandedFolders, draggedItem, dropTarget, dragOverId,
     toggleFolderExpand, handleDragStart, handleDragOver, handleDragLeave, handleDragEnd,
     handleFolderDragOver, handleFolderDragLeave, handleFolderDrop, handleDropOnPlaylist,
     setIsolatedFolderId, openManage, openFolderMenu, setContextMenu, navigateToAlbum, navigateToPlaylist
   };
 
   const activePath = activeFolder ? folderPath(customFolders, activeFolder.id) : [];
-  const activeChildren = activeFolder ? childrenOf(customFolders, activeFolder.id) : [];
+  const activeChildren = activeFolder ? childrenOfMemo(activeFolder.id) : [];
 
   const navItems = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'browse', label: 'Browse', icon: Disc3 },
     { id: 'library', label: 'Your Library', icon: Library },
     { id: 'sevens', label: 'Sevens', icon: Users },
+    { id: 'friends', label: 'Friends', icon: UserPlus },
   ];
 
   return (
@@ -507,7 +529,7 @@ export default function Sidebar() {
             </div>
             <div className={`space-y-1 ${activeChildren.length ? 'mt-2 pt-2 border-t border-white/5' : ''}`}>
               {activeFolder.playlistIds.map(id => {
-                const item = allItems.find(p => p.id === id);
+                const item = itemsById.get(id);
                 if (!item) return null;
                 return <ItemRow key={item.id} item={item} parentFolderId={activeFolder.id} indent={16} ctx={rowCtx} />;
               })}
@@ -524,14 +546,20 @@ export default function Sidebar() {
             </div>
 
             <div role="tree" aria-label="Folders" className="space-y-1">
-              {buildFolderTree(customFolders).roots.map(node => (
+              {rootFolders.map(node => (
                 <FolderRow key={node.folder.id} folder={node.folder} depth={0} ctx={rowCtx} />
               ))}
             </div>
 
             <div className="pt-2 space-y-1">
-              {unfolderedPlaylists.map(pl => <ItemRow key={pl.id} item={pl} parentFolderId={null} indent={8} size={8} ctx={rowCtx} />)}
+              {unfolderedPlaylists.filter(pl => pl.owner?.id !== 'spotify').map(pl => <ItemRow key={pl.id} item={pl} parentFolderId={null} indent={8} size={8} ctx={rowCtx} />)}
               {unfolderedAlbums.map(album => <ItemRow key={album.id} item={album} parentFolderId={null} indent={8} size={8} ctx={rowCtx} />)}
+              {unfolderedPlaylists.some(pl => pl.owner?.id === 'spotify') && (
+                <>
+                  <p className="px-2 pt-4 pb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-500">Made for you</p>
+                  {unfolderedPlaylists.filter(pl => pl.owner?.id === 'spotify').map(pl => <ItemRow key={pl.id} item={pl} parentFolderId={null} indent={8} size={8} ctx={rowCtx} />)}
+                </>
+              )}
             </div>
           </div>
         )}

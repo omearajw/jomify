@@ -59,6 +59,7 @@ export function storeToDoc(state, meta) {
   };
   doc.stagedSeven = { v: state.stagedSeven || [], t: meta.stagedSevenT ?? 0 };
   doc.unaddedCheckPlaylists = { v: state.unaddedCheckPlaylists || [], t: meta.unaddedT ?? 0 };
+  doc.friends = { v: state.friends || [], t: meta.friendsT ?? 0 };
 
   for (const [playlistId, settings] of Object.entries(state.playlistSortSettings || {})) {
     doc.playlistSortSettings[playlistId] = { v: settings, t: meta.sortT?.[playlistId] ?? 0 };
@@ -108,6 +109,7 @@ export function docToStore(doc) {
     sevensSeeded: Boolean(doc.sevens?.v?.seeded),
     stagedSeven: doc.stagedSeven?.v ?? [],
     unaddedCheckPlaylists: doc.unaddedCheckPlaylists?.v ?? [],
+    friends: Array.isArray(doc.friends?.v) ? doc.friends.v : [],
     playlistSortSettings
   };
 }
@@ -144,7 +146,8 @@ export function docToMetaClocks(doc, meta) {
     sortT,
     sevensT: doc.sevens?.t ?? 0,
     stagedSevenT: doc.stagedSeven?.t ?? 0,
-    unaddedT: doc.unaddedCheckPlaylists?.t ?? 0
+    unaddedT: doc.unaddedCheckPlaylists?.t ?? 0,
+    friendsT: doc.friends?.t ?? 0
   };
 }
 
@@ -154,5 +157,5 @@ export function docHasContent(doc) {
   if (!doc) return false;
   const liveFolders = Object.values(doc.folders || {}).filter(isFolderLive).length;
   const livePins = Object.values(doc.pins || {}).filter(isPinLive).length;
-  return liveFolders > 0 || livePins > 0 || (doc.sevens?.v?.list?.length ?? 0) > 0;
+  return liveFolders > 0 || livePins > 0 || (doc.sevens?.v?.list?.length ?? 0) > 0 || (doc.friends?.v?.length ?? 0) > 0;
 }
