@@ -306,7 +306,9 @@ export default function PlaylistView() {
           setPlaylist(data);
           checkLikesForChunk(data.tracks.items);
 
-          if (data.tracks.next && !isFetchingMore.current) {
+          // Custom order pages in as you scroll (see the sentinel below); a sorted view needs
+          // every track to sort honestly, so it still loads the lot
+          if (data.tracks.next && !isFetchingMore.current && sortBy !== 'custom') {
             loadRestOfTracks(data.tracks.next);
           }
         })
@@ -318,9 +320,10 @@ export default function PlaylistView() {
   // --- BACKGROUND STREAMING ---
   // A declaration so the load effect above can call it: declarations hoist, and it only runs
   // after mount anyway
-  async function loadRestOfTracks(initialNextUrl) {
+  async function loadRestOfTracks(initialNextUrl, maxPages = Infinity) {
     isFetchingMore.current = true;
     let nextUrl = initialNextUrl;
+    let pagesLoaded = 0;
 
     while (nextUrl) {
       try {
@@ -345,7 +348,8 @@ export default function PlaylistView() {
         });
         
         checkLikesForChunk(nextData.items);
-        nextUrl = nextData.next; 
+        nextUrl = nextData.next;
+        if (++pagesLoaded >= maxPages) break;
       } catch {
         break;
       }
@@ -477,15 +481,26 @@ export default function PlaylistView() {
 
   // Reveal the next page of rows when the sentinel below the list scrolls near the viewport
   const totalRows = sortedTracks.length;
+  const nextPageUrl = playlist?.tracks?.next || null;
   useEffect(() => {
     const el = sentinelRef.current;
-    if (!el || visibleCount >= totalRows) return undefined;
+    if (!el || (visibleCount >= totalRows && !nextPageUrl)) return undefined;
     const observer = new IntersectionObserver((entries) => {
-      if (entries.some(e => e.isIntersecting)) setVisibleCount(n => Math.min(n + ROW_PAGE, totalRows));
+      if (!entries.some(e => e.isIntersecting)) return;
+      if (visibleCount < totalRows) setVisibleCount(n => Math.min(n + ROW_PAGE, totalRows));
+      else if (nextPageUrl && !isFetchingMore.current) loadRestOfTracks(nextPageUrl, 1);
     }, { rootMargin: '800px 0px' });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [visibleCount, totalRows]);
+  // loadRestOfTracks is a hoisted declaration that only reads the token; listing it would re-run this every render
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleCount, totalRows, nextPageUrl]);
+
+  // Switching to a sorted view while pages are still unloaded: fetch the rest now
+  useEffect(() => {
+    if (sortBy !== 'custom' && nextPageUrl && !isFetchingMore.current) loadRestOfTracks(nextPageUrl);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortBy, nextPageUrl]);
 
   // Shuffle play: switch shuffle on, then start somewhere random so it doesn't always open on
   // the first track like a plain Play with shuffle would
@@ -896,9 +911,9 @@ export default function PlaylistView() {
             </div>
           );
         })}
-        {visibleCount < totalRows && (
+        {(visibleCount < totalRows || nextPageUrl) && (
           <div ref={sentinelRef} className="py-6 text-center text-xs text-neutral-500">
-            {totalRows - visibleCount} more…
+            {Math.max(0, (playlist.tracks.total || totalRows) - Math.min(visibleCount, totalRows))} more…
           </div>
         )}
       </div>

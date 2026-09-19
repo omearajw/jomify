@@ -128,6 +128,7 @@ function ManageCard({ item, action, onClick }) {
 }
 
 const subfolderLabel = (count) => (count ? ` · ${count} folder${count === 1 ? '' : 's'}` : '');
+const itemLabel = (count) => `${count} item${count === 1 ? '' : 's'}`;
 
 // Collapsed folder tile. Module scope for the same reason as ItemCard above.
 function FolderCard({ folder, ctx }) {
@@ -166,7 +167,7 @@ function FolderCard({ folder, ctx }) {
         <Folder className="w-4 h-4 mr-2 text-brand-gradient fill-current shrink-0" />
         <span className="truncate">{folder.name}</span>
       </h3>
-      <p className="text-xs text-neutral-400 truncate mt-auto pointer-events-none">{folder.playlistIds.length} items{subfolderLabel(subfolders)}</p>
+      <p className="text-xs text-neutral-400 truncate mt-auto pointer-events-none">{itemLabel(folder.playlistIds.length)}{subfolderLabel(subfolders)}</p>
     </div>
   );
 }
@@ -184,7 +185,7 @@ function FolderPanel({ folder, ctx }) {
           <Folder className="w-8 h-8 text-brand-gradient fill-current mr-4" />
           <div>
             <h3 className="text-2xl font-extrabold text-white tracking-tight group-hover:text-green-400 transition-colors">{folder.name}</h3>
-            <p className="text-sm text-neutral-400 font-medium">{folder.playlistIds.length} items inside{subfolderLabel(children.length)}</p>
+            <p className="text-sm text-neutral-400 font-medium">{itemLabel(folder.playlistIds.length)} inside{subfolderLabel(children.length)}</p>
           </div>
         </div>
         <button onClick={(e) => ctx.toggleFolderExpand(e, folder.id)} className="w-10 h-10 bg-black/40 hover:bg-black text-white rounded-full flex items-center justify-center transition-all">

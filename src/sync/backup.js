@@ -1,5 +1,8 @@
 import { useUserStore } from '../store/userStore';
 import { repairFolderTree } from '../utils/library';
+// The clock store, not the engine: a restore must tell sync what it removed, or every folder
+// and pin missing from the backup comes straight back from the server on the next pull
+import { markFoldersDeleted, markPinsDeleted } from './meta';
 
 // A deliberately dumb, self-contained backup of everything Jomify keeps locally that isn't a
 // secret. This file must not import the sync engine or the merge function: its whole purpose is
@@ -154,6 +157,20 @@ export function applyBackup(parsed) {
   // A backup taken before a folder was deleted elsewhere can carry children of that folder
   if (Array.isArray(patch.customFolders)) {
     patch.customFolders = repairFolderTree(patch.customFolders).folders;
+  }
+
+  // Tombstone whatever the restore drops, so the removal reaches the other devices too
+  const current = useUserStore.getState();
+  const now = Date.now();
+  if (Array.isArray(patch.customFolders)) {
+    const kept = new Set(patch.customFolders.map(f => f.id));
+    const removed = (current.customFolders || []).map(f => f.id).filter(id => !kept.has(id));
+    if (removed.length) markFoldersDeleted(removed, now);
+  }
+  if (Array.isArray(patch.pinnedItems)) {
+    const kept = new Set(patch.pinnedItems.map(p => p.id));
+    const removed = (current.pinnedItems || []).map(p => p.id).filter(id => !kept.has(id));
+    if (removed.length) markPinsDeleted(removed, now);
   }
 
   useUserStore.setState(patch);

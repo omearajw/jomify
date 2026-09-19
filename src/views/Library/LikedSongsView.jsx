@@ -40,9 +40,7 @@ export default function LikedSongsView() {
         data.items.forEach(item => { if (item.track?.id) updates[item.track.id] = true; });
         setLikedTracks(updates);
 
-        if (data.next && !isFetchingMore.current) {
-          loadRestOfTracks(data.next);
-        }
+        // The rest pages in as you scroll (see the sentinel below)
       }).catch(console.error);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -50,10 +48,11 @@ export default function LikedSongsView() {
 
   // A function declaration rather than a const, so the effect above can reference it without
   // a use-before-declare: declarations hoist, and it only ever runs after mount anyway.
-  async function loadRestOfTracks(initialNextUrl) {
+  async function loadRestOfTracks(initialNextUrl, maxPages = Infinity) {
     isFetchingMore.current = true;
     setLoadError('');
     let nextUrl = initialNextUrl;
+    let pagesLoaded = 0;
 
     while (nextUrl) {
       try {
@@ -72,6 +71,7 @@ export default function LikedSongsView() {
         setLikedTracks(updates);
         
         nextUrl = nextData.next;
+        if (++pagesLoaded >= maxPages) break;
       } catch (err) {
         // Previously a silent break: the list stopped partway and the header still claimed the
         // full total, with no way to tell and nothing to click.
@@ -104,15 +104,19 @@ export default function LikedSongsView() {
   };
 
   const totalRows = trackData?.items.length ?? 0;
+  const nextPageUrl = trackData?.next || null;
   useEffect(() => {
     const el = sentinelRef.current;
-    if (!el || visibleCount >= totalRows) return undefined;
+    if (!el || (visibleCount >= totalRows && !nextPageUrl)) return undefined;
     const observer = new IntersectionObserver((entries) => {
-      if (entries.some(e => e.isIntersecting)) setVisibleCount(n => Math.min(n + ROW_PAGE, totalRows));
+      if (!entries.some(e => e.isIntersecting)) return;
+      if (visibleCount < totalRows) setVisibleCount(n => Math.min(n + ROW_PAGE, totalRows));
+      else if (nextPageUrl && !isFetchingMore.current) loadRestOfTracks(nextPageUrl, 1);
     }, { rootMargin: '800px 0px' });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [visibleCount, totalRows]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleCount, totalRows, nextPageUrl]);
 
   if (!trackData) {
     return <p className="text-neutral-400 animate-pulse text-lg mt-8">Loading your collection...</p>;
@@ -208,9 +212,9 @@ export default function LikedSongsView() {
             </div>
           );
         })}
-        {visibleCount < totalRows && (
+        {(visibleCount < totalRows || nextPageUrl) && (
           <div ref={sentinelRef} className="py-6 text-center text-xs text-neutral-500">
-            {totalRows - visibleCount} more…
+            {Math.max(0, (trackData.total || totalRows) - Math.min(visibleCount, totalRows))} more…
           </div>
         )}
       </div>

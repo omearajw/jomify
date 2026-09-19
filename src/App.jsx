@@ -9,7 +9,7 @@ import Library from './views/Library/Library';
 import PlaylistView from './views/Library/PlaylistView';
 import { startPlaybackController } from './services/spotify/playbackController';
 import { installHistorySync, syncSheetWithHistory } from './pwa/historySync';
-import { isMobileViewport } from './hooks/useMediaQuery';
+import { isMobileViewport, useIsMobile } from './hooks/useMediaQuery';
 import Artist from './views/Artist/Artist';
 import Album from './views/Album/Album';
 import LikedSongsView from './views/Library/LikedSongsView';
@@ -26,7 +26,7 @@ const UserView = lazy(() => import('./views/User/UserView'));
 
 const ViewFallback = () => <p className="text-neutral-400 animate-pulse text-lg mt-8">Loading…</p>;
 import { childrenOf } from './utils/library';
-import { BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
+import { BarChart3, ChevronDown, ChevronUp, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // The Sevens these used to be hardcoded as. They are migrated into the configurable
@@ -51,6 +51,7 @@ function App() {
   ]);
   
   const isAuthenticating = useRef(false);
+  const isMobile = useIsMobile();
   const hydratedPinnedIds = useRef(new Set());
 
   // --- STATS & SEVENS STATE ---
@@ -66,13 +67,12 @@ function App() {
     if (!token || !profile?.id) return;
     let cancelled = false;
 
-    syncEngine.start(profile.id).finally(() => {
-      if (cancelled) return;
+    syncEngine.start(profile.id).then((synced) => {
+      if (cancelled || !synced) return;
 
-      // The legacy Sevens seed is deliberately deferred until the first sync has settled. On a
-      // fresh device, seeding first would recreate the old hardcoded Sevens and push them up,
-      // resurrecting ones that had been deliberately removed. If sync is unavailable, this still
-      // runs -- seedLegacySevens is itself guarded by the sevensSeeded flag.
+      // The legacy Sevens seed runs only after a SUCCESSFUL first sync. Seeding after a failed
+      // one used to stamp the two hardcoded Sevens with a fresh clock on a device that had never
+      // seen the server, and they then won the merge against the real configuration.
       const legacyPool = localStorage.getItem('jomify_pool_playlist_id') || '';
       seedLegacySevens(LEGACY_SEVEN_PLAYLIST_IDS, legacyPool);
     });
@@ -94,8 +94,13 @@ function App() {
              setRefreshToken(data.refresh_token);
           }
         } catch (err) {
-           console.error("Critical session expiration. Forcing re-login.", err);
-           logout(); 
+          if (err?.definitive) {
+            console.error("Spotify rejected the refresh token. Forcing re-login.", err);
+            logout();
+          } else {
+            // A dropped connection on a phone used to sign the user out here
+            console.warn("Token refresh failed; will retry on the next heartbeat.", err?.message || err);
+          }
         }
       }
     };
@@ -122,6 +127,7 @@ function App() {
       syncSheetWithHistory((s) => s.isNowPlayingOpen, () => setNowPlayingOpen(false), { tag: 'now-playing', when: isMobileViewport }),
       syncSheetWithHistory((s) => s.isQueueOpen, () => setQueueOpen(false), { tag: 'queue', when: isMobileViewport }),
       syncSheetWithHistory((s) => s.isDevicePickerOpen, () => setDevicePickerOpen(false), { tag: 'devices' }),
+      syncSheetWithHistory((s) => s.isAccountOpen, () => useUserStore.getState().setAccountOpen(false), { tag: 'account' }),
       syncSheetWithHistory((s) => Boolean(s.contextMenu), () => setContextMenu(null), { tag: 'menu', when: isMobileViewport })
     ];
     return () => { unsubscribes.forEach((fn) => fn()); stop(); };
@@ -402,6 +408,16 @@ function App() {
             {currentView === 'home' && (
               <div className="flex flex-col items-start relative z-10 w-full max-w-[1600px] animate-fade-in">
                 
+                {/* Phones have no sidebar footer: sync status, backup and disconnect live behind this */}
+                <button
+                  type="button"
+                  onClick={() => useUserStore.getState().setAccountOpen(true)}
+                  aria-label="Account and sync"
+                  className="md:hidden absolute top-0 right-0 w-11 h-11 flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-neutral-300 active:bg-white/10"
+                >
+                  <Settings className="w-5 h-5" />
+                </button>
+
                 {/* 1. Header & Stats Drawer Toggle */}
                 <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6 mb-8 md:mb-12 w-full">
                   {profile.images?.length > 0 ? (
@@ -571,7 +587,7 @@ function App() {
                       <p className="font-medium text-lg text-white text-center">Right-click (or long-press) playlists and albums to pin them to your home page.</p>
                     </div>
                   ) : (
-                    <motion.div layout className="flex flex-wrap justify-center items-center gap-8 md:gap-14 py-0 px-4">
+                    <motion.div layout={!isMobile} className="flex flex-wrap justify-center items-center gap-8 md:gap-14 py-0 px-4">
                       <AnimatePresence mode="popLayout">
                         {pinnedItems.map((pinned, i) => {
                           let item, onClick, imageNode, title, subtitle;
@@ -620,16 +636,16 @@ function App() {
                             title = item.name;
                             {
                               const subfolders = childrenOf(customFolders, item.id).length;
-                              subtitle = `Folder • ${item.playlistIds.length} items${subfolders ? ` · ${subfolders} folder${subfolders === 1 ? '' : 's'}` : ''}`;
+                              subtitle = `Folder • ${item.playlistIds.length} item${item.playlistIds.length === 1 ? '' : 's'}${subfolders ? ` · ${subfolders} folder${subfolders === 1 ? '' : 's'}` : ''}`;
                             }
                           }
 
                           const yOffset = count > 2 ? (i % 2 === 0 ? -15 : 15) : 0; 
 
                           return (
-                            <motion.div 
-                              layout
-                              key={`${pinned.type}-${pinned.id}`} 
+                            <motion.div
+                              layout={!isMobile}
+                              key={`${pinned.type}-${pinned.id}`}
                               initial={{ opacity: 0, scale: 0.8, y: 0 }}
                               animate={{ opacity: 1, scale: 1, y: yOffset }}
                               exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}
@@ -651,7 +667,7 @@ function App() {
                                   y: e.pageY
                                 });
                               }}
-                              className={`${cardSizeClass} rounded-[2rem] bg-white/[0.02] border border-white/[0.05] hover:border-white/20 hover:bg-white/[0.04] backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.3)] hover:shadow-[0_16px_48px_rgba(0,0,0,0.5)] cursor-pointer group flex flex-col relative transition-colors`}
+                              className={`${cardSizeClass} rounded-[2rem] bg-neutral-900/60 md:bg-white/[0.02] border border-white/[0.05] hover:border-white/20 hover:bg-white/[0.04] md:backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.3)] hover:shadow-[0_16px_48px_rgba(0,0,0,0.5)] cursor-pointer group flex flex-col relative transition-colors`}
                             >
                               <div className="relative aspect-square w-full mb-5 rounded-2xl overflow-hidden bg-black/40 flex items-center justify-center shadow-inner border border-white/5">
                                 {imageNode}

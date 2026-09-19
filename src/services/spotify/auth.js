@@ -86,7 +86,14 @@ export async function refreshAccessToken(refreshToken) {
     body: params
   });
 
-  if (!result.ok) throw new Error("Failed to refresh token");
+  if (!result.ok) {
+    // 400/401 mean Spotify rejected the grant (revoked, or a refresh token already rotated
+    // away); anything else is Spotify or the network having a moment
+    const err = new Error(`Failed to refresh token (${result.status})`);
+    err.status = result.status;
+    err.definitive = result.status === 400 || result.status === 401;
+    throw err;
+  }
   return await result.json();
 }
 

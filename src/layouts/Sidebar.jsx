@@ -1,14 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Home, Library, Disc3, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus, FolderPlus, Users, UserPlus } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { addTracksToPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../services/spotify/api';
 import PlaylistFormDialog from '../components/PlaylistFormDialog';
 import FolderFormDialog from '../components/FolderFormDialog';
-import ConfirmDialog from '../components/ConfirmDialog';
-import { downloadBackup, parseBackup, applyBackup } from '../sync/backup';
-import { useSyncStore } from '../store/syncStore';
-import { isSafeToHardLogout } from '../sync/engine';
-import { clearMeta } from '../sync/meta';
+import AccountPanel from '../components/AccountPanel';
 import { getUnfolderedItems, buildFolderTree, folderPath, isDescendant, byOrder } from '../utils/library';
 import { rowButtonProps } from '../utils/a11y';
 import { useSlice } from '../store/selectors';
@@ -28,16 +24,6 @@ const TAGLINES = [
   "The way it should be done.",
   "Spotify... shitify"
 ];
-
-function formatAgo(timestamp) {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
 
 // Where a folder drag would land on a row: the top and bottom quarters insert beside it, the
 // middle drops inside. Everything else (playlists, albums, tracks) always goes inside.
@@ -144,12 +130,12 @@ function FolderRow({ folder, depth, ctx }) {
 
 export default function Sidebar() {
   const {
-    token, profile, currentView, setCurrentView, logout, playlists, albums, navigateToAlbum,
+    token, profile, currentView, setCurrentView, playlists, albums, navigateToAlbum,
     navigateToPlaylist, customFolders, createFolder, activeFolderId, setActiveFolderId, requestFolderManage,
     draggedItem, setDraggedItem, reorderFolders, moveFolder,
     addPlaylistToFolder, removePlaylistFromFolder, reorderPlaylistInFolder, setContextMenu, setPlaylists, deleteFolder
   } = useSlice(useUserStore, [
-    'token', 'profile', 'currentView', 'setCurrentView', 'logout', 'playlists', 'albums', 'navigateToAlbum',
+    'token', 'profile', 'currentView', 'setCurrentView', 'playlists', 'albums', 'navigateToAlbum',
     'navigateToPlaylist', 'customFolders', 'createFolder', 'activeFolderId', 'setActiveFolderId', 'requestFolderManage',
     'draggedItem', 'setDraggedItem', 'reorderFolders', 'moveFolder',
     'addPlaylistToFolder', 'removePlaylistFromFolder', 'reorderPlaylistInFolder', 'setContextMenu', 'setPlaylists', 'deleteFolder'
@@ -187,88 +173,6 @@ export default function Sidebar() {
   const { playlists: unfolderedPlaylists, albums: unfolderedAlbums } = getUnfolderedItems(playlists, albums, customFolders);
   
   const [tagline] = useState(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)]);
-
-  // --- SYNC STATUS ---
-  // Deliberately low-key, but never absent: a CORS or config failure is otherwise completely
-  // silent, and the worst outcome is believing your folders are backed up when they are not.
-  const syncStatus = useSyncStore((s) => s.status);
-  const lastSyncedAt = useSyncStore((s) => s.lastSyncedAt);
-  const [, forceTick] = useState(0);
-
-  useEffect(() => {
-    // Keeps "Synced 2m ago" honest without re-rendering the sidebar constantly
-    const id = setInterval(() => forceTick(n => n + 1), 30000);
-    return () => clearInterval(id);
-  }, []);
-
-  const syncLabel = (() => {
-    switch (syncStatus) {
-      case 'pulling':
-      case 'pushing': return { text: 'Syncing…', isError: false };
-      case 'offline': return { text: 'Offline — will sync when reconnected', isError: false };
-      case 'error': return { text: 'Sync paused — retrying', isError: true };
-      case 'disabled': return { text: 'Sync is off', isError: true };
-      default:
-        if (!lastSyncedAt) return { text: 'Not synced yet', isError: false };
-        return { text: `Synced ${formatAgo(lastSyncedAt)}`, isError: false };
-    }
-  })();
-
-  // --- LOCAL BACKUP / RESTORE ---
-  const backupFileInputRef = useRef(null);
-  const [backupMessage, setBackupMessage] = useState(null);
-  const [pendingRestore, setPendingRestore] = useState(null);
-
-  const flashBackupMessage = (text, isError = false) => {
-    setBackupMessage({ text, isError });
-    setTimeout(() => setBackupMessage(null), 6000);
-  };
-
-  const handleExportBackup = () => {
-    try {
-      const backup = downloadBackup();
-      flashBackupMessage(`Saved ${backup.counts.folders} folders and ${backup.counts.pins} pins.`);
-    } catch (err) {
-      console.error('Backup failed:', err);
-      flashBackupMessage('Backup failed. See the console for details.', true);
-    }
-  };
-
-  const handleRestoreFileChosen = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // Let the same file be picked again after a cancel
-    if (!file) return;
-
-    try {
-      setPendingRestore(parseBackup(await file.text()));
-    } catch (err) {
-      flashBackupMessage(err.message, true);
-    }
-  };
-
-  // --- DISCONNECT ---
-  // A deliberate disconnect clears this device's copy of the synced data, but only once that
-  // data is demonstrably on the server. Note that the involuntary logout() calls in App.jsx --
-  // on a failed token refresh or an expiry -- stay soft, because wiping folders over a transient
-  // network blip is exactly the bug commit ea508a9 fixed.
-  const handleDisconnect = () => {
-    const canHardClear = isSafeToHardLogout();
-    if (canHardClear) clearMeta();
-    logout({ hard: canHardClear });
-    window.location.href = '/';
-  };
-
-  const handleConfirmRestore = () => {
-    try {
-      applyBackup(pendingRestore);
-      flashBackupMessage('Backup restored.');
-    } catch (err) {
-      console.error('Restore failed:', err);
-      flashBackupMessage('Restore failed. See the console for details.', true);
-    } finally {
-      setPendingRestore(null);
-    }
-  };
 
   const toggleFolderExpand = (e, folderId) => {
     e.stopPropagation();
@@ -565,37 +469,7 @@ export default function Sidebar() {
         )}
       </div>
 
-      <div className="mt-auto border-t border-neutral-800 pt-6 flex flex-col space-y-2 text-xs text-neutral-600 shrink-0">
-        <p>{tagline}</p>
-        <div className="flex items-center gap-3">
-          <button onClick={handleExportBackup} className="text-left hover:text-white transition-colors">Back up data</button>
-          <span className="w-1 h-1 rounded-full bg-neutral-700" />
-          <button onClick={() => backupFileInputRef.current?.click()} className="text-left hover:text-white transition-colors">Restore</button>
-        </div>
-        {backupMessage && (
-          <p className={backupMessage.isError ? 'text-red-400' : 'text-[var(--brand-start)]'}>{backupMessage.text}</p>
-        )}
-        <input
-          ref={backupFileInputRef}
-          type="file"
-          accept="application/json,.json"
-          onChange={handleRestoreFileChosen}
-          className="hidden"
-        />
-        <p className={syncLabel.isError ? 'text-red-400' : 'text-neutral-600'}>{syncLabel.text}</p>
-        <button onClick={handleDisconnect} className="text-left hover:text-white transition-colors">Disconnect Account</button>
-      </div>
-
-      <ConfirmDialog
-        open={Boolean(pendingRestore)}
-        title="Restore this backup?"
-        message={pendingRestore
-          ? `This replaces your current folders and pins with the backup from ${new Date(pendingRestore.exportedAt).toLocaleString()} (${pendingRestore.counts?.folders ?? 0} folders, ${pendingRestore.counts?.pins ?? 0} pins). Your current local data will be overwritten.`
-          : ''}
-        confirmLabel="Restore"
-        onConfirm={handleConfirmRestore}
-        onCancel={() => setPendingRestore(null)}
-      />
+      <AccountPanel variant="footer" tagline={tagline} />
 
       <PlaylistFormDialog
         open={showCreatePlaylistDialog}

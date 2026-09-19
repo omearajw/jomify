@@ -298,8 +298,11 @@ const onPageHide = () => {
   if (dirty) flushPush({ keepalive: true });
 };
 
+// Resolves true once this device has completed a first sync with the server. Callers that
+// want to seed defaults must wait for that, or a device that never reached the server pushes
+// its defaults over the account's real data when it finally does.
 export async function start(currentUserId) {
-  if (running && userId === currentUserId) return;
+  if (running && userId === currentUserId) return false;
   stop();
 
   running = true;
@@ -373,7 +376,7 @@ export async function start(currentUserId) {
   if (!result) {
     // The pull failed. Stay in local-only mode: DO NOT push. A device that has not heard from
     // the server has no idea what it would be merging against.
-    return;
+    return false;
   }
 
   if (needsChoice && docHasContent(result.remote)) {
@@ -383,7 +386,7 @@ export async function start(currentUserId) {
       remoteFolders: countLiveFolders(result.remote)
     });
     useSyncStore.getState().setStatus('idle');
-    return;
+    return false;
   }
 
   if (needsChoice) {
@@ -392,6 +395,7 @@ export async function start(currentUserId) {
   }
 
   finishFirstSync(result);
+  return true;
 }
 
 function countLiveFolders(doc) {
@@ -455,4 +459,9 @@ export function isSafeToHardLogout() {
 
 export function syncNowIfPending() {
   if (dirty) flushPush();
+}
+
+// A user-initiated pull; resolves to the pull result or null if it failed
+export function pullNow() {
+  return pull({ force: true });
 }

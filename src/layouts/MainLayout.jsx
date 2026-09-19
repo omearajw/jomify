@@ -18,6 +18,7 @@ import BottomTabBar from './BottomTabBar';
 import MiniPlayer from './MiniPlayer';
 import NowPlayingSheet from './NowPlayingSheet';
 import DevicePicker from '../components/DevicePicker';
+import AccountSheet from './AccountSheet';
 import { useIsMobile, useIsCoarsePointer } from '../hooks/useMediaQuery';
 import { installLongPressContextMenu } from '../utils/longPressContextMenu';
 
@@ -139,6 +140,7 @@ export default function MainLayout({ children }) {
       )}
 
       <DevicePicker />
+      {isMobile && <AccountSheet />}
       <ContextMenu />
       <ToastHost />
       <SyncConflictDialog />
