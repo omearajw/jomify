@@ -64,6 +64,8 @@ export const useUserStore = create(
       libraryGridSize: 'medium',
       
       setLibraryGridSize: (size) => set({ libraryGridSize: size }),
+      librarySort: 'spotify', // 'spotify' | 'az' | 'za' | 'owner'
+      setLibrarySort: (mode) => set({ librarySort: mode }),
       setActiveFolderId: (folderId) => set((state) => ({
         activeFolderId: folderId,
         manageFolderId: folderId ? state.manageFolderId : null
@@ -634,6 +636,7 @@ export const useUserStore = create(
         savedVolume: state.savedVolume,
         customFolders: state.customFolders,
         libraryGridSize: state.libraryGridSize,
+        librarySort: state.librarySort,
         pinnedItems: state.pinnedItems, // SAVES YOUR SANDBOX
         manuallyQueuedTracks: state.manuallyQueuedTracks,
         playlistSortSettings: state.playlistSortSettings,

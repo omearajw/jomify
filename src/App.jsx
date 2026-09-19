@@ -5,6 +5,7 @@ import { useUserStore } from './store/userStore';
 import { useSlice } from './store/selectors';
 import { artUrl } from './utils/images';
 import MainLayout from './layouts/MainLayout';
+import JumpBackIn from './components/JumpBackIn';
 import Library from './views/Library/Library';
 import PlaylistView from './views/Library/PlaylistView';
 import { startPlaybackController } from './services/spotify/playbackController';
@@ -545,6 +546,8 @@ function App() {
                     ))}
                   </div>
                 )}
+
+                <JumpBackIn />
 
                 {/* Friends: the phone's way into the Friends page, since the tab bar has no slot for it */}
                 <div className="w-full mb-8">

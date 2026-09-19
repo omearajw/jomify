@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { fetchUserPlaylists, addTracksToPlaylist, unfollowPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../../services/spotify/api';
-import { Heart, Folder, Maximize2, ChevronLeft, ChevronRight, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2, FolderX, FolderInput, FolderOutput } from 'lucide-react';
+import { Heart, Folder, Maximize2, ChevronLeft, ChevronRight, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2, FolderX, FolderInput, FolderOutput, Search, ArrowUpDown, X } from 'lucide-react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
 import FolderFormDialog from '../../components/FolderFormDialog';
@@ -130,6 +130,24 @@ function ManageCard({ item, action, onClick }) {
 const subfolderLabel = (count) => (count ? ` · ${count} folder${count === 1 ? '' : 's'}` : '');
 const itemLabel = (count) => `${count} item${count === 1 ? '' : 's'}`;
 
+const SORT_OPTIONS = [
+  { id: 'spotify', label: 'Spotify order' },
+  { id: 'az', label: 'A to Z' },
+  { id: 'za', label: 'Z to A' },
+  { id: 'owner', label: 'By owner' }
+];
+const ownerOf = (item) => (item.type === 'album' ? (item.artists?.map(a => a.name).join(', ') || '') : (item.owner?.display_name || ''));
+function sortItems(items, mode) {
+  if (mode === 'spotify') return items;
+  const byName = (a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+  const sorted = [...items];
+  if (mode === 'az') sorted.sort(byName);
+  else if (mode === 'za') sorted.sort((a, b) => byName(b, a));
+  else if (mode === 'owner') sorted.sort((a, b) => ownerOf(a).localeCompare(ownerOf(b), undefined, { sensitivity: 'base' }) || byName(a, b));
+  return sorted;
+}
+const matches = (text, query) => (text || '').toLowerCase().includes(query);
+
 // Collapsed folder tile. Module scope for the same reason as ItemCard above.
 function FolderCard({ folder, ctx }) {
   const { customFolders, itemsById, dragOverId, draggedItem } = ctx;
@@ -215,13 +233,13 @@ export default function Library() {
     token, profile, playlists, albums, setPlaylists, setCurrentView, setActivePlaylistId, navigateToPlaylist, navigateToAlbum,
     customFolders, addPlaylistToFolder, removePlaylistFromFolder, deleteFolder, deletePlaylist, createFolder,
     draggedItem, setDraggedItem, moveFolder, reorderPlaylistInFolder,
-    libraryGridSize, setLibraryGridSize, setContextMenu, activeFolderId, setActiveFolderId,
+    libraryGridSize, setLibraryGridSize, librarySort, setLibrarySort, setContextMenu, activeFolderId, setActiveFolderId,
     manageFolderId, clearManageRequest, removeMissingFolderItems
   } = useSlice(useUserStore, [
     'token', 'profile', 'playlists', 'albums', 'setPlaylists', 'setCurrentView', 'setActivePlaylistId', 'navigateToPlaylist', 'navigateToAlbum',
     'customFolders', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'deleteFolder', 'deletePlaylist', 'createFolder',
     'draggedItem', 'setDraggedItem', 'moveFolder', 'reorderPlaylistInFolder',
-    'libraryGridSize', 'setLibraryGridSize', 'setContextMenu', 'activeFolderId', 'setActiveFolderId',
+    'libraryGridSize', 'setLibraryGridSize', 'librarySort', 'setLibrarySort', 'setContextMenu', 'activeFolderId', 'setActiveFolderId',
     'manageFolderId', 'clearManageRequest', 'removeMissingFolderItems'
   ]);
 
@@ -233,6 +251,7 @@ export default function Library() {
   const [isManagingRequested, setIsManagingRequested] = useState(false);
   const [confirmState, setConfirmState] = useState({ open: false, type: null, playlist: null, folderId: null });
   const [importOpen, setImportOpen] = useState(false);
+  const [query, setQuery] = useState('');
   
   const [dragOverId, setDragOverId] = useState(null);
   
@@ -532,8 +551,19 @@ export default function Library() {
       );
     });
 
-    unfolderedPlaylists.filter(pl => pl.owner?.id !== 'spotify').forEach((pl) => gridItems.push(<ItemCard key={pl.id} item={pl} {...itemCardProps} />));
-    unfolderedAlbums.forEach((album) => gridItems.push(<ItemCard key={album.id} item={album} {...itemCardProps} />));
+    sortItems(unfolderedPlaylists.filter(pl => pl.owner?.id !== 'spotify'), librarySort).forEach((pl) => gridItems.push(<ItemCard key={pl.id} item={pl} {...itemCardProps} />));
+    sortItems(unfolderedAlbums, librarySort).forEach((album) => gridItems.push(<ItemCard key={album.id} item={album} {...itemCardProps} />));
+  }
+
+  // Search covers everything, foldered or not, plus folder names; results replace the grid
+  const trimmedQuery = query.trim().toLowerCase();
+  const searchItems = [];
+  if (!activeFolder && trimmedQuery) {
+    customFolders.filter(f => matches(f.name, trimmedQuery)).forEach((folder) => {
+      searchItems.push(<FolderCard key={`folder-${folder.id}`} folder={folder} ctx={folderCtx} />);
+    });
+    sortItems(allItems.filter(item => matches(item.name, trimmedQuery) || matches(ownerOf(item), trimmedQuery)), librarySort)
+      .forEach((item) => searchItems.push(<ItemCard key={item.id} item={item} {...itemCardProps} />));
   }
 
   // Spotify's own playlists (Top Songs, Blend, Discover Weekly...) that the user has saved.
@@ -700,10 +730,50 @@ export default function Library() {
               <SizingControls libraryGridSize={libraryGridSize} setLibraryGridSize={setLibraryGridSize} />
             </div>
           </div>
-          <div className={`grid ${getGridClass()}`}>
-            {gridItems}
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+            <label className="relative flex-1 min-w-0">
+              <Search className="w-4 h-4 text-neutral-500 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search your library"
+                aria-label="Search your library"
+                className="w-full bg-neutral-900 border border-white/10 rounded-full py-2.5 pl-11 pr-10 text-sm text-white placeholder:text-neutral-500 outline-none focus:border-[var(--brand-mid)]"
+              />
+              {query && (
+                <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-neutral-400 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </label>
+            <label className="flex items-center gap-2 rounded-full border border-white/10 bg-neutral-900 px-4 py-2 text-sm text-neutral-300 shrink-0">
+              <ArrowUpDown className="w-4 h-4 text-neutral-500" />
+              <span className="sr-only">Sort</span>
+              <select
+                value={librarySort}
+                onChange={(e) => setLibrarySort(e.target.value)}
+                aria-label="Sort library"
+                className="bg-transparent text-white font-semibold outline-none"
+              >
+                {SORT_OPTIONS.map(o => <option key={o.id} value={o.id} className="bg-neutral-900">{o.label}</option>)}
+              </select>
+            </label>
           </div>
-          {madeForYou.length > 0 && (
+
+          {trimmedQuery ? (
+            searchItems.length > 0 ? (
+              <div className={`grid ${getGridClass()}`}>{searchItems}</div>
+            ) : (
+              <p className="text-neutral-500 italic py-8">Nothing in your library matches "{query.trim()}".</p>
+            )
+          ) : (
+            <div className={`grid ${getGridClass()}`}>
+              {gridItems}
+            </div>
+          )}
+          {!trimmedQuery && madeForYou.length > 0 && (
             <div className="mt-12">
               <h2 className="text-2xl font-bold text-white">Made for you</h2>
               <p className="text-sm text-neutral-400 mt-1 mb-4 max-w-2xl">

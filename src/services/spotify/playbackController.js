@@ -146,7 +146,7 @@ function initLocalPlayer() {
   // Defined before the script is injected so the callback can never be missed
   window.onSpotifyWebPlaybackSDKReady = () => {
     const sdkPlayer = new window.Spotify.Player({
-      name: 'Jomify Web Player',
+      name: 'Jomify',
       // Read the token live so a refreshed token flows through without a reconnect
       getOAuthToken: (cb) => cb(useUserStore.getState().token),
       volume: 0.5
@@ -186,6 +186,7 @@ function initLocalPlayer() {
         return;
       }
       s.setPlaybackState(state);
+      syncMediaSession(state);
       if (!s.isLocalActive) {
         s.setIsLocalActive(true);
         s.setActiveDevice({ id: s.deviceId, name: THIS_BROWSER, type: 'Computer', supportsVolume: true, volumePercent: null });
@@ -234,11 +235,59 @@ function installActivation() {
   document.addEventListener('keydown', onFirstGesture, true);
 }
 
+// --- Media Session -------------------------------------------------------------------------
+// Lock screen, Bluetooth displays and headset buttons. Only meaningful while this device plays
+// audio (the SDK); when playback lives elsewhere the phone has no media session to show.
+
+let mediaSessionInstalled = false;
+
+function installMediaSession() {
+  if (mediaSessionInstalled || typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+  mediaSessionInstalled = true;
+  const ms = navigator.mediaSession;
+  const handlers = [
+    ['play', () => { if (player().playbackState?.paused) togglePlay(); }],
+    ['pause', () => { if (player().playbackState && !player().playbackState.paused) togglePlay(); }],
+    ['previoustrack', () => previous()],
+    ['nexttrack', () => next()],
+    ['seekto', (d) => { if (typeof d?.seekTime === 'number') seek(d.seekTime * 1000); }],
+    ['seekbackward', (d) => seek(Math.max(0, interpolatedPosition() - (d?.seekOffset || 10) * 1000))],
+    ['seekforward', (d) => seek(interpolatedPosition() + (d?.seekOffset || 10) * 1000)]
+  ];
+  for (const [action, handler] of handlers) {
+    try { ms.setActionHandler(action, handler); } catch { /* action not supported here */ }
+  }
+}
+
+function syncMediaSession(state) {
+  if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+  const ms = navigator.mediaSession;
+  const track = state?.track_window?.current_track;
+  if (!track) { ms.metadata = null; return; }
+  try {
+    ms.metadata = new MediaMetadata({
+      title: track.name || '',
+      artist: (track.artists || []).map(a => a.name).join(', '),
+      album: track.album?.name || '',
+      artwork: (track.album?.images || [])
+        .filter(i => i?.url)
+        .map(i => ({ src: i.url, sizes: i.width && i.height ? `${i.width}x${i.height}` : '640x640', type: 'image/jpeg' }))
+    });
+    ms.playbackState = state.paused ? 'paused' : 'playing';
+    if (typeof ms.setPositionState === 'function' && state.duration > 0) {
+      ms.setPositionState({ duration: state.duration / 1000, position: Math.min(state.position, state.duration) / 1000, playbackRate: 1 });
+    }
+  } catch (err) {
+    console.debug('[playback] media session update failed:', err?.message || err);
+  }
+}
+
 // --- Lifecycle -----------------------------------------------------------------------------
 
 export function startPlaybackController() {
   initLocalPlayer();
   installActivation();
+  installMediaSession();
   if (!polling) {
     polling = true;
     document.addEventListener('visibilitychange', onVisibilityChange);

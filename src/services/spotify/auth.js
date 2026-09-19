@@ -7,6 +7,7 @@ const redirectUri = import.meta.env.VITE_REDIRECT_URI;
 const scope = [
   'streaming',
   'user-top-read',
+  'user-read-recently-played',
   'user-read-email',
   'user-read-private',
   'user-follow-read',

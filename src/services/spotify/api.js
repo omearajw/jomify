@@ -93,6 +93,62 @@ export const setPlaybackVolume = (token, percent, deviceId = null) =>
 export const setRepeatMode = (token, state, deviceId = null) =>
   playerRequest(token, 'PUT', `/repeat?state=${state}`, { deviceId, message: 'Failed to set repeat' });
 
+export async function fetchRecentlyPlayed(token, limit = 50) {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/me/player/recently-played?limit=${Math.min(50, limit)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) { const err = new Error(`Failed to fetch recently played (${response.status})`); err.status = response.status; throw err; }
+  return (await response.json()).items || [];
+}
+
+export async function fetchAlbumsByIds(token, ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    const response = await spotifyFetch(`https://api.spotify.com/v1/albums?ids=${ids.slice(i, i + 20).join(',')}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to fetch albums');
+    out.push(...((await response.json()).albums || []));
+  }
+  return out;
+}
+
+export async function fetchArtistsByIds(token, ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const response = await spotifyFetch(`https://api.spotify.com/v1/artists?ids=${ids.slice(i, i + 50).join(',')}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to fetch artists');
+    out.push(...((await response.json()).artists || []));
+  }
+  return out;
+}
+
+// Name, art and owner only; enough for a card without paying for the whole track list
+export async function fetchPlaylistSummary(token, playlistId) {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}?fields=id,name,images,owner(id,display_name)`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) { const err = new Error(`Failed to fetch playlist (${response.status})`); err.status = response.status; throw err; }
+  return await response.json();
+}
+
+// Moves the track at rangeStart so it sits before insertBefore (Spotify's own semantics)
+export async function reorderPlaylistTracks(token, playlistId, rangeStart, insertBefore) {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ range_start: rangeStart, insert_before: insertBefore, range_length: 1 })
+  });
+  if (!response.ok) throw new Error(`Failed to reorder tracks (${response.status})`);
+  return await response.json();
+}
+
 export async function fetchUserProfile(token) {
   // Use the REAL Spotify API endpoint here:
   const response = await spotifyFetch("https://api.spotify.com/v1/me", {

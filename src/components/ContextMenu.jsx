@@ -179,6 +179,16 @@ export default function ContextMenu() {
   // One-step reordering for touch screens, where the sidebar's drag-and-drop can't be used.
   // Neighbour ids drive the same store actions a drop would.
   const moveRows = (() => {
+    // A track in one of your own playlists (custom order): the playlist view supplies the move
+    if (contextMenu?.reorder) {
+      const r = contextMenu.reorder;
+      return {
+        canUp: r.index > 0,
+        canDown: r.index < r.count - 1,
+        up: () => { r.move(-1); closeMenu(); },
+        down: () => { r.move(1); closeMenu(); }
+      };
+    }
     if (contextMenu?.type === 'folder' && folder) {
       const siblings = childrenOf(customFolders, folder.parentId ?? null);
       const i = siblings.findIndex(f => f.id === folder.id);

@@ -3,7 +3,8 @@ import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { resolvePlaybackDeviceId, handlePlaybackError, setShuffle } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
-import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch } from '../../services/spotify/api';
+import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch, reorderPlaylistTracks } from '../../services/spotify/api';
+import { toast } from '../../store/toastStore';
 import { formatTime } from '../../utils/formatTime';
 import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink } from 'lucide-react';
 import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
@@ -427,14 +428,48 @@ export default function PlaylistView() {
     }
   };
 
-  const handleRightClick = (e, track) => {
+  // One-step moves for your own playlists in custom order, through the track menu. Spotify's
+  // reorder call moves the track at rangeStart to sit before insertBefore; the list is updated
+  // first and put back if Spotify refuses.
+  const moveTrack = (index, delta) => {
+    const items = playlist?.tracks?.items || [];
+    const to = index + delta;
+    if (!token || !activePlaylistId || to < 0 || to >= items.length) return;
+    setPlaylist((prev) => {
+      if (!prev) return prev;
+      const next = [...prev.tracks.items];
+      const [moved] = next.splice(index, 1);
+      next.splice(to, 0, moved);
+      return { ...prev, tracks: { ...prev.tracks, items: next } };
+    });
+    reorderPlaylistTracks(token, activePlaylistId, index, delta < 0 ? to : to + 1).catch((err) => {
+      console.error(err);
+      toast("Spotify wouldn't move that track", { tone: 'error' });
+      setPlaylist((prev) => {
+        if (!prev) return prev;
+        const next = [...prev.tracks.items];
+        const [moved] = next.splice(to, 1);
+        next.splice(index, 0, moved);
+        return { ...prev, tracks: { ...prev.tracks, items: next } };
+      });
+    });
+  };
+
+  const handleRightClick = (e, track, item = null) => {
     e.preventDefault();
+    const items = playlist?.tracks?.items || [];
+    const index = item ? items.indexOf(item) : -1;
+    const isMine = playlist?.owner?.id && playlist.owner.id === useUserStore.getState().profile?.id;
+    const reorder = isMine && sortBy === 'custom' && index !== -1
+      ? { index, count: items.length, move: (delta) => moveTrack(index, delta) }
+      : null;
     setContextMenu({
       type: 'track',
       x: e.clientX,
       y: e.clientY,
       track: track,
-      sourcePlaylistId: activePlaylistId
+      sourcePlaylistId: activePlaylistId,
+      reorder
     });
   };
 
@@ -801,7 +836,7 @@ export default function PlaylistView() {
               key={`${track.id}-${index}`}
               onClick={() => handleTrackSelect(index)}
               {...rowButtonProps(() => handleTrackSelect(index))}
-              onContextMenu={(e) => handleRightClick(e, track)}
+              onContextMenu={(e) => handleRightClick(e, track, item)}
               style={collaboratorStyleFor(adderId, isCollaborative, isFirstInGroup, isLastInGroup)}
               className={`grid ${gridColumns} gap-4 px-4 py-3 group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${bgHoverClass} ${radiusClass} ${marginClass}`}
             >
@@ -906,7 +941,7 @@ export default function PlaylistView() {
                     <LikeButton trackId={track.id} />
                 </div>
                 <span className="text-neutral-400 w-8 text-right">{formatTime(track.duration_ms)}</span>
-                <MoreButton onOpen={(e) => handleRightClick(e, track)} />
+                <MoreButton onOpen={(e) => handleRightClick(e, track, item)} />
               </div>
             </div>
           );
