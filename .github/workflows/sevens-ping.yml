@@ -1,0 +1,20 @@
+# Vercel's Hobby plan runs crons once a day, which would notice a partner's drop up to a day late.
+# This pings the same endpoint every 30 minutes. Needs the CRON_SECRET repository secret (the
+# same value as the Vercel environment variable).
+name: Sevens notifications
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run the Sevens check
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "CRON_SECRET secret is not set"; exit 1; fi
+          curl -sS -f -m 60 -H "Authorization: Bearer $CRON_SECRET" https://jomify.vercel.app/api/cron/sevens

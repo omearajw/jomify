@@ -15,7 +15,7 @@ export class SyncApiError extends Error {
   }
 }
 
-function baseUrl() {
+export function apiBaseUrl() {
   const configured = import.meta.env.VITE_SYNC_API_BASE;
   if (configured !== undefined && configured !== '') return configured.replace(/\/$/, '');
   if (configured === '') return '';
@@ -46,7 +46,7 @@ async function readError(response) {
 export async function pullDoc() {
   let response;
   try {
-    response = await fetch(`${baseUrl()}/api/sync`, { headers: authHeader() });
+    response = await fetch(`${apiBaseUrl()}/api/sync`, { headers: authHeader() });
   } catch (err) {
     // Network-level failure: offline, DNS, or a CORS rejection. Never "empty".
     throw new SyncApiError(0, err?.message || 'Network unavailable');
@@ -59,7 +59,7 @@ export async function pullDoc() {
 export async function pushDoc(doc, deviceId, { keepalive = false } = {}) {
   let response;
   try {
-    response = await fetch(`${baseUrl()}/api/sync`, {
+    response = await fetch(`${apiBaseUrl()}/api/sync`, {
       method: 'POST',
       headers: { ...authHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ schemaVersion: SCHEMA_VERSION, doc, deviceId }),

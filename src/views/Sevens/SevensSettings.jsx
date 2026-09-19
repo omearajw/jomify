@@ -10,6 +10,7 @@ import {
 } from '../../services/spotify/api';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { Plus, Search, Trash2, Loader2, RefreshCw, Users, CheckCircle2, Archive } from 'lucide-react';
+import NotificationToggle from '../../components/NotificationToggle';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // A Seven is a collaborative playlist you trade batches of seven tracks on with one other
@@ -266,6 +267,8 @@ export default function SevensSettings() {
           never send the same person a track twice.
         </p>
       </div>
+
+      <div className="mb-6 max-w-2xl"><NotificationToggle /></div>
 
       {/* Add a Seven */}
       <div className="mb-10">

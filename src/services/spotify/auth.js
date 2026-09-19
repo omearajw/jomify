@@ -23,7 +23,9 @@ const scope = [
   'ugc-image-upload'
 ].join(' ');
 
-export async function redirectToAuthCodeFlow() {
+// `state` comes back on the redirect, which is how a second authorization (the server's own
+// grant for push notifications) is told apart from a sign-in
+export async function redirectToAuthCodeFlow({ state = '' } = {}) {
   const verifier = generateCodeVerifier(128);
   const challenge = await generateCodeChallenge(verifier);
 
@@ -36,11 +38,14 @@ export async function redirectToAuthCodeFlow() {
   params.append("scope", scope);
   params.append("code_challenge_method", "S256");
   params.append("code_challenge", challenge);
+  if (state) params.append("state", state);
 
   document.location = `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
 
-export async function getAccessToken(code) {
+// Swaps an authorization code for tokens. Touches nothing but the single-use verifier, so a
+// caller can decide what the tokens are for (the session, or the server's push grant).
+export async function exchangeCode(code) {
   const verifier = localStorage.getItem("verifier");
 
   const params = new URLSearchParams();
@@ -58,11 +63,15 @@ export async function getAccessToken(code) {
 
   if (!result.ok) throw new Error("Failed to fetch access token");
 
-  const data = await result.json();
-
   // The verifier is single-use. It used to linger in localStorage forever, surviving even a
   // hard logout.
   localStorage.removeItem("verifier");
+
+  return await result.json();
+}
+
+export async function getAccessToken(code) {
+  const data = await exchangeCode(code);
 
   // Save the refresh token safely to the global store right here in the background
   const store = useUserStore.getState();

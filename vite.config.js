@@ -4,7 +4,6 @@ import tailwindcss from '@tailwindcss/vite'
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import { VitePWA } from 'vite-plugin-pwa';
 
-const WEEK = 7 * 24 * 60 * 60;
 
 // JOMIFY_HTTP=1 serves plain HTTP for the phone loop: `adb reverse tcp:3000 tcp:3000` makes
 // http://127.0.0.1:3000 on the phone a secure context, which self-signed LAN HTTPS never is
@@ -36,25 +35,13 @@ export default defineConfig({
           { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
         ]
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}'],
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//],
-        runtimeCaching: [
-          // Spotify and our own sync API are live data; never serve them from a cache
-          { urlPattern: /^https:\/\/(api|accounts)\.spotify\.com\//, handler: 'NetworkOnly' },
-          { urlPattern: /^https:\/\/sdk\.scdn\.co\//, handler: 'NetworkOnly' },
-          { urlPattern: /\/api\//, handler: 'NetworkOnly' },
-          {
-            urlPattern: /^https:\/\/(i|mosaic|image-cdn-[a-z]+)\.scdn\.co\//,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'spotify-artwork',
-              expiration: { maxEntries: 200, maxAgeSeconds: WEEK },
-              cacheableResponse: { statuses: [0, 200] }
-            }
-          }
-        ]
+      // The worker is our own file (src/sw.js) so it can handle push; the plugin injects the
+      // precache manifest into it
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}']
       },
       devOptions: { enabled: false }
     })

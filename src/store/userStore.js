@@ -53,6 +53,7 @@ export const useUserStore = create(
       isNowPlayingOpen: false,
       isDevicePickerOpen: false,
       isAccountOpen: false,
+      sevensNotifications: false, // this device is subscribed to Sevens push
       contextMenu: null,
       isZenMode: false,
       savedVolume: 50,
@@ -530,6 +531,7 @@ export const useUserStore = create(
       setNowPlayingOpen: (open) => set({ isNowPlayingOpen: Boolean(open) }),
       setDevicePickerOpen: (open) => set({ isDevicePickerOpen: Boolean(open) }),
       setAccountOpen: (open) => set({ isAccountOpen: Boolean(open) }),
+      setSevensNotifications: (on) => set({ sevensNotifications: Boolean(on) }),
       setContextMenu: (menuData) => set({ contextMenu: menuData }),
       toggleZenMode: () => set((state) => ({ isZenMode: !state.isZenMode })),
       setSavedVolume: (vol) => set({ savedVolume: vol }),
@@ -643,6 +645,7 @@ export const useUserStore = create(
         stagedSeven : state.stagedSeven,
         sevens: state.sevens,
         sevensSeeded: state.sevensSeeded,
+        sevensNotifications: state.sevensNotifications,
         unaddedCheckPlaylists: state.unaddedCheckPlaylists,
         friends: state.friends
       }),

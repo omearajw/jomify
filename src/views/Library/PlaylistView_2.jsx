@@ -637,7 +637,19 @@ const turnIndicator = useMemo(() => {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-3 shrink-0 flex-wrap">
+          {thisSeven && (
+            <button
+              type="button"
+              onClick={() => updateSeven(activePlaylistId, { active: !thisSeven.active })}
+              aria-pressed={thisSeven.active}
+              title={thisSeven.active ? 'Mark this Seven as finished' : 'Mark this Seven as active'}
+              className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider border transition-colors ${thisSeven.active ? 'border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/15 text-white' : 'border-white/15 bg-white/5 text-neutral-400 hover:text-white'}`}
+            >
+              <span className={`w-2 h-2 rounded-full ${thisSeven.active ? 'bg-[var(--brand-mid)]' : 'bg-neutral-500'}`} />
+              {thisSeven.active ? 'Active' : 'Finished'}
+            </button>
+          )}
           <button
             type="button"
             onClick={playFromTop}

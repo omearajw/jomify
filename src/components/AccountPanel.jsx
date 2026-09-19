@@ -6,6 +6,7 @@ import { downloadBackup, parseBackup, applyBackup } from '../sync/backup';
 import { isSafeToHardLogout, pullNow, syncNowIfPending } from '../sync/engine';
 import { clearMeta } from '../sync/meta';
 import ConfirmDialog from './ConfirmDialog';
+import NotificationToggle from './NotificationToggle';
 
 function formatAgo(timestamp) {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -157,6 +158,7 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
       {backupMessage && (
         <p className={`px-1 text-sm ${backupMessage.isError ? 'text-red-400' : 'text-[var(--brand-start)]'}`}>{backupMessage.text}</p>
       )}
+      <NotificationToggle />
       <div className="rounded-2xl border border-white/10 divide-y divide-white/5 overflow-hidden">
         <button type="button" onClick={handleSyncNow} disabled={syncing} className={`${row} disabled:opacity-60`}>
           <RefreshCw className={`w-5 h-5 text-neutral-400 ${syncing ? 'animate-spin' : ''}`} /> Sync now

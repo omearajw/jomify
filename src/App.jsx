@@ -6,6 +6,8 @@ import { useSlice } from './store/selectors';
 import { artUrl } from './utils/images';
 import MainLayout from './layouts/MainLayout';
 import JumpBackIn from './components/JumpBackIn';
+import { PUSH_STATE, completeEnableNotifications, syncPushStatus } from './pwa/push';
+import { toast } from './store/toastStore';
 import Library from './views/Library/Library';
 import PlaylistView from './views/Library/PlaylistView';
 import { startPlaybackController } from './services/spotify/playbackController';
@@ -117,6 +119,27 @@ function App() {
     return startPlaybackController();
   }, [token]);
 
+  // A notification tap opens "/?open=playlist:<id>" (or messages an already-open Jomify)
+  useEffect(() => {
+    if (!token) return undefined;
+    const openTarget = (raw) => {
+      const match = /^playlist:([A-Za-z0-9]+)$/.exec(raw || '');
+      if (match) navigateToPlaylist(match[1]);
+    };
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('open')) {
+      openTarget(params.get('open'));
+      window.history.replaceState({}, document.title, '/');
+    }
+    const onMessage = (event) => {
+      if (event.data?.type !== 'open') return;
+      try { openTarget(new URL(event.data.url, location.origin).searchParams.get('open')); } catch { /* ignore */ }
+    };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    syncPushStatus();
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+  }, [token, navigateToPlaylist]);
+
   // Mirror in-app navigation and open sheets into browser history so a phone's back button
   // walks back through the app instead of leaving it. Installed after the OAuth replaceState
   // above has run, since the token only exists once that is done.
@@ -137,6 +160,18 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
+
+    // Back from the second Spotify authorization that gives the notification server its own
+    // grant. The session is untouched; only the server learns the new refresh token.
+    if (code && token && params.get("state") === PUSH_STATE && !isAuthenticating.current) {
+      isAuthenticating.current = true;
+      window.history.replaceState({}, document.title, "/");
+      completeEnableNotifications(code, token)
+        .then(() => toast('Sevens notifications are on', { tone: 'success' }))
+        .catch((err) => { console.error('Enabling notifications failed:', err); toast(err?.message || "Couldn't turn notifications on", { tone: 'error' }); })
+        .finally(() => { isAuthenticating.current = false; });
+      return;
+    }
 
     if (code && !token && !isAuthenticating.current) {
       isAuthenticating.current = true; 
