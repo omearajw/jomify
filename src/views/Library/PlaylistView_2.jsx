@@ -770,7 +770,7 @@ const turnIndicator = useMemo(() => {
                                   e.stopPropagation();
                                   if (artist.id) navigateToArtist(artist.id);
                                 }}
-                                className="hover:underline hover:text-white transition-colors text-left truncate"
+                                className="hover:underline hover:text-white transition-colors text-left truncate pointer-coarse:pointer-events-none"
                               >
                                 {artist.name}
                               </button>
@@ -785,7 +785,7 @@ const turnIndicator = useMemo(() => {
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); navigateToAlbum(track.album.id); }}
-                                  className="hover:underline hover:text-white transition-colors text-left truncate min-w-0"
+                                  className="hover:underline hover:text-white transition-colors text-left truncate min-w-0 pointer-coarse:pointer-events-none"
                                 >
                                   {track.album.name}
                                 </button>

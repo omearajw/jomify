@@ -352,6 +352,21 @@ export async function playUris(token, deviceId, uris, offsetIndex = 0) {
   if (!response.ok) throw await playbackError(response, "Failed to play tracks");
 }
 
+// Plays any context (album, artist, playlist) from a position, so playback continues through it
+export async function playContext(token, deviceId, contextUri, offsetIndex = 0) {
+  const url = "https://api.spotify.com/v1/me/player/play" + deviceQuery(deviceId);
+  const response = await spotifyFetch(url, {
+    method: "PUT",
+    headers: {
+      "Authorization": "Bearer " + token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ context_uri: contextUri, offset: { position: Math.max(0, offsetIndex) } })
+  });
+
+  if (!response.ok) throw await playbackError(response, "Failed to start playback");
+}
+
 export async function checkTracksLiked(token, trackIds) {
   if (!trackIds || trackIds.length === 0) return {};
   const results = {};

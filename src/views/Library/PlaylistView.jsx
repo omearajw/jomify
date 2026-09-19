@@ -826,7 +826,7 @@ export default function PlaylistView() {
                             navigateToArtist(artist.id);
                           }
                         }}
-                        className="hover:underline hover:text-white transition-colors text-left truncate"
+                        className="hover:underline hover:text-white transition-colors text-left truncate pointer-coarse:pointer-events-none"
                       >
                         {artist.name}
                       </button>

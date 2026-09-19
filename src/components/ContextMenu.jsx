@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import { resolvePlaybackDeviceId, handlePlaybackError } from '../services/spotify/playbackController';
 import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, unsaveAlbum } from '../services/spotify/api';
-import { ListPlus, Plus, ChevronRight, ChevronDown, ChevronUp, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil, CornerDownRight } from 'lucide-react';
+import { ListPlus, Plus, ChevronRight, ChevronDown, ChevronUp, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil, CornerDownRight, User, Disc3 } from 'lucide-react';
+import { idFromUri } from '../utils/spotifyUri';
 import FolderFormDialog from './FolderFormDialog';
 import { toast } from '../store/toastStore';
 import { flattenFolderTree, descendantIds, childrenOf } from '../utils/library';
@@ -59,14 +60,14 @@ export default function ContextMenu() {
     playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId, activePlaylistId,
     removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder, renameFolder, createFolder, moveFolder,
     reorderFolders, reorderPlaylistInFolder,
-    pinnedItems, togglePin
+    pinnedItems, togglePin, navigateToArtist, navigateToAlbum, setNowPlayingOpen
   } = useSlice(useUserStore, [
     'contextMenu', 'setContextMenu', 'token', 'triggerQueueRefresh',
     'addManuallyQueuedTrack',
     'playlists', 'customFolders', 'profile', 'deletePlaylist', 'deleteFolder', 'setCurrentView', 'setActivePlaylistId', 'activePlaylistId',
     'removeAlbumFromLibrary', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'renameFolder', 'createFolder', 'moveFolder',
     'reorderFolders', 'reorderPlaylistInFolder',
-    'pinnedItems', 'togglePin'
+    'pinnedItems', 'togglePin', 'navigateToArtist', 'navigateToAlbum', 'setNowPlayingOpen'
   ]);
 
   const menuRef = useRef(null);
@@ -376,6 +377,36 @@ export default function ContextMenu() {
             <ListPlus className="w-4 h-4 text-neutral-400" />
             <span>Add to Queue</span>
           </button>
+
+          {/* Navigation lives here rather than on names inside rows, which stole taps on phones.
+              Tracks come from the Web API (ids) or the SDK (uris only), so resolve both. */}
+          {(contextMenu.track?.artists || [])
+            .map(a => ({ id: a.id || idFromUri(a.uri, 'artist'), name: a.name }))
+            .filter(a => a.id)
+            .slice(0, 3)
+            .map(a => (
+              <button
+                key={a.id}
+                onClick={() => { closeMenu(); setNowPlayingOpen(false); navigateToArtist(a.id); }}
+                className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+              >
+                <User className="w-4 h-4 text-neutral-400 shrink-0" />
+                <span className="truncate">Go to {a.name}</span>
+              </button>
+            ))}
+          {(() => {
+            const albumId = contextMenu.track?.album?.id || idFromUri(contextMenu.track?.album?.uri, 'album');
+            if (!albumId) return null;
+            return (
+              <button
+                onClick={() => { closeMenu(); setNowPlayingOpen(false); navigateToAlbum(albumId); }}
+                className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+              >
+                <Disc3 className="w-4 h-4 text-neutral-400 shrink-0" />
+                <span className="truncate">Go to album{contextMenu.track?.album?.name ? `: ${contextMenu.track.album.name}` : ''}</span>
+              </button>
+            );
+          })()}
 
           {canRemove && (
             <button

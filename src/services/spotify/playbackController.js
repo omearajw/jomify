@@ -23,8 +23,8 @@ const SDK_READY_TIMEOUT_MS = 15000;
 
 // Poll cadence while remote. Spotify's rate limit is shared with everything else the app does,
 // so the fast tier only applies while someone is actually looking at the player.
-const POLL_FAST_MS = 1000;
-const POLL_NORMAL_MS = 3000;
+const POLL_FAST_MS = 2000;
+const POLL_NORMAL_MS = 5000;
 const POLL_LOCAL_MS = 30000;
 const POLL_MAX_BACKOFF_MS = 30000;
 const REMOTE_REFRESH_DELAY_MS = 350;
@@ -256,7 +256,13 @@ export function startPlaybackController() {
 
 export function handlePlaybackError(err) {
   if (!err) return;
-  if (err.message === 'RATE_LIMITED') return;
+  if (err.message === 'RATE_LIMITED') {
+    // A tap during the cooldown used to do nothing at all, which reads as a broken button
+    const until = useUserStore.getState().apiCooldownUntil;
+    const seconds = until ? Math.max(1, Math.ceil((until - Date.now()) / 1000)) : 10;
+    toast(`Spotify is rate-limiting Jomify. Try again in ${seconds}s`, { tone: 'error' });
+    return;
+  }
   if (err.code === 'NO_ACTIVE_DEVICE') {
     useUserStore.getState().setDevicePickerOpen(true);
     toast('Pick a device to play on', { tone: 'info' });

@@ -12,7 +12,9 @@ import { idFromUri } from '../utils/spotifyUri';
 export default function TrackArtists({
   artists = [],
   className = '',
-  linkClassName = 'hover:underline hover:text-white transition-colors',
+  // Default: not tappable on touch screens, where a name inside a track row stole taps meant
+  // for the row. Screens whose names are not inside a playable row pass their own class.
+  linkClassName = 'hover:underline hover:text-white transition-colors pointer-coarse:pointer-events-none',
   onBeforeNavigate
 }) {
   const navigateToArtist = useUserStore((s) => s.navigateToArtist);

@@ -3,7 +3,7 @@ import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
-import { playSingleTrack, checkTracksLiked, fetchMoreTracks, spotifyFetch, saveAlbumToLibrary, unsaveAlbum } from '../../services/spotify/api';
+import { playContext, checkTracksLiked, fetchMoreTracks, spotifyFetch, saveAlbumToLibrary, unsaveAlbum } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Plus, Check, Loader2 } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
@@ -72,11 +72,14 @@ export default function Album() {
     return () => { cancelled = true; };
   }, [token, currentAlbumId, setLikedTracks]);
 
+  // Album context, offset at the clicked row: playback carries on through the album and Spotify
+  // shows "playing from <album>"
   const handleTrackPlay = (trackUri) => {
     if (!token) return;
     const deviceId = resolvePlaybackDeviceId();
     if (!deviceId) return;
-    playSingleTrack(token, deviceId, trackUri).catch(handlePlaybackError);
+    const index = Math.max(0, tracks.findIndex(t => t.uri === trackUri));
+    playContext(token, deviceId, `spotify:album:${currentAlbumId}`, index).catch(handlePlaybackError);
   };
 
   // --- SAVE / UNSAVE ---
@@ -196,7 +199,7 @@ export default function Album() {
                       <TrackArtists
                         artists={track.artists}
                         className="block text-neutral-400 text-xs truncate"
-                        linkClassName="hover:underline hover:text-white"
+                        linkClassName="hover:underline hover:text-white pointer-coarse:pointer-events-none"
                       />
                     </div>
                   </div>

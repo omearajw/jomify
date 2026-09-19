@@ -4,7 +4,7 @@ import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
 import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
-import { playSingleTrack, checkTracksLiked, spotifyFetch } from '../../services/spotify/api';
+import { playUris, checkTracksLiked, spotifyFetch } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Play } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
@@ -85,11 +85,15 @@ export default function Artist() {
     return () => { cancelled = true; };
   }, [token, currentArtistId, setLikedTracks]);
 
+  // The clicked row and then the rest of the popular tracks, in the order shown. A single URI
+  // used to stop dead after one song.
   const handleTrackPlay = (trackUri) => {
     if (!token) return;
     const deviceId = resolvePlaybackDeviceId();
     if (!deviceId) return;
-    playSingleTrack(token, deviceId, trackUri).catch(handlePlaybackError);
+    const uris = topTracks.slice(0, 10).map(t => t.uri).filter(Boolean);
+    const index = Math.max(0, uris.indexOf(trackUri));
+    playUris(token, deviceId, uris, index).catch(handlePlaybackError);
   };
 
   if (loading) {

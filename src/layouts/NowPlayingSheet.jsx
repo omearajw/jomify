@@ -100,6 +100,7 @@ function NowPlayingSheetBody() {
               <TrackArtists
                 artists={track.artists}
                 className="text-base text-neutral-300 truncate block"
+                linkClassName="hover:underline hover:text-white transition-colors"
                 onBeforeNavigate={close}
               />
             )}
