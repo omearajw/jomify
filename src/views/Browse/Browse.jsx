@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
-import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
+import { playOn } from '../../services/spotify/playbackController';
 import { searchSpotify, playSingleTrack, checkTracksLiked, fetchSearchPage } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Search, Play, ChevronLeft, Loader } from 'lucide-react';
@@ -188,9 +188,7 @@ export default function Browse() {
 
   const handleTrackPlay = (trackUri) => {
     if (!token) return;
-    const deviceId = resolvePlaybackDeviceId();
-    if (!deviceId) return;
-    playSingleTrack(token, deviceId, trackUri).catch(handlePlaybackError);
+    playOn((deviceId) => playSingleTrack(token, deviceId, trackUri));
   };
 
   const handleArtistClick = (e, artistId) => {

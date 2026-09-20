@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { X, Check, RefreshCw, Laptop, Smartphone, Speaker, Tv, Cast, MonitorSpeaker, Globe } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
-import { refreshDevices, transferTo } from '../services/spotify/playbackController';
+import { refreshDevices, transferTo, PLAYER_NAME, hasPendingPlay, playPendingOn, clearPendingPlay } from '../services/spotify/playbackController';
+import { deviceTypeLabel, localDeviceLabel, describePlatform } from '../services/spotify/playbackAdapter';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useSlice } from '../store/selectors';
 
@@ -23,6 +24,7 @@ const ICONS = {
 };
 
 const REFRESH_MS = 5000;
+const LOCAL_LABEL = localDeviceLabel(describePlatform());
 
 export default function DevicePicker() {
   const isOpen = useUserStore((s) => s.isDevicePickerOpen);
@@ -37,7 +39,7 @@ function DevicePickerBody() {
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(null);
 
-  const close = () => setDevicePickerOpen(false);
+  const close = () => { clearPendingPlay(); setDevicePickerOpen(false); };
 
   useEffect(() => {
     let cancelled = false;
@@ -51,18 +53,24 @@ function DevicePickerBody() {
   }, []);
 
   // The SDK device only shows in Spotify's list once it has connected; until then list it
-  // ourselves so "This browser" is always a choice when the player is up
+  // ourselves so this device is always a choice when the player is up
   const list = [...devices];
   if (sdkStatus === 'ready' && deviceId && !list.some(d => d.id === deviceId)) {
-    list.unshift({ id: deviceId, name: 'This browser', type: 'Computer', isActive: activeDevice?.id === deviceId, isLocal: true, supportsVolume: true });
+    list.unshift({ id: deviceId, name: LOCAL_LABEL, type: 'Computer', isActive: activeDevice?.id === deviceId, isLocal: true, supportsVolume: true });
   }
 
   const pick = async (device) => {
-    if (device.isActive) { close(); return; }
     setSwitching(device.id);
-    await transferTo(device.id);
+    if (hasPendingPlay()) await playPendingOn(device.id);
+    else if (!device.isActive) await transferTo(device.id);
     setSwitching(null);
-    close();
+    setDevicePickerOpen(false);
+  };
+
+  const detail = (device, active) => {
+    if (switching === device.id) return 'Switching…';
+    const kind = device.isLocal ? PLAYER_NAME : deviceTypeLabel(device.type);
+    return active ? `${kind} · playing here` : kind;
   };
 
   const panel = (
@@ -79,7 +87,7 @@ function DevicePickerBody() {
         <div>
           <h2 id="device-picker-title" className="text-xl font-bold text-white">Play on</h2>
           <p className="text-sm text-neutral-400 mt-1">
-            {activeDevice ? `Currently playing on ${activeDevice.name}` : 'Nothing is playing right now'}
+            {hasPendingPlay() ? 'Choose where to play it' : activeDevice ? `Currently playing on ${activeDevice.name}` : 'Nothing is playing right now'}
           </p>
         </div>
         <button type="button" onClick={close} aria-label="Close" className="text-neutral-400 hover:text-white transition-colors p-2">
@@ -102,7 +110,7 @@ function DevicePickerBody() {
               <Icon className={`w-6 h-6 shrink-0 ${active ? 'text-[var(--brand-mid)]' : 'text-neutral-400'}`} />
               <span className="flex-1 min-w-0">
                 <span className="block font-semibold truncate">{device.name}</span>
-                <span className="block text-xs text-neutral-500">{switching === device.id ? 'Switching…' : active ? 'Playing here' : device.type}</span>
+                <span className="block text-xs text-neutral-500">{detail(device, active)}</span>
               </span>
               {active && <Check className="w-5 h-5 text-[var(--brand-mid)] shrink-0" />}
             </button>

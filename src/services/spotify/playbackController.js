@@ -15,7 +15,7 @@ import {
   fetchPlayerState, fetchDevices, transferPlayback, pausePlayback, resumePlayback,
   skipToNext, skipToPrevious, seekPlayback, setPlaybackVolume, setRepeatMode, toggleShuffleState
 } from './api';
-import { toSdkShape, resolveDeviceId, REPEAT_NAMES } from './playbackAdapter';
+import { toSdkShape, resolveDeviceId, REPEAT_NAMES, describePlatform, playerNameFor, localDeviceLabel } from './playbackAdapter';
 
 const SDK_SCRIPT_ID = 'spotify-player-script';
 const SDK_SCRIPT_SRC = 'https://sdk.scdn.co/spotify-player.js';
@@ -30,7 +30,10 @@ const POLL_MAX_BACKOFF_MS = 30000;
 const REMOTE_REFRESH_DELAY_MS = 350;
 const VOLUME_DEBOUNCE_MS = 250;
 
-const THIS_BROWSER = 'This browser';
+const PLATFORM = describePlatform();
+// What Spotify Connect lists this browser as, everywhere; and what this browser calls itself
+export const PLAYER_NAME = playerNameFor(PLATFORM);
+const THIS_BROWSER = localDeviceLabel(PLATFORM);
 
 const token = () => useUserStore.getState().token;
 const player = () => usePlayerStore.getState();
@@ -73,6 +76,7 @@ function applyRemoteState(state) {
     id: device.id,
     name: isLocal ? THIS_BROWSER : device.name,
     type: device.type,
+    isLocal,
     supportsVolume: device.supports_volume !== false,
     volumePercent: device.volume_percent ?? null
   } : null);
@@ -146,7 +150,7 @@ function initLocalPlayer() {
   // Defined before the script is injected so the callback can never be missed
   window.onSpotifyWebPlaybackSDKReady = () => {
     const sdkPlayer = new window.Spotify.Player({
-      name: 'Jomify',
+      name: PLAYER_NAME,
       // Read the token live so a refreshed token flows through without a reconnect
       getOAuthToken: (cb) => cb(useUserStore.getState().token),
       volume: 0.5
@@ -189,7 +193,7 @@ function initLocalPlayer() {
       syncMediaSession(state);
       if (!s.isLocalActive) {
         s.setIsLocalActive(true);
-        s.setActiveDevice({ id: s.deviceId, name: THIS_BROWSER, type: 'Computer', supportsVolume: true, volumePercent: null });
+        s.setActiveDevice({ id: s.deviceId, name: THIS_BROWSER, type: 'Computer', isLocal: true, supportsVolume: true, volumePercent: null });
       }
     });
 
@@ -314,7 +318,6 @@ export function handlePlaybackError(err) {
   }
   if (err.code === 'NO_ACTIVE_DEVICE') {
     useUserStore.getState().setDevicePickerOpen(true);
-    toast('Pick a device to play on', { tone: 'info' });
     return;
   }
   if (err.code === 'PREMIUM_REQUIRED') {
@@ -328,11 +331,51 @@ export function handlePlaybackError(err) {
 // choose one. Replaces the old `if (!deviceId) return` guards that silently did nothing.
 export function resolvePlaybackDeviceId() {
   const target = resolveDeviceId(player());
-  if (!target) {
-    useUserStore.getState().setDevicePickerOpen(true);
-    toast('Pick a device to play on', { tone: 'info' });
-  }
+  if (!target) useUserStore.getState().setDevicePickerOpen(true);
   return target;
+}
+
+// --- Starting playback -----------------------------------------------------------------------
+// A play request that finds no device used to open the picker and forget the song, so choosing
+// a device there merely made it active and silent. The request is parked instead and re-run on
+// whichever device is picked; /me/player/play?device_id starts an idle device directly, so no
+// transfer is needed first.
+let pendingPlay = null;
+
+function parkPlay(play) {
+  pendingPlay = play;
+  useUserStore.getState().setDevicePickerOpen(true);
+}
+
+export async function playOn(play) {
+  if (!token()) return;
+  const target = resolveDeviceId(player());
+  if (!target) { parkPlay(play); return; }
+  try {
+    await play(target);
+  } catch (err) {
+    if (err?.code === 'NO_ACTIVE_DEVICE') parkPlay(play);
+    else handlePlaybackError(err);
+  }
+}
+
+export const hasPendingPlay = () => pendingPlay !== null;
+export function clearPendingPlay() { pendingPlay = null; }
+
+export async function playPendingOn(deviceId) {
+  const play = pendingPlay;
+  pendingPlay = null;
+  if (!play || !deviceId) return false;
+  try {
+    await play(deviceId);
+  } catch (err) {
+    handlePlaybackError(err);
+    return false;
+  }
+  if (deviceId !== player().deviceId) player().setIsLocalActive(false);
+  setTimeout(refreshRemoteState, 600);
+  setTimeout(refreshDevices, 800);
+  return true;
 }
 
 const localSdk = () => {

@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { useUserStore } from '../../store/userStore'; 
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
-import { resolvePlaybackDeviceId, handlePlaybackError, setShuffle } from '../../services/spotify/playbackController';
+import { playOn, setShuffle } from '../../services/spotify/playbackController';
 import { ChevronUp as StageUpIcon, ChevronDown as StageDownIcon, Shuffle as ShuffleIcon } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { collaboratorStyleFor } from '../../utils/collaboratorStyle';
@@ -50,18 +50,17 @@ export default function PlaylistView_2() {
 
   const playFromTop = () => {
     if (!token || !playlist) return;
-    const deviceId = resolvePlaybackDeviceId();
-    if (!deviceId) return;
-    playPlaylistTrack(token, deviceId, activePlaylistId, 0).catch(handlePlaybackError);
+    playOn((deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, 0));
   };
 
-  const shufflePlay = async () => {
+  const shufflePlay = () => {
     if (!token || !playlist) return;
-    const deviceId = resolvePlaybackDeviceId();
-    if (!deviceId) return;
-    try { await setShuffle(true, deviceId); } catch { return; }
     const count = playlist.tracks?.items?.length || 1;
-    playPlaylistTrack(token, deviceId, activePlaylistId, Math.floor(Math.random() * count)).catch(handlePlaybackError);
+    const index = Math.floor(Math.random() * count);
+    playOn(async (deviceId) => {
+      await setShuffle(true, deviceId);
+      await playPlaylistTrack(token, deviceId, activePlaylistId, index);
+    });
   };
   const [playlist, setPlaylist] = useState(null);
   
@@ -262,12 +261,9 @@ const turnIndicator = useMemo(() => {
 
   const handleTrackSelect = (trackUri) => {
     if (!token || !playlist) return;
-    const deviceId = resolvePlaybackDeviceId();
-    if (!deviceId) return;
     const realIndex = playlist.tracks.items.findIndex(item => item.track?.uri === trackUri);
-    if (realIndex !== -1) {
-      playPlaylistTrack(token, deviceId, activePlaylistId, realIndex).catch(handlePlaybackError);
-    }
+    if (realIndex === -1) return;
+    playOn((deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, realIndex));
   };
 
   // --- SCROLL TRANSLATOR ---
@@ -574,9 +570,7 @@ const turnIndicator = useMemo(() => {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (!token || !poolPlaylist) return;
-                          const deviceId = resolvePlaybackDeviceId();
-                          if (!deviceId) return;
-                          playPlaylistTrack(token, deviceId, poolPlaylistId, idx).catch(handlePlaybackError);
+                          playOn((deviceId) => playPlaylistTrack(token, deviceId, poolPlaylistId, idx));
                         }}
                       >
                         <img src={artUrl(item.track.album.images, 40)} width="40" height="40" loading="lazy" decoding="async" className="w-full h-full object-cover" alt="" />

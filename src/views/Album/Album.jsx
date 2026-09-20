@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
-import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
+import { playOn } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
 import { playContext, checkTracksLiked, fetchMoreTracks, spotifyFetch, saveAlbumToLibrary, unsaveAlbum } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
@@ -76,10 +76,8 @@ export default function Album() {
   // shows "playing from <album>"
   const handleTrackPlay = (trackUri) => {
     if (!token) return;
-    const deviceId = resolvePlaybackDeviceId();
-    if (!deviceId) return;
     const index = Math.max(0, tracks.findIndex(t => t.uri === trackUri));
-    playContext(token, deviceId, `spotify:album:${currentAlbumId}`, index).catch(handlePlaybackError);
+    playOn((deviceId) => playContext(token, deviceId, `spotify:album:${currentAlbumId}`, index));
   };
 
   // --- SAVE / UNSAVE ---

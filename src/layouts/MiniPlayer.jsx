@@ -52,7 +52,7 @@ export default function MiniPlayer() {
             <p className="text-sm font-bold text-white truncate">{track.name}</p>
             <p className="text-xs text-neutral-400 truncate">
               {(track.artists || []).map(a => a.name).join(', ')}
-              {activeDevice && !activeDevice.isLocal && activeDevice.name !== 'This browser' ? ` · ${activeDevice.name}` : ''}
+              {activeDevice && !activeDevice.isLocal ? ` · ${activeDevice.name}` : ''}
             </p>
           </div>
         </div>

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
-import { resolvePlaybackDeviceId, handlePlaybackError } from '../../services/spotify/playbackController';
+import { playOn } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
 import { playUris, checkTracksLiked, spotifyFetch } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
@@ -89,11 +89,9 @@ export default function Artist() {
   // used to stop dead after one song.
   const handleTrackPlay = (trackUri) => {
     if (!token) return;
-    const deviceId = resolvePlaybackDeviceId();
-    if (!deviceId) return;
     const uris = topTracks.slice(0, 10).map(t => t.uri).filter(Boolean);
     const index = Math.max(0, uris.indexOf(trackUri));
-    playUris(token, deviceId, uris, index).catch(handlePlaybackError);
+    playOn((deviceId) => playUris(token, deviceId, uris, index));
   };
 
   if (loading) {

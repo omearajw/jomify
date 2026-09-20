@@ -1,7 +1,7 @@
 // Case table for the playback adapter (Web API state -> SDK shape) and the history mirror.
 // Run with: node scripts/playback-cases.mjs
 
-import { toSdkShape, nextUid, resolveDeviceId, REPEAT_MODES } from '../src/services/spotify/playbackAdapter.js';
+import { toSdkShape, nextUid, resolveDeviceId, REPEAT_MODES, describePlatform, playerNameFor, localDeviceLabel, deviceTypeLabel } from '../src/services/spotify/playbackAdapter.js';
 
 let pass = 0;
 let fail = 0;
@@ -59,6 +59,26 @@ check('active device wins', resolveDeviceId({ activeDevice: { id: 'remote' }, sd
 check('falls back to the local SDK device when ready', resolveDeviceId({ activeDevice: null, sdkStatus: 'ready', deviceId: 'local' }) === 'local');
 check('nothing when the SDK failed and nothing is active', resolveDeviceId({ activeDevice: null, sdkStatus: 'failed', deviceId: 'local' }) === null);
 check('nothing when the SDK is still loading', resolveDeviceId({ activeDevice: null, sdkStatus: 'loading', deviceId: null }) === null);
+
+section('device naming');
+const WIN_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0 Safari/537.36';
+const MAC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15';
+const ANDROID_UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/128.0 Mobile Safari/537.36';
+const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
+check('Windows from the user agent', describePlatform({ userAgent: WIN_UA, platform: 'Win32' }) === 'Windows');
+check('Windows from client hints', describePlatform({ userAgent: '', userAgentData: { platform: 'Windows' } }) === 'Windows');
+check('Mac', describePlatform({ userAgent: MAC_UA, platform: 'MacIntel', maxTouchPoints: 0 }) === 'Mac');
+check('iPad reports itself as a Mac with touch', describePlatform({ userAgent: MAC_UA, platform: 'MacIntel', maxTouchPoints: 5 }) === 'iPad');
+check('Android beats the Linux in its user agent', describePlatform({ userAgent: ANDROID_UA, platform: 'Linux armv8l' }) === 'Android');
+check('iPhone', describePlatform({ userAgent: IPHONE_UA, platform: 'iPhone' }) === 'iPhone');
+check('unknown platform is empty', describePlatform({}) === '');
+check('player name carries the platform', playerNameFor('Windows') === 'Jomify on Windows');
+check('player name without a platform is plain', playerNameFor('') === 'Jomify');
+check('phone label', localDeviceLabel('Android') === 'This phone' && localDeviceLabel('iPhone') === 'This phone');
+check('tablet label', localDeviceLabel('iPad') === 'This tablet');
+check('computer label', localDeviceLabel('Windows') === 'This computer' && localDeviceLabel('') === 'This computer');
+check('type labels read as words', deviceTypeLabel('Smartphone') === 'Phone' && deviceTypeLabel('CastVideo') === 'Chromecast');
+check('unknown type falls through', deviceTypeLabel('Toaster') === 'Toaster' && deviceTypeLabel(undefined) === 'Device');
 
 section('history mirror');
 // Stub enough of the browser for historySync + the store to load under node

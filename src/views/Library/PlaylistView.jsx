@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { resolvePlaybackDeviceId, handlePlaybackError, setShuffle } from '../../services/spotify/playbackController';
+import { playOn, setShuffle } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
 import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch, reorderPlaylistTracks } from '../../services/spotify/api';
 import { toast } from '../../store/toastStore';
@@ -374,18 +374,14 @@ export default function PlaylistView() {
     ensureUserProfiles(token, playlist.tracks.items.map(i => i.added_by?.id));
   }, [playlist?.tracks?.items, isCollaborative, token]);
 
-  const handleTrackSelect = (originalIndex) => {
-    if (!token || !playlist) return;
-    const deviceId = resolvePlaybackDeviceId();
-    if (!deviceId) return;
-
+  // The play request for a row, run on whichever device playOn settles on
+  const startTrack = (deviceId, originalIndex) => {
     // A sorted view plays in the order on screen. That means sending explicit URIs (Spotify caps
     // the list at ~100, so it's a window from the clicked row) rather than the playlist context,
     // which would continue in Spotify's stored order regardless of what's displayed.
     if (sortBy !== 'custom') {
       const uris = sortedTracks.slice(originalIndex, originalIndex + 100).map(item => item.track?.uri).filter(Boolean);
-      if (uris.length > 0) playUris(token, deviceId, uris, 0).catch(handlePlaybackError);
-      return;
+      return uris.length > 0 ? playUris(token, deviceId, uris, 0) : Promise.resolve();
     }
 
     // Custom order keeps the playlist context so Spotify shows "playing from <playlist>". Match
@@ -394,9 +390,12 @@ export default function PlaylistView() {
     const targetTrack = sortedTracks[originalIndex];
     let realIndex = playlist.tracks.items.indexOf(targetTrack);
     if (realIndex === -1) realIndex = playlist.tracks.items.findIndex(item => item.track?.uri === targetTrack.track?.uri);
-    if (realIndex !== -1) {
-      playPlaylistTrack(token, deviceId, activePlaylistId, realIndex).catch(handlePlaybackError);
-    }
+    return realIndex !== -1 ? playPlaylistTrack(token, deviceId, activePlaylistId, realIndex) : Promise.resolve();
+  };
+
+  const handleTrackSelect = (originalIndex) => {
+    if (!token || !playlist) return;
+    playOn((deviceId) => startTrack(deviceId, originalIndex));
   };
 
   const handleUpdatePlaylist = async ({ name, description, imageFile }) => {
@@ -539,12 +538,13 @@ export default function PlaylistView() {
 
   // Shuffle play: switch shuffle on, then start somewhere random so it doesn't always open on
   // the first track like a plain Play with shuffle would
-  const handleShufflePlay = async () => {
+  const handleShufflePlay = () => {
     if (!token || !playlist || sortedTracks.length === 0) return;
-    const deviceId = resolvePlaybackDeviceId();
-    if (!deviceId) return;
-    try { await setShuffle(true, deviceId); } catch { return; }
-    handleTrackSelect(Math.floor(Math.random() * sortedTracks.length));
+    const index = Math.floor(Math.random() * sortedTracks.length);
+    playOn(async (deviceId) => {
+      await setShuffle(true, deviceId);
+      await startTrack(deviceId, index);
+    });
   };
 
   if (!playlist) {

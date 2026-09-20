@@ -77,3 +77,47 @@ export function resolveDeviceId({ activeDevice, sdkStatus, deviceId }) {
   if (sdkStatus === 'ready' && deviceId) return deviceId;
   return null;
 }
+
+// --- Device naming ---------------------------------------------------------------------------
+// The browser can't read a machine's hostname, so the platform is the most specific name a
+// Jomify player can announce to Spotify Connect. "Jomify on Windows" next to "Jomify on Android"
+// in a device list is enough to tell them apart; a bare "Jomify" twice is not.
+
+export function describePlatform(nav = typeof navigator !== 'undefined' ? navigator : {}) {
+  const ua = nav.userAgent || '';
+  const hinted = nav.userAgentData?.platform || '';
+  const platform = hinted || nav.platform || '';
+  if (/iPad/.test(ua) || (/Mac/.test(platform) && (nav.maxTouchPoints || 0) > 1)) return 'iPad';
+  if (/iPhone|iPod/.test(ua)) return 'iPhone';
+  if (/Android/i.test(ua) || /Android/i.test(platform)) return 'Android';
+  if (/Win/i.test(platform) || /Windows/.test(ua)) return 'Windows';
+  if (/CrOS/.test(ua) || /Chrome OS/i.test(platform)) return 'Chromebook';
+  if (/Mac/i.test(platform) || /Macintosh/.test(ua)) return 'Mac';
+  if (/Linux/i.test(platform) || /Linux/.test(ua)) return 'Linux';
+  return '';
+}
+
+export const playerNameFor = (platform) => (platform ? `Jomify on ${platform}` : 'Jomify');
+
+export function localDeviceLabel(platform) {
+  if (platform === 'iPhone' || platform === 'Android') return 'This phone';
+  if (platform === 'iPad') return 'This tablet';
+  return 'This computer';
+}
+
+const TYPE_LABELS = {
+  Computer: 'Computer',
+  Smartphone: 'Phone',
+  Tablet: 'Tablet',
+  Speaker: 'Speaker',
+  TV: 'TV',
+  AVR: 'Receiver',
+  STB: 'Set-top box',
+  AudioDongle: 'Audio dongle',
+  GameConsole: 'Games console',
+  CastVideo: 'Chromecast',
+  CastAudio: 'Chromecast audio',
+  Automobile: 'Car'
+};
+
+export const deviceTypeLabel = (type) => TYPE_LABELS[type] || type || 'Device';

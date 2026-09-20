@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { fetchInitialLikedSongs, playLikedSongsQueue, fetchMoreTracks } from '../../services/spotify/api';
-import { resolvePlaybackDeviceId, handlePlaybackError, toggleShuffle } from '../../services/spotify/playbackController';
+import { playOn, toggleShuffle } from '../../services/spotify/playbackController';
 import { formatTime } from '../../utils/formatTime';
 import { Clock3, Play, Heart, Shuffle } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
@@ -97,10 +97,8 @@ export default function LikedSongsView() {
       .filter(Boolean);
 
     if (!allUris.length) return;
-    const deviceId = resolvePlaybackDeviceId();
-    if (!deviceId) return;
     const userId = useUserStore.getState().profile?.id;
-    playLikedSongsQueue(token, deviceId, allUris, index, userId).catch(handlePlaybackError);
+    playOn((deviceId) => playLikedSongsQueue(token, deviceId, allUris, index, userId));
   };
 
   const totalRows = trackData?.items.length ?? 0;
