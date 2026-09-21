@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Play, Pause, SkipForward, Undo2, Star, Check, Layers } from 'lucide-react';
+import { X, Play, Pause, SkipForward, Undo2, Star, Check, Layers, Loader } from 'lucide-react';
 import { useUserStore } from '../../store/userStore';
 import { usePlaybackSummary } from '../../store/selectors';
 import { playOn, togglePlay } from '../../services/spotify/playbackController';
@@ -40,13 +40,14 @@ function Toggle({ label, on, onChange }) {
   );
 }
 
-export default function SortMode({ items, suggestionsByTrack, targets, sourcePlaylistId, onRemovedFromSource, onRestoredToSource, onClose }) {
+export default function SortMode({ items, total, loadingMore, suggestionsByTrack, targets, sourcePlaylistId, onRemovedFromSource, onRestoredToSource, onClose }) {
   const token = useUserStore((s) => s.token);
   const playlists = useUserStore((s) => s.playlists);
   const { currentPlayingTrack, isCurrentTrackPaused } = usePlaybackSummary();
 
-  // A snapshot: the source list shrinks as songs are filed, the pile must not
-  const [queue] = useState(() => (items || []).filter((i) => i?.track?.uri));
+  // The page owns the pile: it only ever grows, as the rest of the playlist streams in
+  const queue = items;
+  const pileSize = Math.max(total || 0, queue.length);
   const [index, setIndex] = useState(0);
   const [placed, setPlaced] = useState({}); // uri -> [playlistId]
   const [busy, setBusy] = useState(false);
@@ -58,7 +59,8 @@ export default function SortMode({ items, suggestionsByTrack, targets, sourcePla
 
   const current = queue[index] || null;
   const track = current?.track || null;
-  const done = index >= queue.length;
+  const exhausted = index >= queue.length;
+  const done = exhausted && !loadingMore;
 
   const updateSettings = (patch) => {
     setSettings((prev) => {
@@ -214,7 +216,7 @@ export default function SortMode({ items, suggestionsByTrack, targets, sourcePla
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 border-b border-white/10 shrink-0">
         <Layers className="w-5 h-5 text-[var(--brand-mid)] shrink-0" />
         <h2 className="font-bold whitespace-nowrap">Sort songs</h2>
-        <span className="text-xs text-neutral-400 whitespace-nowrap">{Math.min(index + 1, queue.length)} / {queue.length}</span>
+        <span className="text-xs text-neutral-400 whitespace-nowrap">{Math.min(index + 1, pileSize)} / {pileSize}</span>
         <div className="order-last w-full md:order-none md:w-auto md:ml-auto flex items-center gap-4">
           <Toggle label="Play songs" on={settings.autoplay} onChange={(v) => updateSettings({ autoplay: v })} />
           <Toggle label="Next after sorting" on={settings.advance} onChange={(v) => updateSettings({ advance: v })} />
@@ -222,7 +224,12 @@ export default function SortMode({ items, suggestionsByTrack, targets, sourcePla
         <button type="button" onClick={onClose} aria-label="Close" className="ml-auto md:ml-0 p-2 -mr-2 text-neutral-400 hover:text-white"><X className="w-5 h-5" /></button>
       </div>
 
-      {done ? (
+      {exhausted && !done ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
+          <Loader className="w-8 h-8 animate-spin text-neutral-400" />
+          <p className="text-sm text-neutral-400">Loading the rest of the playlist…</p>
+        </div>
+      ) : done ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
           <Check className="w-12 h-12 text-[var(--brand-mid)]" />
           <p className="text-xl font-bold">That's the pile</p>

@@ -110,6 +110,10 @@ export default function PlaylistView() {
   };
 
   const isFetchingMore = useRef(false);
+  // Mirrors isFetchingMore for rendering; the ref is what the loader checks
+  const [fetchingMore, setFetchingMore] = useState(false);
+  // Set when something needs every page (Sort mode); a one-page scroll load then keeps going
+  const wantAllPages = useRef(false);
 
   // Computed once per render, not once per row
   const currentPlayingKey = currentPlayingTrack ? cleanString(currentPlayingTrack.name) : '';
@@ -132,6 +136,12 @@ export default function PlaylistView() {
   // Sort mode works from a snapshot of the list, and the suggestions are computed over that
   // snapshot while it is open so a filed song keeps its tiles after leaving the list
   const [sortQueue, setSortQueue] = useState(null);
+  const openSortMode = () => {
+    if (!playlist) return;
+    setSortQueue(playlist.tracks.items.filter((i) => i?.track?.uri));
+    wantAllPages.current = true;
+    if (playlist.tracks.next && !isFetchingMore.current) loadRestOfTracks(playlist.tracks.next);
+  };
   // --- "SORT INTO" CHIPS (Unadded Songs only) ---
   const { suggestionsByTrack, targets: sortTargets } = useUnaddedSuggestions({
     token,
@@ -381,6 +391,7 @@ export default function PlaylistView() {
       setPlaylist(null);
       setVisibleCount(ROW_PAGE);
       isFetchingMore.current = false;
+      wantAllPages.current = false;
 
       const requestedId = activePlaylistId;
       spotifyFetch(`https://api.spotify.com/v1/playlists/${activePlaylistId}`, {
@@ -413,6 +424,7 @@ export default function PlaylistView() {
   // after mount anyway
   async function loadRestOfTracks(initialNextUrl, maxPages = Infinity) {
     isFetchingMore.current = true;
+    setFetchingMore(true);
     let nextUrl = initialNextUrl;
     let pagesLoaded = 0;
 
@@ -438,14 +450,21 @@ export default function PlaylistView() {
           };
         });
         
+        // Sort mode's pile grows as pages land; it never shrinks
+        setSortQueue((prev) => {
+          if (!prev) return prev;
+          const seen = new Set(prev.map((i) => i?.track?.uri));
+          return [...prev, ...nextData.items.filter((i) => i?.track?.uri && !seen.has(i.track.uri))];
+        });
         checkLikesForChunk(nextData.items);
         nextUrl = nextData.next;
-        if (++pagesLoaded >= maxPages) break;
+        if (++pagesLoaded >= maxPages && !wantAllPages.current) break;
       } catch {
         break;
       }
     }
     isFetchingMore.current = false;
+    setFetchingMore(false);
   };
 
   // --- DYNAMIC COLLABORATIVE DETECTOR ---
@@ -630,10 +649,15 @@ export default function PlaylistView() {
   // the first track like a plain Play with shuffle would
   const handleShufflePlay = () => {
     if (!token || !playlist || sortedTracks.length === 0) return;
-    const index = Math.floor(Math.random() * sortedTracks.length);
+    // Custom order plays by position in Spotify's order, so it can land on a page that hasn't
+    // loaded yet; a sorted view can only pick from what is on screen (and has loaded the lot)
+    const custom = sortBy === 'custom';
+    const total = custom ? (playlist.tracks.total || sortedTracks.length) : sortedTracks.length;
+    const index = Math.floor(Math.random() * total);
     playOn(async (deviceId) => {
       await setShuffle(true, deviceId);
-      await startTrack(deviceId, index);
+      if (custom) await playPlaylistTrack(token, deviceId, activePlaylistId, index);
+      else await startTrack(deviceId, index);
     });
   };
 
@@ -712,7 +736,7 @@ export default function PlaylistView() {
               </button>
               <button
                 type="button"
-                onClick={() => setSortQueue(playlist.tracks.items)}
+                onClick={openSortMode}
                 disabled={isSyncing || sortTargets.length === 0}
                 title={sortTargets.length === 0 ? 'Select at least one playlist to check against first' : 'Sort songs one at a time'}
                 className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors disabled:opacity-50"
@@ -735,6 +759,8 @@ export default function PlaylistView() {
       {sortQueue && (
         <SortMode
           items={sortQueue}
+          total={playlist.tracks.total}
+          loadingMore={Boolean(nextPageUrl) && fetchingMore}
           suggestionsByTrack={suggestionsByTrack}
           targets={sortTargets}
           sourcePlaylistId={activePlaylistId}
@@ -867,7 +893,7 @@ export default function PlaylistView() {
       {isUnaddedSongsPlaylist && (
         <button
           type="button"
-          onClick={() => setSortQueue(playlist.tracks.items)}
+          onClick={openSortMode}
           disabled={isSyncing || sortTargets.length === 0}
           className="md:hidden mt-3 w-full flex items-center justify-center gap-2 rounded-full bg-white text-black h-11 text-sm font-bold disabled:opacity-50"
         >
