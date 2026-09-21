@@ -132,21 +132,21 @@ export default function Album() {
   return (
     <div className="flex flex-col pb-8">
       {/* Album Header */}
-      <div className="flex flex-col md:flex-row md:items-end gap-4 md:gap-6 mb-8 md:mb-12">
-        <div className="w-40 h-40 md:w-48 md:h-48 bg-neutral-700 rounded-lg overflow-hidden shadow-2xl flex-shrink-0">
+      <div className="flex flex-row items-center md:items-end gap-4 md:gap-6 mb-6 md:mb-12">
+        <div className="w-24 h-24 md:w-48 md:h-48 bg-neutral-700 rounded-lg overflow-hidden shadow-2xl flex-shrink-0">
           {album.images?.[0]?.url && (
             <img src={album.images[0].url} alt={album.name} className="w-full h-full object-cover" />
           )}
         </div>
-        <div>
-          <p className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-2">Album</p>
-          <h1 className="text-4xl md:text-6xl font-extrabold text-white tracking-tighter mb-4 break-words">{album.name}</h1>
-          <div className="text-neutral-400 font-medium mb-4">
+        <div className="min-w-0">
+          <p className="hidden md:block text-sm font-bold text-neutral-400 uppercase tracking-widest mb-2">Album</p>
+          <h1 className="text-2xl md:text-6xl font-extrabold text-white tracking-tighter mb-1 md:mb-4 break-words line-clamp-2 md:line-clamp-none">{album.name}</h1>
+          <div className="text-sm md:text-base text-neutral-400 font-medium md:mb-4">
             <p>
               By{' '}
               <TrackArtists artists={album.artists} className="text-white" linkClassName="hover:underline" />
             </p>
-            <p className="mt-2">
+            <p className="mt-0.5 md:mt-2">
               {album.release_date?.split('-')[0]} • {album.total_tracks} tracks
             </p>
             <button
@@ -154,7 +154,7 @@ export default function Album() {
               onClick={handleToggleSave}
               disabled={saving}
               aria-pressed={isSaved}
-              className={`mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all disabled:opacity-60 ${
+              className={`mt-3 md:mt-4 inline-flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-sm font-bold transition-all disabled:opacity-60 ${
                 isSaved
                   ? 'bg-white/10 border border-white/15 text-white hover:bg-white/15'
                   : 'bg-brand-gradient text-white shadow-brand-glow hover:scale-105'
@@ -170,7 +170,7 @@ export default function Album() {
       {/* Album Tracks */}
       {tracks.length > 0 && (
         <div>
-          <h2 className="text-2xl font-bold text-white mb-6">Tracks</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-white mb-3 md:mb-6">Tracks</h2>
           <div className="flex flex-col space-y-1">
             {tracks.map((track, index) => {
               const isCurrentTrack = currentPlayingTrack && (
@@ -203,7 +203,7 @@ export default function Album() {
                   </div>
                   <div className="flex items-center space-x-4">
                     <LikeButton trackId={track.id} />
-                    <span className="text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
+                    <span className="hidden md:inline text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
                     <MoreButton onOpen={(e) => setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track, sourceAlbumId: currentAlbumId })} />
                   </div>
                 </div>

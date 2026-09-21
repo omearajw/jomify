@@ -115,22 +115,22 @@ export default function Artist() {
   return (
     <div className="flex flex-col pb-8">
       {/* Artist Header */}
-      <div className="flex flex-col md:flex-row md:items-end gap-4 md:gap-6 mb-8 md:mb-12">
-        <div className="w-40 h-40 md:w-48 md:h-48 bg-neutral-700 rounded-full overflow-hidden shadow-2xl flex-shrink-0">
+      <div className="flex flex-row items-center md:items-end gap-4 md:gap-6 mb-6 md:mb-12">
+        <div className="w-24 h-24 md:w-48 md:h-48 bg-neutral-700 rounded-full overflow-hidden shadow-2xl flex-shrink-0">
           {artist.images?.[0]?.url && (
             <img src={artist.images[0].url} alt={artist.name} className="w-full h-full object-cover" />
           )}
         </div>
-        <div>
-          <p className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-2">Artist</p>
-          <h1 className="text-4xl md:text-6xl font-extrabold text-white tracking-tighter mb-4 break-words">{artist.name}</h1>
-          <p className="text-neutral-400 font-medium mb-4">
+        <div className="min-w-0">
+          <p className="hidden md:block text-sm font-bold text-neutral-400 uppercase tracking-widest mb-2">Artist</p>
+          <h1 className="text-2xl md:text-6xl font-extrabold text-white tracking-tighter mb-1 md:mb-4 break-words line-clamp-2 md:line-clamp-none">{artist.name}</h1>
+          <p className="text-sm md:text-base text-neutral-400 font-medium mb-2 md:mb-4">
             {artist.followers?.total?.toLocaleString()} followers
           </p>
           {artist.genres?.length > 0 && (
             <div className="flex gap-2 flex-wrap">
               {artist.genres.slice(0, 5).map((genre) => (
-                <span key={genre} className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-brand-gradient text-sm font-semibold">
+                <span key={genre} className="px-2.5 py-0.5 md:px-3 md:py-1 rounded-full bg-white/5 border border-white/10 text-brand-gradient text-xs md:text-sm font-semibold">
                   {genre}
                 </span>
               ))}
@@ -142,7 +142,7 @@ export default function Artist() {
       {/* Top Tracks */}
       {topTracks.length > 0 && (
         <div className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-6">Popular Tracks</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-white mb-3 md:mb-6">Popular Tracks</h2>
           <div className="flex flex-col space-y-1">
             {topTracks.slice(0, 10).map((track) => {
               const isCurrentTrack = currentPlayingTrack && (
@@ -178,7 +178,7 @@ export default function Artist() {
                   </div>
                   <div className="flex items-center space-x-4">
                     <LikeButton trackId={track.id} />
-                    <span className="text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
+                    <span className="hidden md:inline text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
                     <MoreButton onOpen={(e) => setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track })} />
                   </div>
                 </div>

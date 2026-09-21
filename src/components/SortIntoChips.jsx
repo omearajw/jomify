@@ -22,7 +22,7 @@ export default function SortIntoChips({ suggestions, targets, busy, onPick }) {
         title={target.reason ? `${target.reason}` : `Add to ${target.name}`}
         onClick={(e) => { stop(e); onPick(target.id); }}
         onPointerDown={stop}
-        className={`inline-flex items-center gap-1 max-w-[11rem] rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none transition-colors disabled:opacity-50 ${top
+        className={`inline-flex items-center gap-1 max-w-[11rem] shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none transition-colors disabled:opacity-50 ${top
           ? 'border-[var(--brand-mid)]/60 bg-[var(--brand-mid)]/15 text-white hover:bg-[var(--brand-mid)]/30'
           : 'border-white/10 bg-white/5 text-neutral-300 hover:bg-white/10 hover:text-white'}`}
       >
@@ -78,14 +78,14 @@ export default function SortIntoChips({ suggestions, targets, busy, onPick }) {
   );
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 mt-1.5" onClick={stop} onPointerDown={stop}>
+    <div className="flex items-center gap-1.5 mt-1.5 overflow-x-auto md:overflow-visible md:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" onClick={stop} onPointerDown={stop}>
       {busy && <Loader className="w-3.5 h-3.5 animate-spin text-neutral-400" />}
       {!busy && suggestions.map(chip)}
       {!busy && (
         <button
           type="button"
           onClick={(e) => { stop(e); setPickerOpen(true); }}
-          className="inline-flex items-center rounded-full border border-dashed border-white/15 px-2.5 py-1 text-[11px] font-semibold leading-none text-neutral-400 hover:text-white hover:border-white/30"
+          className="inline-flex items-center shrink-0 rounded-full border border-dashed border-white/15 px-2.5 py-1 text-[11px] font-semibold leading-none text-neutral-400 hover:text-white hover:border-white/30"
         >
           {suggestions.length ? 'More…' : 'Add to…'}
         </button>

@@ -58,7 +58,7 @@ const FolderStack = ({ folder, folders, items }) => {
 // state change -- including the setDragOverId that fires during a drag, which cancelled the
 // drag and flickered every image. Module scope gives them a stable identity.
 
-function SizingControls({ libraryGridSize, setLibraryGridSize }) {
+function SizingControls({ libraryGridSize, setLibraryGridSize, className = '' }) {
   const sizeButton = (size, label) => (
     <button
       onClick={() => setLibraryGridSize(size)}
@@ -69,8 +69,8 @@ function SizingControls({ libraryGridSize, setLibraryGridSize }) {
   );
 
   return (
-    <div className="flex items-center space-x-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 w-fit shrink-0">
-      <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider mr-2">Size</span>
+    <div className={`flex items-center space-x-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 w-fit shrink-0 ${className}`}>
+      <span className="hidden sm:inline text-xs font-bold text-neutral-400 uppercase tracking-wider mr-2">Size</span>
       {sizeButton('small', 'S')}
       {sizeButton('medium', 'M')}
       {sizeButton('large', 'L')}
@@ -536,10 +536,10 @@ export default function Library() {
 
   if (!activeFolder) {
     gridItems.push(
-      <div key="liked-songs" onClick={() => setCurrentView('liked-songs')} className="bg-brand-gradient p-4 rounded-xl hover:scale-[1.02] transition-all duration-300 cursor-pointer group shadow-lg flex flex-col justify-end aspect-square relative overflow-hidden">
-        <div className="absolute top-4 left-4"><Heart className="w-8 h-8 fill-white text-white shadow-sm" /></div>
-        <h3 className="font-bold text-2xl text-white mb-1 leading-tight tracking-tighter">Liked Songs</h3>
-        <p className="text-xs text-indigo-100 font-medium">Your saved collection</p>
+      <div key="liked-songs" onClick={() => setCurrentView('liked-songs')} className={`bg-brand-gradient ${libraryGridSize === 'small' ? 'p-2.5' : 'p-4'} rounded-xl hover:scale-[1.02] transition-all duration-300 cursor-pointer group shadow-lg flex flex-col justify-end aspect-square relative overflow-hidden`}>
+        <div className={`absolute ${libraryGridSize === 'small' ? 'top-2.5 left-2.5' : 'top-4 left-4'}`}><Heart className={`${libraryGridSize === 'small' ? 'w-5 h-5' : 'w-8 h-8'} fill-white text-white shadow-sm`} /></div>
+        <h3 className={`font-bold text-white leading-tight tracking-tighter ${libraryGridSize === 'small' ? 'text-sm' : 'text-2xl mb-1'}`}>Liked Songs</h3>
+        {libraryGridSize !== 'small' && <p className="text-xs text-indigo-100 font-medium">Your saved collection</p>}
       </div>
     );
 
@@ -712,22 +712,22 @@ export default function Library() {
         </div>
       ) : (
         <>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-5 sm:mb-8 gap-4">
             <div>
               <h1 className="text-4xl font-extrabold text-white tracking-tighter">Your Library</h1>
-              <p className="text-sm text-neutral-400 mt-1">Create playlists and organize your collection.</p>
+              <p className="hidden sm:block text-sm text-neutral-400 mt-1">Create playlists and organize your collection.</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <button onClick={() => setImportOpen(true)} title="Import your Spotify folder tree" className="px-5 py-2 rounded-full border border-white/20 text-white font-bold hover:bg-white/10 transition-all flex items-center">
-                <FolderInput className="w-4 h-4 mr-2" /> Import
+              <button onClick={() => setImportOpen(true)} title="Import your Spotify folder tree" aria-label="Import your Spotify folder tree" className="px-3 sm:px-5 py-2 rounded-full border border-white/20 text-white font-bold hover:bg-white/10 transition-all flex items-center">
+                <FolderInput className="w-4 h-4 sm:mr-2" /><span className="hidden sm:inline">Import</span>
               </button>
-              <button onClick={() => { setCreateParentId(null); setFolderDialogOpen(true); }} className="px-5 py-2 rounded-full border border-white/20 text-white font-bold hover:bg-white/10 transition-all flex items-center">
-                <FolderPlus className="w-4 h-4 mr-2" /> Folder
+              <button onClick={() => { setCreateParentId(null); setFolderDialogOpen(true); }} aria-label="New folder" className="px-3 sm:px-5 py-2 rounded-full border border-white/20 text-white font-bold hover:bg-white/10 transition-all flex items-center">
+                <FolderPlus className="w-4 h-4 sm:mr-2" /><span className="hidden sm:inline">Folder</span>
               </button>
               <button onClick={() => setPlaylistDialogOpen(true)} className="px-5 py-2 rounded-full bg-brand-gradient text-white font-bold hover:opacity-90 transition-all flex items-center">
                 <Plus className="w-4 h-4 mr-2" /> Playlist
               </button>
-              <SizingControls libraryGridSize={libraryGridSize} setLibraryGridSize={setLibraryGridSize} />
+              <SizingControls libraryGridSize={libraryGridSize} setLibraryGridSize={setLibraryGridSize} className="hidden sm:flex" />
             </div>
           </div>
 
@@ -748,6 +748,7 @@ export default function Library() {
                 </button>
               )}
             </label>
+            <div className="flex items-center justify-between gap-2 sm:contents">
             <label className="flex items-center gap-2 rounded-full border border-white/10 bg-neutral-900 px-4 py-2 text-sm text-neutral-300 shrink-0">
               <ArrowUpDown className="w-4 h-4 text-neutral-500" />
               <span className="sr-only">Sort</span>
@@ -760,6 +761,8 @@ export default function Library() {
                 {SORT_OPTIONS.map(o => <option key={o.id} value={o.id} className="bg-neutral-900">{o.label}</option>)}
               </select>
             </label>
+            <SizingControls libraryGridSize={libraryGridSize} setLibraryGridSize={setLibraryGridSize} className="sm:hidden" />
+            </div>
           </div>
 
           {trimmedQuery ? (

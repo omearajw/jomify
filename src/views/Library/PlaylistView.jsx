@@ -8,7 +8,7 @@ import SortIntoChips from '../../components/SortIntoChips';
 import { useUnaddedSuggestions, noteTrackSorted } from './useUnaddedSuggestions';
 import { toast } from '../../store/toastStore';
 import { formatTime } from '../../utils/formatTime';
-import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink, Undo2 } from 'lucide-react';
+import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink, Undo2, Pencil } from 'lucide-react';
 import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
 import UserChip from '../../components/UserChip';
 import LikeButton from '../../components/LikeButton';
@@ -638,21 +638,21 @@ export default function PlaylistView() {
 
   // Phone: art, title/artists, like + duration + menu. Desktop keeps the full table.
   const gridColumns = isCollaborative
-    ? "grid-cols-[48px_minmax(0,1fr)_auto] md:grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_120px_140px_80px]"
-    : "grid-cols-[48px_minmax(0,1fr)_auto] md:grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_140px_80px]";
+    ? "grid-cols-[40px_minmax(0,1fr)_auto] md:grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_120px_140px_80px]"
+    : "grid-cols-[40px_minmax(0,1fr)_auto] md:grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_140px_80px]";
 
   return (
     <div className="flex flex-col pb-8">
       {/* Playlist Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-8 mt-4 select-none gap-6">
-        <div className="flex flex-col md:flex-row md:items-end gap-4 md:gap-6 min-w-0">
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-4 md:mb-8 mt-2 md:mt-4 select-none gap-4 md:gap-6">
+        <div className="flex flex-row items-center md:items-end gap-4 md:gap-6 min-w-0">
           {playlist.images?.length > 0 ? (
-            <img src={playlist.images[0].url} alt={playlist.name} className="w-40 h-40 md:w-48 md:h-48 shadow-2xl shadow-black/50 rounded shrink-0" />
+            <img src={playlist.images[0].url} alt={playlist.name} className="w-24 h-24 md:w-48 md:h-48 shadow-2xl shadow-black/50 rounded shrink-0" />
           ) : (
-            <div className="w-40 h-40 md:w-48 md:h-48 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded shrink-0"> 🎵 </div>
+            <div className="w-24 h-24 md:w-48 md:h-48 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded shrink-0"> 🎵 </div>
           )}
-          <div>
-            <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+          <div className="min-w-0">
+            <p className="hidden md:flex text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2 items-center gap-2">
               Playlist
               {isCollaborative && (
                 <span className="bg-[var(--brand-mid)]/20 text-[var(--brand-mid)] border border-[var(--brand-mid)]/30 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 shadow-sm">
@@ -661,14 +661,16 @@ export default function PlaylistView() {
                 </span>
               )}
             </p>
-            <h1 className="text-3xl md:text-5xl lg:text-7xl font-extrabold text-white tracking-tighter mb-4 break-words">{playlist.name}</h1>
+            <h1 className="text-2xl md:text-5xl lg:text-7xl font-extrabold text-white tracking-tighter mb-1 md:mb-4 break-words line-clamp-2 md:line-clamp-none">{playlist.name}</h1>
             <p className="text-neutral-400 text-sm font-medium">
-              {playlist.description && <span className="mr-2">{playlist.description} •</span>}
+              {playlist.description && <span className="mr-2 hidden md:inline">{playlist.description} •</span>}
+              {isCollaborative && <span className="md:hidden">Collaborative • </span>}
               {playlist.owner.display_name} • {playlist.tracks.total} songs
             </p>
+            {playlist.description && <p className="md:hidden text-neutral-500 text-xs mt-1 line-clamp-1">{playlist.description}</p>}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="hidden md:flex flex-wrap items-center gap-3">
           {isUnaddedSongsPlaylist && (
             <>
               <button
@@ -758,12 +760,13 @@ export default function PlaylistView() {
 
       {/* FILTER & SORT CONTROLS BAR */}
       {/* Play / Shuffle: same on desktop and phone */}
-      <div className="flex items-center gap-4 mb-6 px-4 select-none">
+      <div ref={sortMenuRef} className="relative mb-4 md:mb-6 px-1 md:px-4 select-none">
+      <div className="flex items-center gap-2 md:gap-4">
         <button
           type="button"
           onClick={() => handleTrackSelect(0)}
           aria-label={`Play ${playlist.name}`}
-          className="w-14 h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-xl shrink-0"
+          className="w-12 h-12 md:w-14 md:h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-xl shrink-0"
         >
           <Play className="w-6 h-6 fill-current ml-1" />
         </button>
@@ -776,10 +779,56 @@ export default function PlaylistView() {
         >
           <Shuffle className="w-6 h-6" />
         </button>
+        <div className="ml-auto flex items-center gap-1.5 md:hidden">
+          {isUnaddedSongsPlaylist && (
+            <>
+              <button
+                type="button"
+                onClick={() => setConfigModalOpen(true)}
+                disabled={isSyncing}
+                aria-label={`Select playlists to check against (${selectedCheckPlaylistIds.length} selected)`}
+                className="relative w-11 h-11 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-white disabled:opacity-50"
+              >
+                <ListFilter className="w-5 h-5" />
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--brand-mid)] text-[10px] font-bold text-white flex items-center justify-center">{selectedCheckPlaylistIds.length}</span>
+              </button>
+              <button
+                type="button"
+                onClick={runUnaddedSongsSync}
+                disabled={isSyncing || selectedCheckPlaylistIds.length === 0}
+                className="flex items-center gap-1.5 rounded-full bg-brand-gradient px-3 h-11 text-xs font-semibold text-white whitespace-nowrap shadow-brand-glow disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Syncing' : 'Run check'}
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
+            aria-haspopup="menu"
+            aria-expanded={sortDropdownOpen}
+            aria-label={`Sort by ${sortBy.replace('_', ' ')}, ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
+            className={`w-11 h-11 rounded-full border flex items-center justify-center transition-colors ${sortBy !== 'custom' ? 'border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/15 text-white' : 'border-white/10 bg-neutral-900 text-neutral-300'}`}
+          >
+            <ArrowUpDown className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditDialogOpen(true)}
+            aria-label="Edit playlist"
+            className="w-11 h-11 rounded-full border border-white/10 bg-neutral-900 flex items-center justify-center text-neutral-300"
+          >
+            <Pencil className="w-5 h-5" />
+          </button>
+        </div>
       </div>
+      {isUnaddedSongsPlaylist && isSyncing && syncStatusText && (
+        <p className="md:hidden text-xs text-neutral-400 mt-2 px-1">{syncStatusText}</p>
+      )}
 
-      <div className="flex items-center justify-end mb-4 px-4 select-none">
-        <div className="relative" ref={sortMenuRef}>
+      <div className="hidden md:flex items-center justify-end mt-6">
+        <div>
           <button
             onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
             aria-haspopup="menu"
@@ -790,42 +839,43 @@ export default function PlaylistView() {
             <span>Sort by: <strong className="text-white capitalize">{sortBy.replace('_', ' ')}</strong> ({sortOrder.toUpperCase()})</span>
           </button>
 
-          {sortDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl z-30 p-2 flex flex-col space-y-1">
-              {[
-                { id: 'custom', label: 'Custom Order' },
-                { id: 'title', label: 'Alphabetical (Title)' },
-                { id: 'artist', label: 'Alphabetical (Artist)' },
-                { id: 'album', label: 'Alphabetical (Album)' },
-                { id: 'date_added', label: 'Date Added' },
-              ].map((option) => (
-                <button
-                  key={option.id}
-                  onClick={() => {
-                    updateSortSettings(option.id, sortOrder);
-                    setSortDropdownOpen(false);
-                  }}
-                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm text-left transition-colors ${sortBy === option.id ? 'bg-white/10 text-white font-semibold' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
-                >
-                  <span>{option.label}</span>
-                  {sortBy === option.id && <Check className="w-4 h-4 text-[var(--brand-mid)]" />}
-                </button>
-              ))}
-
-              <div className="my-1 border-t border-neutral-800" />
-
-              <button
-                onClick={() => updateSortSettings(sortBy, sortOrder === 'asc' ? 'desc' : 'asc')}
-                className="flex items-center justify-between px-3 py-2 rounded-xl text-sm text-neutral-300 hover:bg-neutral-800 transition-colors"
-              >
-                <span>Direction</span>
-                <span className="flex items-center gap-1 text-xs font-bold uppercase text-[var(--brand-mid)]">
-                  {sortOrder === 'asc' ? <><ArrowUp className="w-3.5 h-3.5" /> Ascending</> : <><ArrowDown className="w-3.5 h-3.5" /> Descending</>}
-                </span>
-              </button>
-            </div>
-          )}
         </div>
+      </div>
+      {sortDropdownOpen && (
+        <div className="absolute right-1 md:right-4 top-full mt-2 w-56 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl z-30 p-2 flex flex-col space-y-1">
+          {[
+            { id: 'custom', label: 'Custom Order' },
+            { id: 'title', label: 'Alphabetical (Title)' },
+            { id: 'artist', label: 'Alphabetical (Artist)' },
+            { id: 'album', label: 'Alphabetical (Album)' },
+            { id: 'date_added', label: 'Date Added' },
+          ].map((option) => (
+            <button
+              key={option.id}
+              onClick={() => {
+                updateSortSettings(option.id, sortOrder);
+                setSortDropdownOpen(false);
+              }}
+              className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm text-left transition-colors ${sortBy === option.id ? 'bg-white/10 text-white font-semibold' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+            >
+              <span>{option.label}</span>
+              {sortBy === option.id && <Check className="w-4 h-4 text-[var(--brand-mid)]" />}
+            </button>
+          ))}
+
+          <div className="my-1 border-t border-neutral-800" />
+
+          <button
+            onClick={() => updateSortSettings(sortBy, sortOrder === 'asc' ? 'desc' : 'asc')}
+            className="flex items-center justify-between px-3 py-2 rounded-xl text-sm text-neutral-300 hover:bg-neutral-800 transition-colors"
+          >
+            <span>Direction</span>
+            <span className="flex items-center gap-1 text-xs font-bold uppercase text-[var(--brand-mid)]">
+              {sortOrder === 'asc' ? <><ArrowUp className="w-3.5 h-3.5" /> Ascending</> : <><ArrowDown className="w-3.5 h-3.5" /> Descending</>}
+            </span>
+          </button>
+        </div>
+      )}
       </div>
 
       {/* Tracklist Header */}
@@ -935,7 +985,7 @@ export default function PlaylistView() {
               {...rowButtonProps(() => handleTrackSelect(index))}
               onContextMenu={(e) => handleRightClick(e, track, item)}
               style={collaboratorStyleFor(adderId, isCollaborative, isFirstInGroup, isLastInGroup)}
-              className={`grid ${gridColumns} gap-4 px-4 py-3 group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${bgHoverClass} ${radiusClass} ${marginClass}`}
+              className={`grid ${gridColumns} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${bgHoverClass} ${radiusClass} ${marginClass}`}
             >
               <div className="text-neutral-400 w-4 h-4 hidden md:flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
@@ -950,7 +1000,7 @@ export default function PlaylistView() {
                 )}
               </div>
               
-              <div className="w-12 h-12 rounded-md overflow-hidden flex-shrink-0">
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-md overflow-hidden flex-shrink-0">
                 {track.album?.images?.[0]?.url ? (
                   <img src={artUrl(track.album.images, 48)} alt={track.name} width="48" height="48" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                 ) : (
@@ -1040,12 +1090,10 @@ export default function PlaylistView() {
                     sourcePlaylistId: activePlaylistId 
                   }); 
                 }}
-                className="flex items-center justify-between gap-4 w-full h-full"
+                className="flex items-center justify-between gap-2 md:gap-4 w-full h-full"
               >
-                <div className="flex items-center space-x-4">
-                    <LikeButton trackId={track.id} />
-                </div>
-                <span className="text-neutral-400 w-8 text-right">{formatTime(track.duration_ms)}</span>
+                <LikeButton trackId={track.id} />
+                <span className="hidden md:inline text-neutral-400 w-8 text-right">{formatTime(track.duration_ms)}</span>
                 <MoreButton onOpen={(e) => handleRightClick(e, track, item)} />
               </div>
             </div>

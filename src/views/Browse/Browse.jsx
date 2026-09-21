@@ -281,7 +281,7 @@ export default function Browse() {
                     </div>
                     <div className="flex items-center space-x-4">
                       <LikeButton trackId={track.id} />
-                      <span className="text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
+                      <span className="hidden md:inline text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
                     </div>
                   </div>
                 );
@@ -554,7 +554,7 @@ export default function Browse() {
                       </div>
                       <div className="flex items-center space-x-4">
                         <LikeButton trackId={track.id} />
-                        <span className="text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
+                        <span className="hidden md:inline text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
                       </div>
                     </div>
                   );

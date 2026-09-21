@@ -615,30 +615,30 @@ const turnIndicator = useMemo(() => {
     <div className="flex flex-col md:h-[calc(90vh-140px)] w-full md:overflow-hidden">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-4 mt-2 md:mt-6 px-2 md:px-8 select-none shrink-0">
-        <div className="flex items-end gap-4 md:gap-6 min-w-0">
+        <div className="flex items-center md:items-end gap-4 md:gap-6 min-w-0">
           {playlist.images?.length > 0 ? (
-            <img src={playlist.images[0].url} alt={playlist.name} className="w-24 h-24 md:w-32 md:h-32 shadow-2xl shadow-black/50 rounded-xl object-cover shrink-0" />
+            <img src={playlist.images[0].url} alt={playlist.name} className="w-20 h-20 md:w-32 md:h-32 shadow-2xl shadow-black/50 rounded-xl object-cover shrink-0" />
           ) : (
-            <div className="w-24 h-24 md:w-32 md:h-32 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded-xl shrink-0"> 🎵 </div>
+            <div className="w-20 h-20 md:w-32 md:h-32 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded-xl shrink-0"> 🎵 </div>
           )}
           <div className="min-w-0">
-            <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+            <p className="hidden md:flex text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2 items-center gap-2">
               The Seven
             </p>
-            <h1 className="text-3xl md:text-5xl font-extrabold text-white tracking-tighter mb-2 break-words">{playlist.name}</h1>
+            <h1 className="text-2xl md:text-5xl font-extrabold text-white tracking-tighter mb-1 md:mb-2 break-words line-clamp-2 md:line-clamp-none">{playlist.name}</h1>
             <p className="text-neutral-400 text-sm font-medium">
               {turnIndicator} • {chunks.length} Batches
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0 flex-wrap">
+        <div className="flex items-center gap-2 md:gap-3 shrink-0 flex-wrap">
           {thisSeven && (
             <button
               type="button"
               onClick={() => updateSeven(activePlaylistId, { active: !thisSeven.active })}
               aria-pressed={thisSeven.active}
               title={thisSeven.active ? 'Mark this Seven as finished' : 'Mark this Seven as active'}
-              className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider border transition-colors ${thisSeven.active ? 'border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/15 text-white' : 'border-white/15 bg-white/5 text-neutral-400 hover:text-white'}`}
+              className={`flex items-center gap-2 rounded-full px-3 py-1.5 md:px-4 md:py-2 text-xs font-bold uppercase tracking-wider border transition-colors ${thisSeven.active ? 'border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/15 text-white' : 'border-white/15 bg-white/5 text-neutral-400 hover:text-white'}`}
             >
               <span className={`w-2 h-2 rounded-full ${thisSeven.active ? 'bg-[var(--brand-mid)]' : 'bg-neutral-500'}`} />
               {thisSeven.active ? 'Active' : 'Finished'}
@@ -663,7 +663,7 @@ const turnIndicator = useMemo(() => {
           </button>
           <button
             onClick={() => setIsWorkspaceOpen(true)}
-            className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-black hover:bg-neutral-200 hover:scale-105 transition-all shadow-xl shrink-0"
+            className="flex items-center gap-2 rounded-full bg-white px-4 py-2 md:px-5 md:py-2.5 text-xs md:text-sm font-bold text-black hover:bg-neutral-200 hover:scale-105 transition-all shadow-xl shrink-0"
           >
             <LayoutPanelLeft className="w-4 h-4" /> Open Workspace
           </button>

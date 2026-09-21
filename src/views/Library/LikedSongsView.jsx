@@ -123,13 +123,13 @@ export default function LikedSongsView() {
   return (
     <div className="flex flex-col pb-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end gap-4 md:gap-6 mb-6 mt-4 select-none">
-        <div className="w-40 h-40 md:w-48 md:h-48 shrink-0 bg-gradient-to-br from-indigo-700 to-blue-500 flex items-center justify-center shadow-2xl rounded">
-          <Heart className="w-16 h-16 fill-white text-white" />
+      <div className="flex flex-row items-center md:items-end gap-4 md:gap-6 mb-4 md:mb-6 mt-2 md:mt-4 select-none">
+        <div className="w-24 h-24 md:w-48 md:h-48 shrink-0 bg-gradient-to-br from-indigo-700 to-blue-500 flex items-center justify-center shadow-2xl rounded">
+          <Heart className="w-10 h-10 md:w-16 md:h-16 fill-white text-white" />
         </div>
-        <div>
-          <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2">Playlist</p>
-          <h1 className="text-3xl md:text-5xl lg:text-7xl font-extrabold text-white tracking-tighter mb-4">Liked Songs</h1>
+        <div className="min-w-0">
+          <p className="hidden md:block text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2">Playlist</p>
+          <h1 className="text-2xl md:text-5xl lg:text-7xl font-extrabold text-white tracking-tighter mb-1 md:mb-4">Liked Songs</h1>
           <p className="text-neutral-400 text-sm font-medium">
             {trackData.items.length < trackData.total
               ? `${trackData.items.length.toLocaleString()} of ${trackData.total.toLocaleString()} songs loaded`
@@ -153,8 +153,8 @@ export default function LikedSongsView() {
       </div>
 
       {/* Action Bar (Play & Shuffle) */}
-      <div className="flex items-center space-x-4 mb-8 pl-4">
-        <button onClick={() => handleTrackSelect(0)} aria-label="Play Liked Songs" className="w-14 h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-xl">
+      <div className="flex items-center space-x-4 mb-4 md:mb-8 pl-1 md:pl-4">
+        <button onClick={() => handleTrackSelect(0)} aria-label="Play Liked Songs" className="w-12 h-12 md:w-14 md:h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-xl">
           <Play className="w-6 h-6 fill-current ml-1" />
         </button>
         <button onClick={handleToggleShuffle} aria-label={isShuffled ? 'Disable shuffle' : 'Enable shuffle'} aria-pressed={isShuffled} className={`w-11 h-11 flex items-center justify-center hover:scale-110 transition-all ${isShuffled ? 'text-brand-gradient' : 'text-neutral-400 hover:text-white'}`}>
@@ -188,7 +188,7 @@ export default function LikedSongsView() {
               onClick={() => handleTrackSelect(index)}
               {...rowButtonProps(() => handleTrackSelect(index))}
               onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track }); }}
-              className="grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[16px_minmax(0,1fr)_minmax(0,1fr)_80px] gap-4 px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_64px]"
+              className="grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[16px_minmax(0,1fr)_minmax(0,1fr)_80px] gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_64px]"
             >
               <div className="text-neutral-400 w-4 h-4 hidden md:flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
@@ -204,7 +204,7 @@ export default function LikedSongsView() {
               <span className="hidden md:block text-neutral-400 truncate pr-4">{track.album.name}</span>
               <div className="flex items-center justify-end space-x-4">
                 <LikeButton trackId={track.id} />
-                <span className="text-neutral-400 w-8 text-right">{formatTime(track.duration_ms)}</span>
+                <span className="hidden md:inline text-neutral-400 w-8 text-right">{formatTime(track.duration_ms)}</span>
                 <MoreButton onOpen={(e) => setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track })} />
               </div>
             </div>
