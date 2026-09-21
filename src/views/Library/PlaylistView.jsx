@@ -6,9 +6,10 @@ import MoreButton from '../../components/MoreButton';
 import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch, reorderPlaylistTracks, addTracksToPlaylist, removeTrackFromPlaylist } from '../../services/spotify/api';
 import SortIntoChips from '../../components/SortIntoChips';
 import { useUnaddedSuggestions, noteTrackSorted } from './useUnaddedSuggestions';
+import SortMode from './SortMode';
 import { toast } from '../../store/toastStore';
 import { formatTime } from '../../utils/formatTime';
-import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink, Undo2, Pencil } from 'lucide-react';
+import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink, Undo2, Pencil, Layers } from 'lucide-react';
 import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
 import UserChip from '../../components/UserChip';
 import LikeButton from '../../components/LikeButton';
@@ -128,14 +129,29 @@ export default function PlaylistView() {
 
   const isUnaddedSongsPlaylist = playlist?.name?.toLowerCase() === 'unadded songs';
 
+  // Sort mode works from a snapshot of the list, and the suggestions are computed over that
+  // snapshot while it is open so a filed song keeps its tiles after leaving the list
+  const [sortQueue, setSortQueue] = useState(null);
   // --- "SORT INTO" CHIPS (Unadded Songs only) ---
   const { suggestionsByTrack, targets: sortTargets } = useUnaddedSuggestions({
     token,
     enabled: isUnaddedSongsPlaylist,
     checkPlaylistIds: selectedCheckPlaylistIds,
-    items: playlist?.tracks?.items
+    items: sortQueue || playlist?.tracks?.items
   });
   const [sortingUri, setSortingUri] = useState(null);
+
+  // Sort mode files songs itself; the list here just follows
+  const removeRow = (uri) => setPlaylist((prev) => {
+    if (!prev) return prev;
+    const items = prev.tracks.items.filter((i) => i?.track?.uri !== uri);
+    return { ...prev, tracks: { ...prev.tracks, items, total: Math.max(0, (prev.tracks.total || items.length + 1) - 1) } };
+  });
+  const restoreRow = (item) => setPlaylist((prev) => {
+    if (!prev || prev.tracks.items.some((i) => i?.track?.uri === item?.track?.uri)) return prev;
+    const items = [...prev.tracks.items, item];
+    return { ...prev, tracks: { ...prev.tracks, items, total: (prev.tracks.total || items.length - 1) + 1 } };
+  });
   // uri -> { playlistId, playlistName, expiresAt }: songs moved out but still undoable
   const [sortedAway, setSortedAway] = useState({});
   const undoTimers = useRef({});
@@ -694,6 +710,16 @@ export default function PlaylistView() {
                 <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                 {isSyncing ? (syncStatusText || 'Syncing...') : 'Run Unadded Check'}
               </button>
+              <button
+                type="button"
+                onClick={() => setSortQueue(playlist.tracks.items)}
+                disabled={isSyncing || sortTargets.length === 0}
+                title={sortTargets.length === 0 ? 'Select at least one playlist to check against first' : 'Sort songs one at a time'}
+                className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors disabled:opacity-50"
+              >
+                <Layers className="w-4 h-4" />
+                Sort songs
+              </button>
             </>
           )}
           <button
@@ -705,6 +731,18 @@ export default function PlaylistView() {
           </button>
         </div>
       </div>
+
+      {sortQueue && (
+        <SortMode
+          items={sortQueue}
+          suggestionsByTrack={suggestionsByTrack}
+          targets={sortTargets}
+          sourcePlaylistId={activePlaylistId}
+          onRemovedFromSource={removeRow}
+          onRestoredToSource={restoreRow}
+          onClose={() => setSortQueue(null)}
+        />
+      )}
 
       {/* Check Playlists Selection Modal */}
       {configModalOpen && (
@@ -825,6 +863,16 @@ export default function PlaylistView() {
       </div>
       {isUnaddedSongsPlaylist && isSyncing && syncStatusText && (
         <p className="md:hidden text-xs text-neutral-400 mt-2 px-1">{syncStatusText}</p>
+      )}
+      {isUnaddedSongsPlaylist && (
+        <button
+          type="button"
+          onClick={() => setSortQueue(playlist.tracks.items)}
+          disabled={isSyncing || sortTargets.length === 0}
+          className="md:hidden mt-3 w-full flex items-center justify-center gap-2 rounded-full bg-white text-black h-11 text-sm font-bold disabled:opacity-50"
+        >
+          <Layers className="w-4 h-4" /> Sort songs one by one
+        </button>
       )}
 
       <div className="hidden md:flex items-center justify-end mt-6">
