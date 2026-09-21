@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useUserStore } from '../../store/userStore'; 
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
@@ -7,6 +7,8 @@ import { ChevronUp as StageUpIcon, ChevronDown as StageDownIcon, Shuffle as Shuf
 import { usePlayerStore } from '../../store/playerStore';
 import { collaboratorStyleFor } from '../../utils/collaboratorStyle';
 import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
+import { useIsMobile } from '../../hooks/useMediaQuery';
+import { Skeleton, SkeletonHeader } from '../../components/Skeleton';
 
 const formatBatchDate = (iso) => {
   if (!iso) return '';
@@ -19,19 +21,78 @@ import { Play, X, LayoutPanelLeft, ArrowRight, Loader2, Disc3 } from 'lucide-rea
 import LikeButton from '../../components/LikeButton';
 import { getCollaboratorStyle } from '../../utils/collaboratorStyle';
 
-// A playlist with every page of tracks, not just the first 100. fetchMoreTracks goes through
-// the rate-limit interceptor and throws on a bad page, so a failure surfaces instead of
-// silently truncating the list.
-async function fetchEntirePlaylist(token, playlistId) {
+const PAGE = 100;
+const pageUrl = (playlistId, offset, limit) => `https://api.spotify.com/v1/playlists/${playlistId}/tracks?offset=${offset}&limit=${limit}`;
+
+// The newest batches sit at the end of the playlist, so after the details request (which
+// brings the first page) the remaining pages are fetched from the end backwards and shown as a
+// growing tail. `tracks.loadedFrom` is the offset the tail starts at; 0 means everything is in.
+// fetchMoreTracks goes through the rate-limit interceptor and throws on a bad page, so a
+// failure surfaces instead of silently truncating the list.
+async function loadSeven(token, playlistId, onUpdate, isCancelled = () => false) {
   const data = await fetchPlaylistDetails(token, playlistId);
-  let allItems = [...data.tracks.items];
-  let nextUrl = data.tracks.next;
-  while (nextUrl) {
-    const nextData = await fetchMoreTracks(token, nextUrl);
-    allItems = [...allItems, ...(nextData.items || [])];
-    nextUrl = nextData.next;
+  const total = data.tracks.total ?? data.tracks.items.length;
+  const slots = new Array(total);
+  data.tracks.items.forEach((item, i) => { slots[i] = item; });
+  let loadedFrom = total <= PAGE ? 0 : total;
+  const publish = () => {
+    if (isCancelled()) return;
+    onUpdate({ ...data, tracks: { ...data.tracks, items: slots.slice(loadedFrom, total).filter(Boolean), total, loadedFrom, next: null } });
+  };
+  publish();
+  if (loadedFrom === 0) return;
+
+  let offset = total - PAGE;
+  while (offset >= PAGE) {
+    if (isCancelled()) return;
+    const page = await fetchMoreTracks(token, pageUrl(playlistId, offset, PAGE));
+    (page.items || []).forEach((item, i) => { slots[offset + i] = item; });
+    loadedFrom = offset;
+    publish();
+    offset -= PAGE;
   }
-  return { ...data, tracks: { ...data.tracks, items: allItems } };
+  // The sliver between the first page and the tail
+  if (loadedFrom > PAGE) {
+    if (isCancelled()) return;
+    const page = await fetchMoreTracks(token, pageUrl(playlistId, PAGE, loadedFrom - PAGE));
+    (page.items || []).forEach((item, i) => { slots[PAGE + i] = item; });
+  }
+  loadedFrom = 0;
+  publish();
+}
+
+// The pool's order doesn't matter, so it streams forwards: first page at once, the rest appended
+async function loadPool(token, playlistId, onUpdate, isCancelled = () => false) {
+  const data = await fetchPlaylistDetails(token, playlistId);
+  let items = [...data.tracks.items];
+  let next = data.tracks.next;
+  if (!isCancelled()) onUpdate({ ...data, tracks: { ...data.tracks, items, next } });
+  while (next && !isCancelled()) {
+    const page = await fetchMoreTracks(token, next);
+    items = [...items, ...(page.items || [])];
+    next = page.next;
+    if (!isCancelled()) onUpdate({ ...data, tracks: { ...data.tracks, items, next } });
+  }
+}
+
+// One batch's worth of placeholder rows while earlier pages stream in
+function BatchSkeleton() {
+  return (
+    <div className="w-full flex flex-col bg-neutral-900/50 border border-white/5 rounded-3xl overflow-hidden" aria-hidden="true" aria-busy="true">
+      <div className="flex items-center gap-4 px-6 py-4 border-b border-white/10">
+        <Skeleton className="w-10 h-10 rounded-full" />
+        <Skeleton className="h-4 w-24" />
+      </div>
+      <div className="p-3 flex flex-col gap-1">
+        {Array.from({ length: 4 }, (_, i) => (
+          <div key={i} className="flex items-center gap-3 px-3 py-2">
+            <Skeleton className="w-10 h-10 rounded-md" />
+            <div className="flex-1 space-y-2"><Skeleton className="h-3.5 w-1/2" /><Skeleton className="h-3 w-1/3" /></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function PlaylistView_2() {
@@ -47,15 +108,16 @@ export default function PlaylistView_2() {
   
   const { currentPlayingTrack, isCurrentTrackPaused } = usePlaybackSummary();
   const isShuffled = usePlayerStore((s) => s.isShuffled);
+  const isMobile = useIsMobile();
 
   const playFromTop = () => {
-    if (!token || !playlist) return;
+    if (!token || !activePlaylistId) return;
     playOn((deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, 0));
   };
 
   const shufflePlay = () => {
-    if (!token || !playlist) return;
-    const count = playlist.tracks?.items?.length || 1;
+    if (!token || !activePlaylistId) return;
+    const count = view?.tracks?.total || 1;
     const index = Math.floor(Math.random() * count);
     playOn(async (deviceId) => {
       await setShuffle(true, deviceId);
@@ -63,7 +125,11 @@ export default function PlaylistView_2() {
     });
   };
   const [playlist, setPlaylist] = useState(null);
-  
+  // The header draws from the library entry until the playlist itself arrives
+  const summary = playlists.find((p) => p.id === activePlaylistId);
+  const view = playlist || (summary ? { ...summary, images: summary.images || [], tracks: { items: [], total: summary.tracks?.total ?? 0, loadedFrom: summary.tracks?.total ?? 0 } } : null);
+  const stillLoading = !playlist || playlist.tracks.loadedFrom > 0;
+
   // Workspace States
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   // Which of the three panes a narrow screen shows; wide screens show all three side by side
@@ -96,29 +162,32 @@ export default function PlaylistView_2() {
   // { id, message } keyed by playlist so switching Sevens needs no reset
   const [loadError, setLoadError] = useState(null);
   
-  const horizontalScrollRef = useRef(null);
 
 
   // --- FETCH MAIN PLAYLIST ---
   useEffect(() => {
     if (token && activePlaylistId) {
       const requestedId = activePlaylistId;
-      fetchEntirePlaylist(token, activePlaylistId)
-        .then(setPlaylist)
+      let cancelled = false;
+      loadSeven(token, activePlaylistId, setPlaylist, () => cancelled)
         .catch((err) => {
+          if (cancelled) return;
           console.error(err);
           setLoadError({ id: requestedId, message: err?.message === 'RATE_LIMITED' ? 'Spotify is rate-limiting Jomify; try again in a moment.' : "Couldn't load this Seven." });
         });
+      return () => { cancelled = true; };
     }
+    return undefined;
   }, [token, activePlaylistId]);
 
   // --- FETCH POOL PLAYLIST ---
   useEffect(() => {
     if (token && poolPlaylistId && isWorkspaceOpen) {
-      fetchEntirePlaylist(token, poolPlaylistId)
-        .then(setPoolPlaylist)
-        .catch(console.error);
+      let cancelled = false;
+      loadPool(token, poolPlaylistId, setPoolPlaylist, () => cancelled).catch(console.error);
+      return () => { cancelled = true; };
     }
+    return undefined;
   }, [token, poolPlaylistId, isWorkspaceOpen]);
 
   // --- COLLABORATOR HYDRATION ---
@@ -248,7 +317,7 @@ const turnIndicator = useMemo(() => {
       await addTracksToPlaylist(token, activePlaylistId, uris);
 
       // Reload every page, not just the first 100, so the view doesn't lose older batches
-      setPlaylist(await fetchEntirePlaylist(token, activePlaylistId));
+      await loadSeven(token, activePlaylistId, setPlaylist);
       clearStagedTracks();
       setIsWorkspaceOpen(false);
     } catch (err) {
@@ -266,26 +335,14 @@ const turnIndicator = useMemo(() => {
     playOn((deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, realIndex));
   };
 
-  // --- SCROLL TRANSLATOR ---
-  useEffect(() => {
-    const container = horizontalScrollRef.current;
-    // Below md the batches stack vertically and scroll normally; only the wide layout is horizontal
-    if (!container || isWorkspaceOpen || !window.matchMedia('(min-width: 768px)').matches) return;
-
-    const handleWheel = (e) => {
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        e.preventDefault();
-        container.scrollLeft += e.deltaY * 1.5;
-      }
-    };
-
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    return () => container.removeEventListener('wheel', handleWheel);
-  }, [isWorkspaceOpen, chunks]);
-
-  if (!playlist) {
-    if (loadError?.id === activePlaylistId) return <p className="text-neutral-400 text-lg mt-8 px-8">{loadError.message}</p>;
-    return <p className="text-neutral-400 animate-pulse text-lg mt-8 px-8">Loading The Seven...</p>;
+  if (loadError?.id === activePlaylistId && !playlist) return <p className="text-neutral-400 text-lg mt-8 px-8">{loadError.message}</p>;
+  if (!view) {
+    return (
+      <div className="flex flex-col pb-8 mt-2 md:mt-6 px-2 md:px-8">
+        <SkeletonHeader />
+        <BatchSkeleton />
+      </div>
+    );
   }
 
   // ==========================================
@@ -296,21 +353,23 @@ const turnIndicator = useMemo(() => {
 
     return (
       <div className="flex flex-col lg:h-[calc(90vh-140px)] w-full px-2 md:px-6 pt-2 pb-6 lg:overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3 mb-4 md:mb-6 shrink-0">
-          <div>
-            <h1 className="text-2xl md:text-4xl font-extrabold text-white tracking-tighter">{playlist.name} Workspace</h1>
-            <p className="text-neutral-400 font-medium mt-1">{turnIndicator}</p>
+        <div className="flex items-center justify-between gap-3 mb-3 md:mb-6 shrink-0">
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-4xl font-extrabold text-white tracking-tighter truncate">{playlist.name} <span className="text-neutral-500 font-semibold">Workspace</span></h1>
+            <p className="text-sm md:text-base text-neutral-400 font-medium md:mt-1">{turnIndicator}</p>
           </div>
-          <button 
+          <button
+            type="button"
             onClick={() => setIsWorkspaceOpen(false)}
-            className="flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-full text-sm font-bold transition-colors"
+            aria-label="Close workspace"
+            className="flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-white w-10 h-10 lg:w-auto lg:h-auto justify-center lg:px-4 lg:py-2 rounded-full text-sm font-bold transition-colors shrink-0"
           >
-            <X className="w-4 h-4" /> Close Workspace
+            <X className="w-4 h-4" /> <span className="hidden lg:inline">Close Workspace</span>
           </button>
         </div>
 
         {/* Narrow screens: one pane at a time */}
-        <div role="tablist" aria-label="Workspace panes" className="lg:hidden flex rounded-full bg-neutral-900 border border-neutral-800 p-1 mb-4 shrink-0">
+        <div role="tablist" aria-label="Workspace panes" className="lg:hidden flex rounded-full bg-neutral-900 border border-neutral-800 p-1 mb-3 shrink-0">
           {[['playlist', 'Playlist'], ['staging', `Staging ${stagedSeven.length}/7`], ['pool', 'Pool']].map(([id, label]) => (
             <button
               key={id}
@@ -318,7 +377,7 @@ const turnIndicator = useMemo(() => {
               role="tab"
               aria-selected={workspacePane === id}
               onClick={() => setWorkspacePane(id)}
-              className={`flex-1 rounded-full py-2 text-sm font-bold transition-colors ${workspacePane === id ? 'bg-white text-black' : 'text-neutral-400'}`}
+              className={`flex-1 rounded-full py-1.5 text-xs md:text-sm font-bold transition-colors ${workspacePane === id ? 'bg-white text-black' : 'text-neutral-400'}`}
             >
               {label}
             </button>
@@ -328,7 +387,7 @@ const turnIndicator = useMemo(() => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0 lg:overflow-hidden">
 
           {/* PANE 1: MAIN PLAYLIST */}
-          <div className={`${workspacePane === 'playlist' ? 'flex' : 'hidden'} lg:flex flex-col h-[65dvh] lg:h-full bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl min-h-0`}>
+          <div className={`${workspacePane === 'playlist' ? 'flex' : 'hidden'} lg:flex flex-col max-h-[65dvh] lg:max-h-none lg:h-full bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl min-h-0`}>
             <div className="p-4 border-b border-neutral-800 bg-black/20 shrink-0">
               <h2 className="font-bold text-white tracking-wide">{playlist.name}</h2>
               <p className="text-xs text-neutral-500">{playlist.tracks.total} total tracks</p>
@@ -379,7 +438,7 @@ const turnIndicator = useMemo(() => {
           </div>
 
           {/* PANE 2: 7UP STAGING AREA (DRAG & DROP, PERFECT FLEX-FIT) */}
-          <div className={`${workspacePane === 'staging' ? 'flex' : 'hidden'} lg:flex flex-col h-[65dvh] lg:h-full bg-brand-gradient/10 border border-[var(--brand-mid)]/30 rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(249,19,98,0.1)] relative min-h-0`}>
+          <div className={`${workspacePane === 'staging' ? 'flex' : 'hidden'} lg:flex flex-col lg:h-full bg-brand-gradient/10 border border-[var(--brand-mid)]/30 rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(249,19,98,0.1)] relative min-h-0`}>
             <div className="p-4 border-b border-[var(--brand-mid)]/20 bg-black/40 flex justify-between items-center shrink-0">
               <div className="min-w-0">
                 <h2 className="font-bold text-white tracking-wide text-brand-gradient">7up Staging</h2>
@@ -392,9 +451,9 @@ const turnIndicator = useMemo(() => {
               <button 
                 disabled={stagedSeven.length !== 7 || isPublishing}
                 onClick={handlePublishSeven}
-                className="bg-brand-gradient text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-brand-glow disabled:opacity-30 disabled:grayscale transition-all flex items-center gap-2"
+                className="bg-brand-gradient text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-brand-glow disabled:opacity-30 disabled:grayscale transition-opacity flex items-center gap-2"
               >
-                {isPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Publish Seven"}
+                {isPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Publish Seven'}
               </button>
             </div>
             <div className="flex-1 flex flex-col gap-2 p-4 min-h-0 overflow-hidden">
@@ -447,9 +506,9 @@ const turnIndicator = useMemo(() => {
                       setStagedSeven(newStaged);
                       setDraggedIdx(null);
                     }}
-                    className={`flex-1 min-h-0 max-h-[72px] flex items-center gap-4 px-3 py-1.5 rounded-2xl border transition-all ${
-                      track 
-                        ? 'bg-white/10 border-white/20 hover:bg-white/20 cursor-grab active:cursor-grabbing' 
+                    className={`${track ? 'h-14 lg:h-auto lg:flex-1 lg:max-h-[72px] animate-fade-in' : 'h-9 lg:h-auto lg:flex-1 lg:max-h-[72px]'} min-h-0 flex items-center gap-3 lg:gap-4 px-3 py-1 lg:py-1.5 rounded-2xl border transition-[colors,opacity,transform] duration-150 ${
+                      track
+                        ? 'bg-white/10 border-white/20 hover:bg-white/20 cursor-grab active:cursor-grabbing'
                         : 'bg-black/20 border-dashed border-white/10'
                     } ${isDraggingThis ? 'opacity-40 scale-95' : 'opacity-100 scale-100'} ${isDragOver ? 'border-[var(--brand-mid)] bg-[var(--brand-mid)]/10' : ''}`}
                   >
@@ -462,24 +521,24 @@ const turnIndicator = useMemo(() => {
                           <span className="text-xs text-neutral-400 truncate">{track.artists.map(a => a.name).join(', ')}</span>
                         </div>
                         {/* Touch screens can't drag the slots; nudge one step instead */}
-                        <div className="hidden pointer-coarse:flex flex-col shrink-0 -my-1">
+                        <div className="hidden pointer-coarse:flex items-center shrink-0">
                           <button
                             type="button"
                             disabled={idx === 0}
                             aria-label="Move up"
                             onClick={(e) => { e.stopPropagation(); moveStaged(idx, -1); }}
-                            className="p-1 rounded text-white/60 active:bg-white/10 disabled:opacity-20"
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-white/70 active:bg-white/10 disabled:opacity-20"
                           >
-                            <StageUpIcon className="w-4 h-4" />
+                            <StageUpIcon className="w-5 h-5" />
                           </button>
                           <button
                             type="button"
                             disabled={idx >= stagedSeven.length - 1}
                             aria-label="Move down"
                             onClick={(e) => { e.stopPropagation(); moveStaged(idx, 1); }}
-                            className="p-1 rounded text-white/60 active:bg-white/10 disabled:opacity-20"
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-white/70 active:bg-white/10 disabled:opacity-20"
                           >
-                            <StageDownIcon className="w-4 h-4" />
+                            <StageDownIcon className="w-5 h-5" />
                           </button>
                         </div>
                         <button
@@ -493,11 +552,11 @@ const turnIndicator = useMemo(() => {
                         </button>
                       </>
                     ) : (
-                      <div className="flex items-center gap-4 text-neutral-600 pointer-events-none w-full h-full py-1">
-                        <div className="w-10 h-10 rounded-md border-2 border-dashed border-neutral-700 flex items-center justify-center shrink-0">
+                      <div className="flex items-center gap-4 text-neutral-600 pointer-events-none w-full h-full lg:py-1">
+                        <div className="hidden lg:flex w-10 h-10 rounded-md border-2 border-dashed border-neutral-700 items-center justify-center shrink-0">
                           <Disc3 className="w-4 h-4 opacity-50" />
                         </div>
-                        <span className="text-sm font-medium">Empty Slot</span>
+                        <span className="text-xs lg:text-sm font-medium">Empty slot</span>
                       </div>
                     )}
                   </div>
@@ -563,7 +622,7 @@ const turnIndicator = useMemo(() => {
                       onClick={() => {
                         if (!isDuplicate && !isStaged) addStagedTrack(item.track);
                       }}
-                      className={`flex items-center gap-3 p-1.5 rounded-xl transition-all group/poolrow ${stateClasses}`}
+                      className={`flex items-center gap-3 p-1.5 rounded-xl transition-colors group/poolrow ${stateClasses}`}
                     >
                       <div 
                         className="relative w-8 h-8 rounded shadow-sm shrink-0 overflow-hidden cursor-pointer"
@@ -612,12 +671,12 @@ const turnIndicator = useMemo(() => {
   // VIEW: HORIZONTAL SCROLL (REVERSE CHRONOLOGICAL)
   // ==========================================
   return (
-    <div className="flex flex-col md:h-[calc(90vh-140px)] w-full md:overflow-hidden">
+    <div className="flex flex-col w-full pb-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-4 mt-2 md:mt-6 px-2 md:px-8 select-none shrink-0">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 md:gap-4 mb-4 mt-2 md:mt-6 px-2 md:px-8 select-none shrink-0">
         <div className="flex items-center md:items-end gap-4 md:gap-6 min-w-0">
-          {playlist.images?.length > 0 ? (
-            <img src={playlist.images[0].url} alt={playlist.name} className="w-20 h-20 md:w-32 md:h-32 shadow-2xl shadow-black/50 rounded-xl object-cover shrink-0" />
+          {view.images?.length > 0 ? (
+            <img src={view.images[0].url} alt={view.name} className="w-20 h-20 md:w-32 md:h-32 shadow-2xl shadow-black/50 rounded-xl object-cover shrink-0" />
           ) : (
             <div className="w-20 h-20 md:w-32 md:h-32 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded-xl shrink-0"> 🎵 </div>
           )}
@@ -625,20 +684,32 @@ const turnIndicator = useMemo(() => {
             <p className="hidden md:flex text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2 items-center gap-2">
               The Seven
             </p>
-            <h1 className="text-2xl md:text-5xl font-extrabold text-white tracking-tighter mb-1 md:mb-2 break-words line-clamp-2 md:line-clamp-none">{playlist.name}</h1>
-            <p className="text-neutral-400 text-sm font-medium">
-              {turnIndicator} • {chunks.length} Batches
+            <h1 className="text-2xl md:text-5xl font-extrabold text-white tracking-tighter mb-1 md:mb-2 break-words line-clamp-2 md:line-clamp-none">{view.name}</h1>
+            <p className="text-neutral-400 text-sm font-medium flex items-center gap-2 flex-wrap">
+              {thisSeven && (
+                // On the phone the Active switch lives here so the toolbar stays one row
+                <button
+                  type="button"
+                  onClick={() => updateSeven(activePlaylistId, { active: !thisSeven.active })}
+                  aria-pressed={thisSeven.active}
+                  className={`md:hidden inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${thisSeven.active ? 'border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/15 text-white' : 'border-white/15 bg-white/5 text-neutral-400'}`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${thisSeven.active ? 'bg-[var(--brand-mid)]' : 'bg-neutral-500'}`} />
+                  {thisSeven.active ? 'Active' : 'Finished'}
+                </button>
+              )}
+              <span>{chunks.length === 0 && stillLoading ? `Loading… • ${view.tracks.total} songs` : `${turnIndicator} • ${chunks.length} ${chunks.length === 1 ? 'batch' : 'batches'}`}</span>
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 md:gap-3 shrink-0 flex-wrap">
+        <div className="flex items-center gap-2 md:gap-3 shrink-0">
           {thisSeven && (
             <button
               type="button"
               onClick={() => updateSeven(activePlaylistId, { active: !thisSeven.active })}
               aria-pressed={thisSeven.active}
               title={thisSeven.active ? 'Mark this Seven as finished' : 'Mark this Seven as active'}
-              className={`flex items-center gap-2 rounded-full px-3 py-1.5 md:px-4 md:py-2 text-xs font-bold uppercase tracking-wider border transition-colors ${thisSeven.active ? 'border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/15 text-white' : 'border-white/15 bg-white/5 text-neutral-400 hover:text-white'}`}
+              className={`hidden md:flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider border transition-colors ${thisSeven.active ? 'border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/15 text-white' : 'border-white/15 bg-white/5 text-neutral-400 hover:text-white'}`}
             >
               <span className={`w-2 h-2 rounded-full ${thisSeven.active ? 'bg-[var(--brand-mid)]' : 'bg-neutral-500'}`} />
               {thisSeven.active ? 'Active' : 'Finished'}
@@ -647,7 +718,7 @@ const turnIndicator = useMemo(() => {
           <button
             type="button"
             onClick={playFromTop}
-            aria-label={`Play ${playlist.name}`}
+            aria-label={`Play ${view.name}`}
             className="w-12 h-12 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-xl shrink-0"
           >
             <Play className="w-5 h-5 fill-current ml-0.5" />
@@ -662,19 +733,18 @@ const turnIndicator = useMemo(() => {
             <ShuffleIcon className="w-6 h-6" />
           </button>
           <button
+            type="button"
             onClick={() => setIsWorkspaceOpen(true)}
-            className="flex items-center gap-2 rounded-full bg-white px-4 py-2 md:px-5 md:py-2.5 text-xs md:text-sm font-bold text-black hover:bg-neutral-200 hover:scale-105 transition-all shadow-xl shrink-0"
+            disabled={!playlist}
+            className="flex-1 md:flex-none justify-center flex items-center gap-2 rounded-full bg-white px-4 py-2.5 md:px-5 text-xs md:text-sm font-bold text-black disabled:opacity-50 hover:bg-neutral-200 hover:scale-105 transition-all shadow-xl shrink-0"
           >
             <LayoutPanelLeft className="w-4 h-4" /> Open Workspace
           </button>
         </div>
       </div>
 
-      {/* Horizontal Free Scroll Container */}
-      <div 
-        ref={horizontalScrollRef}
-        className="flex flex-col md:flex-row md:items-start md:overflow-x-auto md:overflow-y-hidden gap-6 md:gap-8 px-2 md:px-8 pb-8 pt-4 flex-1 min-h-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-      >
+      {/* Batches, newest first, in a grid that scrolls with the page */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 items-start gap-4 md:gap-6 px-2 md:px-8 pt-2 md:pt-4">
         {chunks.map((chunk, chunkIdx) => {
           const collaborator = collaborators[chunk.adderId];
           const displayName = collaborator?.display_name || chunk.adderId || 'Unknown';
@@ -686,7 +756,7 @@ const turnIndicator = useMemo(() => {
               // Added group/batch and responsive hover widths to expand on hover
               // A fixed card width on wide screens: one long title no longer widens the whole
               // batch, and seven rows have room instead of being squashed to fit
-              className="group/batch shrink-0 w-full md:w-[28rem] md:max-h-full flex flex-col bg-neutral-900/40 border border-white/5 backdrop-blur-md rounded-3xl overflow-hidden shadow-2xl min-h-0"
+              className="group/batch w-full flex flex-col bg-neutral-900/70 border border-white/5 rounded-3xl overflow-hidden shadow-xl animate-fade-in"
             >
               {/* Batch Header (User Profile) */}
               <div className="flex justify-between items-center px-6 py-4 border-b border-white/10 bg-black/30 shrink-0">
@@ -705,7 +775,7 @@ const turnIndicator = useMemo(() => {
                 )}
               </div>
               
-              <div className="flex-1 p-3 flex flex-col gap-1 min-h-0 md:overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              <div className="p-2 md:p-3 flex flex-col gap-1">
                 {chunk.tracks.map((item, idx) => {
                   if (!item.track) return null;
                   const track = item.track;
@@ -734,10 +804,10 @@ const turnIndicator = useMemo(() => {
                     <div 
                       key={track.id + idx}
                       onClick={() => handleTrackSelect(track.uri)}
-                      style={collaboratorStyleFor(chunk.adderId, true, isFirst, isLast, false)}
+                      style={collaboratorStyleFor(chunk.adderId, true, isFirst, isLast, isMobile)}
                       // Rows keep their natural height; they used to be flex-1 min-h-0 and got
                       // squashed and clipped whenever seven didn't fit the card
-                      className={`min-h-[52px] shrink-0 flex items-center gap-3 px-3 py-1.5 group/track text-sm cursor-pointer hover:bg-white/10 transition-colors ${radiusClass} ${marginClass}`}
+                      className={`min-h-[52px] shrink-0 flex items-center gap-2.5 md:gap-3 px-2 md:px-3 py-1.5 group/track text-sm cursor-pointer hover:bg-white/10 transition-colors ${radiusClass} ${marginClass}`}
                     >
                       {/* 1. Play / Number Indicator */}
                       <div className="text-neutral-400 w-5 h-5 flex items-center justify-center shrink-0">
@@ -783,9 +853,9 @@ const turnIndicator = useMemo(() => {
                               {aIdx < track.artists.length - 1 && <span className="mr-1">,</span>}
                             </span>
                           ))}
-                          {/* Album on the same line, always visible: it used to hide in a column that only opened on hover */}
+                          {/* Album on the same line on wide screens; the phone has no room for it */}
                           {track.album?.name && (
-                            <>
+                            <span className="hidden md:contents">
                               <span className="mx-1 text-neutral-600 shrink-0">•</span>
                               {track.album.id ? (
                                 <button
@@ -798,7 +868,7 @@ const turnIndicator = useMemo(() => {
                               ) : (
                                 <span className="truncate min-w-0">{track.album.name}</span>
                               )}
-                            </>
+                            </span>
                           )}
                         </div>
                       </div>
@@ -809,7 +879,7 @@ const turnIndicator = useMemo(() => {
                       </div>
 
                       {/* 6. Runtime */}
-                      <span className="flex items-center justify-end text-neutral-500 text-xs font-medium pr-1 h-full w-10 shrink-0">
+                      <span className="hidden md:flex items-center justify-end text-neutral-500 text-xs font-medium pr-1 h-full w-10 shrink-0">
                         {formatTime(track.duration_ms)}
                       </span>
                     </div>
@@ -819,7 +889,7 @@ const turnIndicator = useMemo(() => {
             </div>
           );
         })}
-        <div className="shrink-0 w-8"></div>
+        {stillLoading && <BatchSkeleton />}
       </div>
     </div>
   );
