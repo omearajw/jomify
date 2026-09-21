@@ -3,10 +3,12 @@ import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { playOn, setShuffle } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
-import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch, reorderPlaylistTracks } from '../../services/spotify/api';
+import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch, reorderPlaylistTracks, addTracksToPlaylist, removeTrackFromPlaylist } from '../../services/spotify/api';
+import SortIntoChips from '../../components/SortIntoChips';
+import { useUnaddedSuggestions, noteTrackSorted } from './useUnaddedSuggestions';
 import { toast } from '../../store/toastStore';
 import { formatTime } from '../../utils/formatTime';
-import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink } from 'lucide-react';
+import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink, Undo2 } from 'lucide-react';
 import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
 import UserChip from '../../components/UserChip';
 import LikeButton from '../../components/LikeButton';
@@ -20,6 +22,9 @@ import { artUrl } from '../../utils/images';
 // Rows rendered at once; more appear as you scroll. A 1000-track playlist used to mount every
 // row (25k DOM nodes) up front.
 const ROW_PAGE = 150;
+
+// How long a sorted song's row stays as an Undo strip before it leaves the list
+const UNDO_MS = 8000;
 
 // Shown instead of a blank page when Spotify refuses the playlist. Since November 2024 Spotify
 // blocks its own playlists (Discover Weekly, Blend, Daily Mix, Release Radar, Your Top Songs)
@@ -122,6 +127,75 @@ export default function PlaylistView() {
   const setUnaddedCheckPlaylists = useUserStore((s) => s.setUnaddedCheckPlaylists);
 
   const isUnaddedSongsPlaylist = playlist?.name?.toLowerCase() === 'unadded songs';
+
+  // --- "SORT INTO" CHIPS (Unadded Songs only) ---
+  const { suggestionsByTrack, targets: sortTargets } = useUnaddedSuggestions({
+    token,
+    enabled: isUnaddedSongsPlaylist,
+    checkPlaylistIds: selectedCheckPlaylistIds,
+    items: playlist?.tracks?.items
+  });
+  const [sortingUri, setSortingUri] = useState(null);
+  // uri -> { playlistId, playlistName, expiresAt }: songs moved out but still undoable
+  const [sortedAway, setSortedAway] = useState({});
+  const undoTimers = useRef({});
+
+  const dropSortedRow = (uri) => {
+    clearTimeout(undoTimers.current[uri]);
+    delete undoTimers.current[uri];
+    setSortedAway((prev) => { const next = { ...prev }; delete next[uri]; return next; });
+    setPlaylist((prev) => {
+      if (!prev) return prev;
+      const items = prev.tracks.items.filter((i) => i?.track?.uri !== uri);
+      return { ...prev, tracks: { ...prev.tracks, items, total: Math.max(0, (prev.tracks.total || items.length + 1) - 1) } };
+    });
+  };
+
+  const sortTrackInto = async (item, playlistId) => {
+    const track = item?.track;
+    if (!token || !track?.uri || sortingUri) return;
+    const playlistName = sortTargets.find((t) => t.id === playlistId)?.name || playlists.find((p) => p.id === playlistId)?.name || 'playlist';
+    setSortingUri(track.uri);
+    try {
+      await addTracksToPlaylist(token, playlistId, [track.uri]);
+      await removeTrackFromPlaylist(token, activePlaylistId, track.uri);
+    } catch (err) {
+      console.error('Sorting the track failed:', err);
+      toast(`Couldn't move "${track.name}" to ${playlistName}`, { tone: 'error' });
+      setSortingUri(null);
+      return;
+    }
+    setSortingUri(null);
+    noteTrackSorted(playlistId, track);
+    clearTimeout(undoTimers.current[track.uri]);
+    undoTimers.current[track.uri] = setTimeout(() => dropSortedRow(track.uri), UNDO_MS);
+    setSortedAway((prev) => ({ ...prev, [track.uri]: { playlistId, playlistName, expiresAt: Date.now() + UNDO_MS } }));
+  };
+
+  const undoSort = async (item) => {
+    const track = item?.track;
+    const away = track?.uri ? sortedAway[track.uri] : null;
+    if (!token || !away) return;
+    clearTimeout(undoTimers.current[track.uri]);
+    try {
+      await removeTrackFromPlaylist(token, away.playlistId, track.uri);
+      // Spotify appends on re-add, so after a reload the song sits at the bottom of this list
+      await addTracksToPlaylist(token, activePlaylistId, [track.uri]);
+    } catch (err) {
+      console.error('Undo failed:', err);
+      toast(`Couldn't bring "${track.name}" back`, { tone: 'error' });
+      undoTimers.current[track.uri] = setTimeout(() => dropSortedRow(track.uri), UNDO_MS);
+      return;
+    }
+    delete undoTimers.current[track.uri];
+    setSortedAway((prev) => { const next = { ...prev }; delete next[track.uri]; return next; });
+    toast(`"${track.name}" is back in Unadded Songs`, { tone: 'success' });
+  };
+
+  useEffect(() => {
+    const timers = undoTimers.current;
+    return () => { Object.values(timers).forEach(clearTimeout); };
+  }, []);
 
   useEffect(() => {
     if (configModalOpen && token) {
@@ -831,6 +905,29 @@ export default function PlaylistView() {
             }
           }
 
+          const away = isUnaddedSongsPlaylist ? sortedAway[track.uri] : null;
+          if (away) {
+            return (
+              <div key={`${track.id}-${index}-away`} className="relative overflow-hidden rounded-md bg-white/5 px-4 py-3 my-0.5 flex items-center gap-4 text-sm animate-fade-in">
+                <div className="flex-1 min-w-0 text-neutral-300 truncate">
+                  <span className="text-white font-medium">{track.name}</span> moved to <span className="text-white font-medium">{away.playlistName}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => undoSort(item)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 shrink-0"
+                >
+                  <Undo2 className="w-3.5 h-3.5" /> Undo
+                </button>
+                <div
+                  key={away.expiresAt}
+                  className="absolute left-0 bottom-0 h-0.5 bg-[var(--brand-mid)] animate-[undo-drain_linear_forwards]"
+                  style={{ animationDuration: `${UNDO_MS}ms` }}
+                />
+              </div>
+            );
+          }
+
           return (
             <div
               key={`${track.id}-${index}`}
@@ -884,6 +981,14 @@ export default function PlaylistView() {
                     </span>
                   ))}
                 </div>
+                {isUnaddedSongsPlaylist && (
+                  <SortIntoChips
+                    suggestions={suggestionsByTrack.get(track.id) || []}
+                    targets={sortTargets}
+                    busy={sortingUri === track.uri}
+                    onPick={(playlistId) => sortTrackInto(item, playlistId)}
+                  />
+                )}
               </div>
               
               <div className="hidden md:block truncate pr-4">

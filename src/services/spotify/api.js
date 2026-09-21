@@ -693,3 +693,31 @@ export function detectPartnerCandidates(trackMeta, myUserId) {
     .sort((a, b) => b[1] - a[1])
     .map(([id, count]) => ({ id, count }));
 }
+
+// --- Unadded Songs sorting ----------------------------------------------------------------------
+
+export async function fetchPlaylistSnapshot(token, playlistId) {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}?fields=id,name,snapshot_id,tracks(total)`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) { const err = new Error(`Failed to fetch playlist (${response.status})`); err.status = response.status; throw err; }
+  return await response.json();
+}
+
+// Just enough of every track to profile a playlist's taste: ids and artists
+export async function fetchPlaylistTrackArtists(token, playlistId) {
+  const fields = 'next,items(track(id,artists(id,name)))';
+  let url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100&fields=${encodeURIComponent(fields)}`;
+  const tracks = [];
+  while (url) {
+    const response = await spotifyFetch(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) { const err = new Error(`Failed to fetch playlist tracks (${response.status})`); err.status = response.status; throw err; }
+    const data = await response.json();
+    for (const item of data.items || []) {
+      if (item?.track?.id) tracks.push({ id: item.track.id, artists: (item.track.artists || []).filter((a) => a?.id) });
+    }
+    url = data.next;
+  }
+  return tracks;
+}

@@ -138,3 +138,8 @@
 .bg-radial-vignette {
   background: radial-gradient(circle, transparent 20%, rgba(0, 0, 0, 0.6) 80%);
 }
+/* The Undo strip under a sorted song drains from full width to nothing over its lifetime */
+@keyframes undo-drain {
+  from { width: 100%; }
+  to { width: 0%; }
+}
