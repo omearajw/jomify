@@ -14,8 +14,12 @@ import { artUrl } from '../../utils/images';
 // The first filing removes it from Unadded Songs; further filings only add, so a song can go
 // into two playlists before you move on. Pointer events rather than HTML drag and drop, because
 // touch screens have no drag and drop.
+//
+// Skipped songs are remembered per playlist on this device and passed over next time, until
+// every song has been filed or skipped, when the slate is wiped.
 
 const SETTINGS_KEY = 'jomify_sort_mode';
+const skippedKey = (playlistId) => `jomify_sort_skipped:${playlistId}`;
 const DROP_THRESHOLD_PX = 8;
 const SWIPE_SKIP_PX = 140;
 
@@ -23,6 +27,20 @@ function loadSettings() {
   try { return { autoplay: true, advance: false, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
   catch { return { autoplay: true, advance: false }; }
 }
+
+function loadSkipped(playlistId) {
+  try { return new Set(JSON.parse(localStorage.getItem(skippedKey(playlistId)) || '[]')); }
+  catch { return new Set(); }
+}
+
+function saveSkipped(playlistId, set) {
+  try {
+    if (set.size === 0) localStorage.removeItem(skippedKey(playlistId));
+    else localStorage.setItem(skippedKey(playlistId), JSON.stringify([...set]));
+  } catch { /* fine */ }
+}
+
+const nowPlayingUri = () => usePlayerStore.getState().playbackState?.track_window?.current_track?.uri || null;
 
 function Toggle({ label, on, onChange }) {
   return (
@@ -41,7 +59,7 @@ function Toggle({ label, on, onChange }) {
   );
 }
 
-export default function SortMode({ items, total, loadingMore, suggestionsByTrack, targets, sourcePlaylistId, onRemovedFromSource, onRestoredToSource, onClose }) {
+export default function SortMode({ items, total, loadingMore, suggestionsByTrack, suggestionsReady, targets, sourcePlaylistId, onRemovedFromSource, onRestoredToSource, onClose }) {
   const token = useUserStore((s) => s.token);
   const playlists = useUserStore((s) => s.playlists);
   const { currentPlayingTrack, isCurrentTrackPaused } = usePlaybackSummary();
@@ -49,7 +67,16 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   // The page owns the pile: it only ever grows, as the rest of the playlist streams in
   const queue = items;
   const pileSize = Math.max(total || 0, queue.length);
-  const [index, setIndex] = useState(0);
+
+  // Songs skipped on this device in earlier sessions
+  const [skipped, setSkipped] = useState(() => loadSkipped(sourcePlaylistId));
+  // Start on whatever is playing from this list (unless it was skipped), otherwise the first
+  // song not yet skipped
+  const [index, setIndex] = useState(() => {
+    const playing = nowPlayingUri();
+    const at = playing && !skipped.has(playing) ? queue.findIndex((i) => i?.track?.uri === playing) : -1;
+    return at >= 0 ? at : 0;
+  });
   const [placed, setPlaced] = useState({}); // uri -> [playlistId]
   const [busy, setBusy] = useState(false);
   const [lastAction, setLastAction] = useState(null);
@@ -58,10 +85,25 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   const cardRef = useRef(null);
   const dragState = useRef(null);
 
-  const current = queue[index] || null;
+  // The card shown is the first song from `index` on that is neither skipped nor already filed,
+  // wrapping round to the start so a pile begun mid-way (on the song that was playing) still
+  // visits everything before it
+  const isPassed = (item) => !item?.track?.uri || skipped.has(item.track.uri) || (placed[item.track.uri] || []).length > 0;
+  const findCard = (from) => {
+    const n = queue.length;
+    for (let k = 0; k < n; k++) { const i = (from + k) % n; if (!isPassed(queue[i])) return i; }
+    return -1;
+  };
+  const cursor = queue.length ? findCard(index % queue.length) : -1;
+  const current = cursor >= 0 ? queue[cursor] : null;
   const track = current?.track || null;
-  const exhausted = index >= queue.length;
+  const exhausted = cursor < 0;
   const done = exhausted && !loadingMore;
+
+  // Every song filed or skipped: the remembered skips have served their purpose
+  useEffect(() => {
+    if (done) saveSkipped(sourcePlaylistId, new Set());
+  }, [done, sourcePlaylistId]);
 
   const updateSettings = (patch) => {
     setSettings((prev) => {
@@ -76,37 +118,45 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   const suggestedIds = new Set(suggestions.map((s) => s.id));
   const others = targets.filter((t) => !suggestedIds.has(t.id));
   const placedHere = track ? (placed[track.uri] || []) : [];
+  const isThisPlaying = Boolean(track && currentPlayingTrack && (currentPlayingTrack.uri === track.uri || currentPlayingTrack.id === track.id));
 
-  // Play each song as it comes up, when asked to
+  const advance = () => setIndex(cursor < 0 ? 0 : (cursor + 1) % Math.max(queue.length, 1));
+  const skip = () => {
+    if (!track) return;
+    const next = new Set(skipped);
+    next.add(track.uri);
+    setSkipped(next);
+    saveSkipped(sourcePlaylistId, next);
+    advance();
+  };
+
+  // Play each song as it comes up, when asked to; a song already playing is left alone
   useEffect(() => {
     if (!settings.autoplay || !track || !token) return;
+    if (nowPlayingUri() === track.uri) return;
     playOn((deviceId) => playSingleTrack(token, deviceId, track.uri));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.uri, settings.autoplay]);
 
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  const isThisPlaying = track && currentPlayingTrack && (currentPlayingTrack.uri === track.uri || currentPlayingTrack.id === track.id);
-
-  const advance = () => setIndex((i) => i + 1);
-
-  // When the card's song has played and then stops at the end (or rewinds to the start, which is
-  // how Spotify reports a finished single track), move on. A pause part-way through is the
-  // user's own and leaves the card alone.
+  // Follow playback. Once the card's song has played: if Spotify moves on to another song in
+  // this list (you are listening to the playlist itself) the card follows it; if the song stops
+  // at the end (or rewinds to the start, how Spotify reports a finished single track) the pile
+  // moves on. A pause part-way through is the user's own and leaves the card alone.
   useEffect(() => {
     if (!settings.autoplay || !track) return undefined;
     const uri = track.uri;
-    const id = track.id;
     let heard = false;
     const check = (state) => {
       const pb = state.playbackState;
       const now = pb?.track_window?.current_track;
-      const same = now && (now.uri === uri || now.id === id);
-      if (!pb || !same) return;
+      if (!pb || !now) return;
+      if (now.uri !== uri) {
+        if (!heard) return;
+        const at = queue.findIndex((i) => i?.track?.uri === now.uri);
+        heard = false;
+        if (at >= 0) setIndex(at); else advance();
+        return;
+      }
       if (!pb.paused) { heard = true; return; }
       if (!heard) return;
       const atEnd = (pb.position || 0) === 0 || (pb.duration > 0 && pb.position >= pb.duration - 1500);
@@ -114,7 +164,14 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     };
     check(usePlayerStore.getState());
     return usePlayerStore.subscribe(check);
-  }, [settings.autoplay, track]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.autoplay, track?.uri, queue]);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const fileInto = async (playlistId) => {
     if (!track || busy || !token) return;
@@ -136,7 +193,7 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     }
     setBusy(false);
     setPlaced((prev) => ({ ...prev, [track.uri]: [...(prev[track.uri] || []), playlistId] }));
-    setLastAction({ uri: track.uri, item: current, index, playlistId, playlistName: target.name, first });
+    setLastAction({ uri: track.uri, item: current, index: cursor, playlistId, playlistName: target.name, first });
     toast(`Added to ${target.name}`, { tone: 'success', duration: 1500 });
     if (settings.advance) advance();
   };
@@ -198,7 +255,7 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     setDrag(null);
     if (!d.moved || !snapshot) return;
     if (snapshot.overId) fileInto(snapshot.overId);
-    else if (Math.abs(snapshot.dx) > SWIPE_SKIP_PX && Math.abs(snapshot.dx) > Math.abs(snapshot.dy)) advance();
+    else if (Math.abs(snapshot.dx) > SWIPE_SKIP_PX && Math.abs(snapshot.dx) > Math.abs(snapshot.dy)) skip();
   };
 
   const tile = (t, large) => {
@@ -214,8 +271,8 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
         disabled={busy || already}
         onClick={() => fileInto(t.id)}
         title={suggestion?.reason || `Add to ${t.name}`}
-        className={`group relative flex ${large ? 'flex-col items-stretch p-3 rounded-3xl' : 'items-center gap-3 p-2 rounded-2xl'} border text-left transition-all
-          ${over ? 'border-[var(--brand-mid)] bg-[var(--brand-mid)]/20 scale-[1.04] shadow-brand-glow' : already ? 'border-white/5 bg-white/[0.03] opacity-60' : large ? 'border-white/10 bg-white/[0.06] hover:border-white/25' : 'border-white/5 bg-white/[0.03] hover:border-white/20'}`}
+        className={`group relative flex ${large ? 'flex-col items-stretch p-3 rounded-3xl' : 'items-center gap-3 p-2 rounded-2xl'} border text-left backdrop-blur-md transition-all
+          ${over ? 'border-[var(--brand-mid)] bg-[var(--brand-mid)]/20 scale-[1.04] shadow-brand-glow' : already ? 'border-white/5 bg-white/[0.02] opacity-60' : large ? 'border-white/10 bg-white/[0.05] hover:border-white/25' : 'border-white/5 bg-white/[0.03] hover:border-white/20'}`}
       >
         <div className={`${large ? 'w-full aspect-square mb-3' : 'w-10 h-10 shrink-0'} rounded-xl overflow-hidden bg-neutral-800 flex items-center justify-center pointer-events-none`}>
           {images?.[0]?.url ? <img src={artUrl(images, large ? 240 : 40)} alt="" className="w-full h-full object-cover" draggable="false" /> : <span className="text-2xl">🎵</span>}
@@ -234,37 +291,48 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     ? { transform: `translate(${drag.dx}px, ${drag.dy}px) rotate(${drag.dx / 30}deg)`, transition: 'none' }
     : { transform: 'translate(0,0)', transition: 'transform 200ms ease' };
 
+  const art = track?.album?.images?.[0]?.url;
+
   return createPortal(
-    <div className="fixed inset-0 z-[10000] bg-neutral-950 text-white flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] select-none touch-none">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 border-b border-white/10 shrink-0">
-        <Layers className="w-5 h-5 text-[var(--brand-mid)] shrink-0" />
-        <h2 className="font-bold whitespace-nowrap">Sort songs</h2>
-        <span className="text-xs text-neutral-400 whitespace-nowrap">{Math.min(index + 1, pileSize)} / {pileSize}</span>
+    <div className="fixed inset-0 z-[9000] bg-black text-white flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] select-none touch-none overflow-hidden font-sans">
+      {/* Same backdrop as Now Playing: the aurora, the song's art blurred, a fade to black */}
+      <div className="absolute inset-0 bg-aurora opacity-20 pointer-events-none" aria-hidden="true" />
+      {art && <img src={art} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover opacity-25 blur-3xl scale-125 pointer-events-none" />}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-black/90 pointer-events-none" aria-hidden="true" />
+
+      <div className="relative flex flex-wrap items-center gap-x-3 gap-y-2 px-4 md:px-6 py-3 shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center shrink-0"><Layers className="w-4 h-4 text-[var(--brand-mid)]" /></div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">Unadded songs</p>
+            <h2 className="font-extrabold tracking-tight leading-tight whitespace-nowrap">Sort songs <span className="text-neutral-400 font-semibold text-sm">{Math.min(Math.max(cursor, 0) + 1, pileSize)} / {pileSize}</span></h2>
+          </div>
+        </div>
         <div className="order-last w-full md:order-none md:w-auto md:ml-auto flex items-center gap-4">
           <Toggle label="Play songs" on={settings.autoplay} onChange={(v) => updateSettings({ autoplay: v })} />
           <Toggle label="Next after sorting" on={settings.advance} onChange={(v) => updateSettings({ advance: v })} />
         </div>
-        <button type="button" onClick={onClose} aria-label="Close" className="ml-auto md:ml-0 p-2 -mr-2 text-neutral-400 hover:text-white"><X className="w-5 h-5" /></button>
+        <button type="button" onClick={onClose} aria-label="Close" className="ml-auto md:ml-0 w-10 h-10 rounded-full bg-black/40 flex items-center justify-center text-neutral-300 hover:text-white"><X className="w-5 h-5" /></button>
       </div>
 
       {exhausted && !done ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="relative flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
           <Loader className="w-8 h-8 animate-spin text-neutral-400" />
           <p className="text-sm text-neutral-400">Loading the rest of the playlist…</p>
         </div>
       ) : done ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
-          <Check className="w-12 h-12 text-[var(--brand-mid)]" />
-          <p className="text-xl font-bold">That's the pile</p>
-          <p className="text-sm text-neutral-400">Everything has been filed or skipped. Skipped songs are still in Unadded Songs.</p>
+        <div className="relative flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-brand-gradient flex items-center justify-center shadow-brand-glow"><Check className="w-8 h-8" /></div>
+          <p className="text-2xl font-extrabold tracking-tight">That's the pile</p>
+          <p className="text-sm text-neutral-400 max-w-xs">Every song has been filed or skipped. Skipped songs are still in Unadded Songs and will come round again next time.</p>
           <div className="flex gap-3">
-            {lastAction && <button type="button" onClick={undo} className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold">Undo last</button>}
-            <button type="button" onClick={onClose} className="rounded-full bg-white text-black px-5 py-2 text-sm font-bold">Done</button>
+            {lastAction && <button type="button" onClick={undo} className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold hover:bg-white/5">Undo last</button>}
+            <button type="button" onClick={onClose} className="rounded-full bg-white text-black px-5 py-2 text-sm font-bold hover:bg-neutral-200">Done</button>
           </div>
         </div>
       ) : (
-        <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4 p-4 overflow-hidden">
-          {/* The card */}
+        // On the phone the card sits at the bottom, under the thumb, and the tiles scroll above it
+        <div className="relative flex-1 min-h-0 flex flex-col-reverse md:flex-row gap-3 md:gap-6 p-3 md:p-6 overflow-hidden">
           <div className="md:w-[22rem] shrink-0 flex flex-col items-center gap-3">
             <div
               ref={cardRef}
@@ -274,13 +342,13 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
               onPointerUp={onPointerUp}
               onPointerCancel={onPointerUp}
               style={cardStyle}
-              className={`w-full max-w-[22rem] rounded-3xl border border-white/10 bg-neutral-900 shadow-2xl p-4 flex md:flex-col items-center md:items-stretch gap-4 cursor-grab active:cursor-grabbing ${drag ? 'z-20 shadow-brand-glow' : ''}`}
+              className={`w-full max-w-[22rem] rounded-3xl border border-white/10 bg-white/[0.06] backdrop-blur-xl shadow-2xl p-3 md:p-4 flex md:flex-col items-center md:items-stretch gap-3 md:gap-4 cursor-grab active:cursor-grabbing ${drag ? 'z-20 shadow-brand-glow border-[var(--brand-mid)]/40' : ''}`}
             >
-              <div className="w-24 h-24 md:w-full md:aspect-square md:h-auto rounded-2xl overflow-hidden bg-neutral-800 shrink-0 pointer-events-none">
-                {track.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 320)} alt="" className="w-full h-full object-cover" draggable="false" />}
+              <div className="w-20 h-20 md:w-full md:aspect-square md:h-auto rounded-2xl overflow-hidden bg-neutral-800 shrink-0 shadow-lg pointer-events-none">
+                {art && <img src={artUrl(track.album.images, 320)} alt="" className="w-full h-full object-cover" draggable="false" />}
               </div>
               <div className="min-w-0 flex-1 pointer-events-none">
-                <p className="font-bold text-lg leading-tight line-clamp-2">{track.name}</p>
+                <p className="font-extrabold text-base md:text-lg leading-tight tracking-tight line-clamp-2">{track.name}</p>
                 <p className="text-sm text-neutral-400 truncate">{track.artists?.map((a) => a.name).join(', ')}</p>
                 {placedHere.length > 0 && (
                   <p className="text-xs text-[var(--brand-mid)] mt-1 truncate">In {placedHere.map((id) => targets.find((t) => t.id === id)?.name).filter(Boolean).join(', ')}</p>
@@ -293,35 +361,37 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
                   else playOn((deviceId) => playSingleTrack(token, deviceId, track.uri));
                 }}
                 aria-label={isThisPlaying && !isCurrentTrackPaused ? 'Pause' : 'Play'}
-                className="w-12 h-12 rounded-full bg-brand-gradient flex items-center justify-center shrink-0 md:self-center"
+                className="w-12 h-12 rounded-full bg-brand-gradient flex items-center justify-center shrink-0 md:self-center shadow-brand-glow active:scale-95 transition-transform"
               >
                 {isThisPlaying && !isCurrentTrackPaused ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
               </button>
             </div>
             <p className="text-[11px] text-neutral-500 text-center hidden md:block">Drag the card onto a playlist, or tap one. Swipe sideways to skip.</p>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={undo} disabled={!lastAction || busy} className="flex items-center gap-1.5 rounded-full border border-white/15 px-4 h-10 text-sm font-semibold disabled:opacity-40">
+              <button type="button" onClick={undo} disabled={!lastAction || busy} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-black/30 px-4 h-10 text-sm font-semibold hover:bg-white/5 disabled:opacity-40">
                 <Undo2 className="w-4 h-4" /> Undo
               </button>
-              <button type="button" onClick={advance} disabled={busy} className="flex items-center gap-1.5 rounded-full border border-white/15 px-4 h-10 text-sm font-semibold disabled:opacity-40">
+              <button type="button" onClick={skip} disabled={busy} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-black/30 px-4 h-10 text-sm font-semibold hover:bg-white/5 disabled:opacity-40">
                 Skip <SkipForward className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* The targets */}
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain -mx-1 px-1">
             {suggestions.length > 0 && (
               <>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-2">Suggested</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-2">Suggested</p>
                 <div className="grid grid-cols-3 gap-2 md:gap-3 mb-4">
                   {suggestions.map((s) => tile(targets.find((t) => t.id === s.id) || s, true))}
                 </div>
               </>
             )}
+            {!suggestionsReady && suggestions.length === 0 && (
+              <p className="flex items-center gap-2 text-xs text-neutral-400 mb-3"><Loader className="w-3.5 h-3.5 animate-spin" /> Working out which playlists fit…</p>
+            )}
             {others.length > 0 && (
               <>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-2">{suggestions.length ? 'Everything else' : 'Your playlists'}</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-2">{suggestions.length ? 'Everything else' : 'Your playlists'}</p>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                   {others.map((t) => tile(t, false))}
                 </div>

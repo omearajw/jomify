@@ -136,19 +136,24 @@ export default function PlaylistView() {
   // Sort mode works from a snapshot of the list, and the suggestions are computed over that
   // snapshot while it is open so a filed song keeps its tiles after leaving the list
   const [sortQueue, setSortQueue] = useState(null);
+  // --- "SORT INTO" CHIPS (Unadded Songs only) ---
+  const { suggestionsByTrack, targets: sortTargets, status: suggestionStatus } = useUnaddedSuggestions({
+    token,
+    enabled: isUnaddedSongsPlaylist,
+    checkPlaylistIds: selectedCheckPlaylistIds,
+    items: sortQueue || playlist?.tracks?.items
+  });
+  // Every check playlist is a target from the start; the profiles only decide which are suggested
+  const sortModeTargets = selectedCheckPlaylistIds.map((id) => ({
+    id,
+    name: sortTargets.find((t) => t.id === id)?.name || playlists.find((p) => p.id === id)?.name || 'Playlist'
+  }));
   const openSortMode = () => {
     if (!playlist) return;
     setSortQueue(playlist.tracks.items.filter((i) => i?.track?.uri));
     wantAllPages.current = true;
     if (playlist.tracks.next && !isFetchingMore.current) loadRestOfTracks(playlist.tracks.next);
   };
-  // --- "SORT INTO" CHIPS (Unadded Songs only) ---
-  const { suggestionsByTrack, targets: sortTargets } = useUnaddedSuggestions({
-    token,
-    enabled: isUnaddedSongsPlaylist,
-    checkPlaylistIds: selectedCheckPlaylistIds,
-    items: sortQueue || playlist?.tracks?.items
-  });
   const [sortingUri, setSortingUri] = useState(null);
 
   // Sort mode files songs itself; the list here just follows
@@ -737,8 +742,8 @@ export default function PlaylistView() {
               <button
                 type="button"
                 onClick={openSortMode}
-                disabled={isSyncing || sortTargets.length === 0}
-                title={sortTargets.length === 0 ? 'Select at least one playlist to check against first' : 'Sort songs one at a time'}
+                disabled={isSyncing || selectedCheckPlaylistIds.length === 0}
+                title={selectedCheckPlaylistIds.length === 0 ? 'Select at least one playlist to check against first' : 'Sort songs one at a time'}
                 className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors disabled:opacity-50"
               >
                 <Layers className="w-4 h-4" />
@@ -762,7 +767,8 @@ export default function PlaylistView() {
           total={playlist.tracks.total}
           loadingMore={Boolean(nextPageUrl) && fetchingMore}
           suggestionsByTrack={suggestionsByTrack}
-          targets={sortTargets}
+          suggestionsReady={suggestionStatus === 'ready' || suggestionStatus === 'error'}
+          targets={sortModeTargets}
           sourcePlaylistId={activePlaylistId}
           onRemovedFromSource={removeRow}
           onRestoredToSource={restoreRow}
@@ -894,7 +900,7 @@ export default function PlaylistView() {
         <button
           type="button"
           onClick={openSortMode}
-          disabled={isSyncing || sortTargets.length === 0}
+          disabled={isSyncing || selectedCheckPlaylistIds.length === 0}
           className="md:hidden mt-3 w-full flex items-center justify-center gap-2 rounded-full bg-white text-black h-11 text-sm font-bold disabled:opacity-50"
         >
           <Layers className="w-4 h-4" /> Sort songs one by one
