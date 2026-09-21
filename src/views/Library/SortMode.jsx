@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Play, Pause, SkipForward, Undo2, Star, Check, Layers, Loader } from 'lucide-react';
+import { X, Play, Pause, SkipForward, SkipBack, ChevronRight, Undo2, Star, Check, Layers, Loader } from 'lucide-react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { usePlaybackSummary } from '../../store/selectors';
-import { playOn, togglePlay } from '../../services/spotify/playbackController';
-import { playSingleTrack, addTracksToPlaylist, removeTrackFromPlaylist } from '../../services/spotify/api';
+import { playOn, togglePlay, next as nextTrack, previous as previousTrack, seek } from '../../services/spotify/playbackController';
+import { playPlaylistFromTrack, addTracksToPlaylist, removeTrackFromPlaylist } from '../../services/spotify/api';
+import { useProgress } from '../../hooks/useProgress';
 import { toast } from '../../store/toastStore';
 import { artUrl } from '../../utils/images';
 
@@ -88,10 +89,10 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   // The card shown is the first song from `index` on that is neither skipped nor already filed,
   // wrapping round to the start so a pile begun mid-way (on the song that was playing) still
   // visits everything before it
-  const isPassed = (item) => !item?.track?.uri || skipped.has(item.track.uri) || (placed[item.track.uri] || []).length > 0;
+  const isPassed = (item, i) => !item?.track?.uri || skipped.has(item.track.uri) || (i !== index && (placed[item.track.uri] || []).length > 0);
   const findCard = (from) => {
     const n = queue.length;
-    for (let k = 0; k < n; k++) { const i = (from + k) % n; if (!isPassed(queue[i])) return i; }
+    for (let k = 0; k < n; k++) { const i = (from + k) % n; if (!isPassed(queue[i], i)) return i; }
     return -1;
   };
   const cursor = queue.length ? findCard(index % queue.length) : -1;
@@ -121,20 +122,25 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   const isThisPlaying = Boolean(track && currentPlayingTrack && (currentPlayingTrack.uri === track.uri || currentPlayingTrack.id === track.id));
 
   const advance = () => setIndex(cursor < 0 ? 0 : (cursor + 1) % Math.max(queue.length, 1));
+  const filed = placedHere.length > 0;
   const skip = () => {
     if (!track) return;
-    const next = new Set(skipped);
-    next.add(track.uri);
-    setSkipped(next);
-    saveSkipped(sourcePlaylistId, next);
+    if (!filed) {
+      const next = new Set(skipped);
+      next.add(track.uri);
+      setSkipped(next);
+      saveSkipped(sourcePlaylistId, next);
+    }
     advance();
   };
 
-  // Play each song as it comes up, when asked to; a song already playing is left alone
+  // Play each song as it comes up, when asked to, from the playlist itself so playback carries
+  // on through it; a song already playing is left alone
+  const playCard = () => playOn((deviceId) => playPlaylistFromTrack(token, deviceId, sourcePlaylistId, track.uri));
   useEffect(() => {
     if (!settings.autoplay || !track || !token) return;
     if (nowPlayingUri() === track.uri) return;
-    playOn((deviceId) => playSingleTrack(token, deviceId, track.uri));
+    playCard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.uri, settings.autoplay]);
 
@@ -292,6 +298,38 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     : { transform: 'translate(0,0)', transition: 'transform 200ms ease' };
 
   const art = track?.album?.images?.[0]?.url;
+  const { position, duration, paused, track: playingTrack } = useProgress();
+  const progress = duration > 0 ? Math.min(100, (position / duration) * 100) : 0;
+  const fmt = (ms) => { const s = Math.floor((ms || 0) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const transport = (
+    <div className="w-full max-w-[22rem] rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md px-3 py-2">
+      <div className="flex items-center gap-2">
+        <p className="flex-1 min-w-0 text-xs text-neutral-300 truncate">
+          {playingTrack ? <><span className="text-white font-semibold">{playingTrack.name}</span> · {playingTrack.artists?.map((a) => a.name).join(', ')}</> : 'Nothing playing'}
+        </p>
+        <button type="button" onClick={previousTrack} aria-label="Previous" className="w-9 h-9 rounded-full flex items-center justify-center text-neutral-300 hover:text-white"><SkipBack className="w-4 h-4 fill-current" /></button>
+        <button type="button" onClick={togglePlay} aria-label={paused ? 'Play' : 'Pause'} className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center active:scale-95 transition-transform">
+          {paused ? <Play className="w-4 h-4 fill-current ml-0.5" /> : <Pause className="w-4 h-4 fill-current" />}
+        </button>
+        <button type="button" onClick={nextTrack} aria-label="Next" className="w-9 h-9 rounded-full flex items-center justify-center text-neutral-300 hover:text-white"><SkipForward className="w-4 h-4 fill-current" /></button>
+      </div>
+      <div className="flex items-center gap-2 mt-1.5 text-[10px] text-neutral-500 tabular-nums">
+        <span>{fmt(position)}</span>
+        <input
+          type="range"
+          min="0"
+          max={Math.max(1, duration)}
+          value={Math.min(position, duration || 0)}
+          onChange={(e) => seek(Number(e.target.value))}
+          aria-label="Seek"
+          disabled={!playingTrack}
+          className="flex-1 h-1.5 rounded-lg appearance-none cursor-pointer accent-white disabled:opacity-40"
+          style={{ background: `linear-gradient(to right, var(--brand-start) 0%, var(--brand-mid) ${progress}%, #404040 ${progress}%, #404040 100%)` }}
+        />
+        <span>{fmt(duration)}</span>
+      </div>
+    </div>
+  );
 
   return createPortal(
     <div className="fixed inset-0 z-[9000] bg-black text-white flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] select-none touch-none overflow-hidden font-sans">
@@ -356,23 +394,21 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  if (isThisPlaying) togglePlay();
-                  else playOn((deviceId) => playSingleTrack(token, deviceId, track.uri));
-                }}
+                onClick={() => { if (isThisPlaying) togglePlay(); else playCard(); }}
                 aria-label={isThisPlaying && !isCurrentTrackPaused ? 'Pause' : 'Play'}
                 className="w-12 h-12 rounded-full bg-brand-gradient flex items-center justify-center shrink-0 md:self-center shadow-brand-glow active:scale-95 transition-transform"
               >
                 {isThisPlaying && !isCurrentTrackPaused ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
               </button>
             </div>
+            {transport}
             <p className="text-[11px] text-neutral-500 text-center hidden md:block">Drag the card onto a playlist, or tap one. Swipe sideways to skip.</p>
             <div className="flex items-center gap-2">
               <button type="button" onClick={undo} disabled={!lastAction || busy} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-black/30 px-4 h-10 text-sm font-semibold hover:bg-white/5 disabled:opacity-40">
                 <Undo2 className="w-4 h-4" /> Undo
               </button>
               <button type="button" onClick={skip} disabled={busy} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-black/30 px-4 h-10 text-sm font-semibold hover:bg-white/5 disabled:opacity-40">
-                Skip <SkipForward className="w-4 h-4" />
+                {filed ? 'Next' : 'Skip'} <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>

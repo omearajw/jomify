@@ -721,3 +721,14 @@ export async function fetchPlaylistTrackArtists(token, playlistId) {
   }
   return tracks;
 }
+
+// Starts a playlist at a given track and keeps going through the rest of it. Offsetting by uri
+// rather than position survives tracks being removed from the playlist meanwhile.
+export async function playPlaylistFromTrack(token, deviceId, playlistId, trackUri) {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/me/player/play${deviceQuery(deviceId)}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ context_uri: `spotify:playlist:${playlistId}`, offset: { uri: trackUri } })
+  });
+  if (!response.ok) throw await playbackError(response, 'Failed to start playback');
+}
