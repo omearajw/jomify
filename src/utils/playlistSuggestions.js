@@ -23,17 +23,31 @@ export function tokensOf(genre) {
   return words.length ? words : [lower];
 }
 
-export function trackGenres(track, genresByArtist) {
-  const out = new Set();
+// A song's terms: its artists' Spotify genres (full weight) plus its own Last.fm tags, which
+// carry the mood ("sad", "upbeat", "chill") and are weighted by how strongly listeners applied
+// them. Map term -> weight in (0, 1].
+export function trackTerms(track, genresByArtist, tagsByTrack) {
+  const out = new Map();
   for (const artist of track?.artists || []) {
-    for (const genre of genresByArtist.get(artist.id) || []) out.add(genre.toLowerCase());
+    for (const genre of genresByArtist.get(artist.id) || []) out.set(genre.toLowerCase(), 1);
   }
-  return [...out];
+  for (const tag of (tagsByTrack && track?.id ? tagsByTrack.get(track.id) : null) || []) {
+    const name = String(tag.name || '').toLowerCase();
+    if (!name) continue;
+    const weight = Math.max(0.5, Math.min(1, (Number(tag.count) || 0) / 100));
+    if ((out.get(name) || 0) < weight) out.set(name, weight);
+  }
+  return out;
 }
 
-// tracks: [{ id, artists: [{ id, name }] }]; genresByArtist: Map artistId -> [genre]
-// Shares are the fraction of the playlist's tracks carrying the word or genre.
-export function buildProfile(tracks, genresByArtist) {
+export function trackGenres(track, genresByArtist, tagsByTrack) {
+  return [...trackTerms(track, genresByArtist, tagsByTrack).keys()];
+}
+
+// tracks: [{ id, name, artists: [{ id, name }] }]; genresByArtist: Map artistId -> [genre];
+// tagsByTrack: Map trackId -> [{ name, count }]. Shares are the (weighted) fraction of the
+// playlist's tracks carrying the word or term.
+export function buildProfile(tracks, genresByArtist, tagsByTrack = new Map()) {
   const artistCounts = new Map();
   const genreShare = new Map();
   const wordShare = new Map();
@@ -42,9 +56,13 @@ export function buildProfile(tracks, genresByArtist) {
     if (!track?.artists?.length) continue;
     total += 1;
     for (const artist of track.artists) if (artist?.id) add(artistCounts, artist.id, 1);
-    const genres = trackGenres(track, genresByArtist);
-    for (const genre of genres) add(genreShare, genre, 1);
-    for (const word of new Set(genres.flatMap(tokensOf))) add(wordShare, word, 1);
+    const terms = trackTerms(track, genresByArtist, tagsByTrack);
+    const wordWeights = new Map();
+    for (const [term, weight] of terms) {
+      add(genreShare, term, weight);
+      for (const word of tokensOf(term)) if ((wordWeights.get(word) || 0) < weight) wordWeights.set(word, weight);
+    }
+    for (const [word, weight] of wordWeights) add(wordShare, word, weight);
   }
   if (total > 0) {
     for (const [k, v] of genreShare) genreShare.set(k, v / total);
@@ -81,7 +99,7 @@ export function rankProfiles(entries) {
   });
 }
 
-export function scoreTrack(track, genresByArtist, profile) {
+export function scoreTrack(track, genresByArtist, profile, tagsByTrack) {
   if (!profile || profile.total === 0) return { score: 0, reason: null };
 
   let artistStrength = 0;
@@ -94,7 +112,7 @@ export function scoreTrack(track, genresByArtist, profile) {
     if (strength > artistStrength) { artistStrength = strength; matchedArtist = artist; }
   }
 
-  const genres = trackGenres(track, genresByArtist);
+  const genres = trackGenres(track, genresByArtist, tagsByTrack);
   const words = new Set(genres.flatMap(tokensOf));
   let genreSignal = 0;
   let bestWord = null;
@@ -119,9 +137,9 @@ export function scoreTrack(track, genresByArtist, profile) {
 
 // entries: ranked [{ id, name, profile }] -> [{ id, name, score, reason }] best first. Anything
 // with a signal is offered: more options beat fewer, even imperfect ones.
-export function suggestPlaylists(track, genresByArtist, entries, { limit = 3 } = {}) {
+export function suggestPlaylists(track, genresByArtist, entries, { limit = 3, tagsByTrack } = {}) {
   return entries
-    .map(({ id, name, profile }) => ({ id, name, ...scoreTrack(track, genresByArtist, profile) }))
+    .map(({ id, name, profile }) => ({ id, name, ...scoreTrack(track, genresByArtist, profile, tagsByTrack) }))
     .filter((s) => s.score > 0)
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
     .slice(0, limit);

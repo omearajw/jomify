@@ -1,7 +1,8 @@
 // Case table for the Unadded Songs "sort into" ranking.
 // Run with: node scripts/suggest-cases.mjs
 
-import { buildProfile, rankProfiles, scoreTrack, suggestPlaylists, trackGenres, tokensOf } from '../src/utils/playlistSuggestions.js';
+import { buildProfile, rankProfiles, scoreTrack, suggestPlaylists, trackGenres, trackTerms, tokensOf } from '../src/utils/playlistSuggestions.js';
+import { cleanTags } from '../src/utils/lastfmTags.js';
 
 let pass = 0;
 let fail = 0;
@@ -80,6 +81,40 @@ check('a song matching nothing gets no picks', suggestPlaylists(weeknd, genres, 
 check('respects the limit', suggestPlaylists(newTame, genres, [...ranked, ...ranked.map((e) => ({ ...e, id: e.id + '2', name: e.name + ' 2' }))], { limit: 2 }).length === 2);
 check('ties break by name', suggestPlaylists(newTame, genres, [{ ...ranked[0], id: 'b', name: 'B' }, { ...ranked[0], id: 'a', name: 'A' }]).map((s) => s.id).join() === 'a,b');
 check('psych song lands in Psych over Rock', suggestPlaylists(newMgmt, genres, ranked)[0].id === 'psych');
+
+section('mood from tags');
+// Two pop playlists that only differ in mood. Genres alone cannot tell them apart.
+const popGenres = new Map([['a1', ['pop']], ['a2', ['pop']], ['a3', ['pop']], ['a4', ['pop']], ['newpop', ['pop']]]);
+const tags = new Map([
+  ['s1', [{ name: 'sad', count: 100 }, { name: 'melancholic', count: 60 }]],
+  ['s2', [{ name: 'sad', count: 90 }, { name: 'heartbreak', count: 40 }]],
+  ['h1', [{ name: 'upbeat', count: 100 }, { name: 'happy', count: 70 }]],
+  ['h2', [{ name: 'feel good', count: 80 }, { name: 'happy', count: 60 }]],
+  ['n1', [{ name: 'sad', count: 100 }, { name: 'pop', count: 50 }]]
+]);
+const sadPop = { id: 'sadpop', name: 'Sad pop', profile: buildProfile([T('s1', A('a1')), T('s2', A('a2'))], popGenres, tags) };
+const happyPop = { id: 'happypop', name: 'Happy pop', profile: buildProfile([T('h1', A('a3')), T('h2', A('a4'))], popGenres, tags) };
+const moodRanked = rankProfiles([sadPop, happyPop]);
+const sadSong = T('n1', A('newpop', 'Newcomer'));
+check('tags join the song\'s terms with their strength', trackTerms(sadSong, popGenres, tags).get('sad') === 1 && trackTerms(sadSong, popGenres, tags).get('pop') === 1);
+check('a weak tag still counts for at least half', trackTerms(T('x', A('newpop')), popGenres, new Map([['x', [{ name: 'chill', count: 10 }]]])).get('chill') === 0.5);
+check('"pop" is shared, so it sinks below the mood words', moodRanked[0].profile.wordWeight.get('sad') > moodRanked[0].profile.wordWeight.get('pop'));
+const moodPicks = suggestPlaylists(sadSong, popGenres, moodRanked, { tagsByTrack: tags });
+check('a sad pop song goes to the sad pop playlist', moodPicks[0]?.id === 'sadpop');
+check('and says why', /Mostly sad/.test(moodPicks[0]?.reason || ''));
+const noTags = suggestPlaylists(sadSong, popGenres, moodRanked);
+check('without tags the two pop playlists tie', noTags.length === 2 && Math.abs(noTags[0].score - noTags[1].score) < 1e-9);
+
+section('tag cleaning');
+const cleaned = cleanTags([
+  { name: 'Psychedelic Rock', count: 100 }, { name: 'seen live', count: 90 }, { name: '2015', count: 50 },
+  { name: '80s', count: 40 }, { name: 'favorites', count: 30 }, { name: 'sad', count: 20 }, { name: 'psychedelic rock', count: 15 },
+  { name: 'obscure', count: 3 }
+]);
+check('keeps real tags, lowercased, in order', cleaned.map((t) => t.name).join() === 'psychedelic rock,sad');
+check('drops junk, years, decades, duplicates and weak tags', !cleaned.some((t) => ['seen live', '2015', '80s', 'favorites', 'obscure'].includes(t.name)));
+check('drops the artist\'s own name and radio stations', cleanTags([{ name: 'Adele', count: 69 }, { name: 'wsum 91.7 fm madison', count: 100 }, { name: 'soul', count: 50 }], 'Adele').map((t) => t.name).join() === 'soul');
+check('caps the list', cleanTags(Array.from({ length: 30 }, (_, i) => ({ name: 'tag' + i, count: 100 - i }))).length === 10);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) { console.log(failures.map(f => `  - ${f}`).join('\n')); process.exit(1); }

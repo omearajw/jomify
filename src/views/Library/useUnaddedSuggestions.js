@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchPlaylistSnapshot, fetchPlaylistTrackArtists, fetchArtistsByIds } from '../../services/spotify/api';
 import { buildProfile, rankProfiles, suggestPlaylists } from '../../utils/playlistSuggestions';
+import { ensureTrackTags, tagCache } from '../../services/tags';
 
 // Profiles the check playlists and ranks them for each row of Unadded Songs. Playlist track
 // lists are kept per snapshot id (Spotify bumps it on every edit), so reopening the page costs
@@ -57,7 +58,7 @@ async function loadPlaylist(token, playlistId) {
 export function noteTrackSorted(playlistId, track) {
   const entry = trackCache.get(playlistId);
   if (!entry || !track?.id) return;
-  entry.tracks.push({ id: track.id, artists: (track.artists || []).filter((a) => a?.id) });
+  entry.tracks.push({ id: track.id, name: track.name, artists: (track.artists || []).filter((a) => a?.id) });
   entry.snapshotId = null; // no longer matches Spotify's; refetched next time
 }
 
@@ -84,10 +85,13 @@ export function useUnaddedSuggestions({ token, enabled, checkPlaylistIds, items 
         }
         await ensureGenres(token, loadedPlaylists.flatMap((p) => p.tracks.flatMap((t) => t.artists.map((a) => a.id))));
         if (cancelled) return;
+        // Mood comes from Last.fm's per-song tags; without the endpoint the genres still work
+        await ensureTrackTags(loadedPlaylists.flatMap((p) => p.tracks));
+        if (cancelled) return;
         setLoaded({
           key: idsKey,
           status: 'ready',
-          profiles: rankProfiles(loadedPlaylists.map((p) => ({ id: p.id, name: p.name, profile: buildProfile(p.tracks, genreCache) })))
+          profiles: rankProfiles(loadedPlaylists.map((p) => ({ id: p.id, name: p.name, profile: buildProfile(p.tracks, genreCache, tagCache) })))
         });
       } catch (err) {
         console.warn('[unadded] suggestions unavailable:', err?.message || err);
@@ -100,20 +104,26 @@ export function useUnaddedSuggestions({ token, enabled, checkPlaylistIds, items 
   const current = active && loaded.key === idsKey ? loaded : { profiles: [], status: active ? 'loading' : 'idle' };
   const { profiles, status } = current;
 
-  // Genres for the rows themselves arrive in a second pass so the playlist profiles never wait
-  // on a long Unadded Songs list
-  const rowArtistKey = useMemo(
-    () => (enabled ? (items || []).flatMap((i) => (i?.track?.artists || []).map((a) => a?.id)).filter(Boolean).join(',') : ''),
+  // Genres and tags for the rows themselves arrive in a second pass so the playlist profiles
+  // never wait on a long Unadded Songs list
+  const rowKey = useMemo(
+    () => (enabled ? (items || []).map((i) => i?.track?.id).filter(Boolean).join(',') : ''),
     [enabled, items]
   );
   useEffect(() => {
-    if (!token || !rowArtistKey || status !== 'ready') return undefined;
+    if (!token || !rowKey || status !== 'ready') return undefined;
     let cancelled = false;
-    ensureGenres(token, rowArtistKey.split(','))
-      .then(() => { if (!cancelled) setGenreVersion((v) => v + 1); })
-      .catch((err) => console.warn('[unadded] row genres unavailable:', err?.message || err));
+    const rows = (items || []).map((i) => i?.track).filter((t) => t?.id);
+    (async () => {
+      await ensureGenres(token, rows.flatMap((t) => (t.artists || []).map((a) => a?.id)).filter(Boolean));
+      if (cancelled) return;
+      await ensureTrackTags(rows);
+      if (!cancelled) setGenreVersion((v) => v + 1);
+    })().catch((err) => console.warn('[unadded] row tags unavailable:', err?.message || err));
     return () => { cancelled = true; };
-  }, [token, rowArtistKey, status]);
+    // rows are derived from items, which rowKey already tracks
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, rowKey, status]);
 
   const suggestionsByTrack = useMemo(() => {
     const out = new Map();
@@ -121,7 +131,7 @@ export function useUnaddedSuggestions({ token, enabled, checkPlaylistIds, items 
     for (const item of items || []) {
       const track = item?.track;
       if (!track?.id || out.has(track.id)) continue;
-      out.set(track.id, suggestPlaylists(track, genreCache, profiles));
+      out.set(track.id, suggestPlaylists(track, genreCache, profiles, { tagsByTrack: tagCache }));
     }
     return out;
     // genreVersion is the signal that the cache gained the rows' artists

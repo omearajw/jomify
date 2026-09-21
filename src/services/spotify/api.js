@@ -707,7 +707,7 @@ export async function fetchPlaylistSnapshot(token, playlistId) {
 
 // Just enough of every track to profile a playlist's taste: ids and artists
 export async function fetchPlaylistTrackArtists(token, playlistId) {
-  const fields = 'next,items(track(id,artists(id,name)))';
+  const fields = 'next,items(track(id,name,artists(id,name)))';
   let url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100&fields=${encodeURIComponent(fields)}`;
   const tracks = [];
   while (url) {
@@ -715,7 +715,7 @@ export async function fetchPlaylistTrackArtists(token, playlistId) {
     if (!response.ok) { const err = new Error(`Failed to fetch playlist tracks (${response.status})`); err.status = response.status; throw err; }
     const data = await response.json();
     for (const item of data.items || []) {
-      if (item?.track?.id) tracks.push({ id: item.track.id, artists: (item.track.artists || []).filter((a) => a?.id) });
+      if (item?.track?.id) tracks.push({ id: item.track.id, name: item.track.name, artists: (item.track.artists || []).filter((a) => a?.id) });
     }
     url = data.next;
   }
