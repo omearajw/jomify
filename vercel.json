@@ -1,5 +1,13 @@
 {
   "crons": [
-    { "path": "/api/cron/sevens", "schedule": "0 9 * * *" }
-  ]
+    {
+      "path": "/api/cron/sevens",
+      "schedule": "0 9 * * *"
+    }
+  ],
+  "functions": {
+    "api/tags.js": {
+      "maxDuration": 30
+    }
+  }
 }

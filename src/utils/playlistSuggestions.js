@@ -14,6 +14,16 @@ const EXACT_GENRE_BONUS = 2;     // a full-genre match counts on top of its word
 const ARTIST_BOOST = 1;          // genre score multiplier per unit of artist strength
 const ARTIST_ALONE = 0.4;        // score an artist match earns with no genre signal
 const MAX_DISTINCT = 3;          // cap on the "more than the other playlists" multiplier
+const MOOD_BOOST = 1.5;          // mood words count this much more than genre words
+
+// Words that describe how a song feels rather than what it is. They come from Last.fm tags,
+// count extra in the score, and get named in the reason so a mood decision is visible.
+export const MOOD_WORDS = new Set([
+  'sad', 'melancholic', 'melancholy', 'depressing', 'heartbreak', 'heartbroken', 'emotional', 'emo', 'moody', 'dark', 'gloomy', 'bittersweet',
+  'happy', 'upbeat', 'uplifting', 'feel', 'feelgood', 'joyful', 'cheerful', 'fun', 'euphoric', 'sunny', 'summer', 'party', 'dance', 'hype', 'energetic', 'energy', 'anthem', 'workout',
+  'chill', 'chillout', 'mellow', 'calm', 'relaxing', 'relax', 'peaceful', 'soothing', 'sleep', 'dreamy', 'dream', 'atmospheric', 'ambient', 'ethereal', 'hazy', 'lazy', 'slow', 'ballad', 'acoustic', 'piano',
+  'love', 'romantic', 'sexy', 'sensual', 'nostalgic', 'nostalgia', 'angry', 'aggressive', 'intense', 'heavy', 'groovy', 'funky', 'smooth', 'soulful', 'epic', 'cinematic', 'night', 'late', 'rainy', 'winter', 'autumn', 'spring', 'road', 'driving'
+]);
 
 const add = (map, key, amount) => map.set(key, (map.get(key) || 0) + amount);
 
@@ -117,9 +127,16 @@ export function scoreTrack(track, genresByArtist, profile, tagsByTrack) {
   let genreSignal = 0;
   let bestWord = null;
   let bestWordWeight = 0;
+  let bestMood = null;
+  let bestMoodWeight = 0;
   for (const word of words) {
     const weight = profile.wordWeight.get(word) || 0;
-    genreSignal += weight;
+    if (MOOD_WORDS.has(word)) {
+      genreSignal += weight * MOOD_BOOST;
+      if (weight > bestMoodWeight) { bestMoodWeight = weight; bestMood = word; }
+    } else {
+      genreSignal += weight;
+    }
     if (weight > bestWordWeight) { bestWordWeight = weight; bestWord = word; }
   }
   for (const genre of genres) genreSignal += EXACT_GENRE_BONUS * (profile.genreWeight.get(genre) || 0);
@@ -129,7 +146,9 @@ export function scoreTrack(track, genresByArtist, profile, tagsByTrack) {
   const reasons = [];
   if (bestWord) {
     const topWord = profile.rankedWords[0]?.key;
-    reasons.push(`${bestWord === topWord ? 'Mostly' : 'Lots of'} ${bestWord}`);
+    const label = `${bestWord === topWord ? 'Mostly' : 'Lots of'} ${bestWord}`;
+    // A mood match is the interesting part; say it even when a genre word scored higher
+    reasons.push(bestMood && bestMood !== bestWord ? `${label}, ${bestMood}` : label);
   }
   if (matchedArtist) reasons.push(`${reasons.length ? 'already' : 'Already'} has ${matchedArtist.name || 'this artist'}`);
   return { score, reason: reasons.length ? reasons.join(', ') : null };

@@ -1,7 +1,7 @@
 // Case table for the Unadded Songs "sort into" ranking.
 // Run with: node scripts/suggest-cases.mjs
 
-import { buildProfile, rankProfiles, scoreTrack, suggestPlaylists, trackGenres, trackTerms, tokensOf } from '../src/utils/playlistSuggestions.js';
+import { buildProfile, rankProfiles, scoreTrack, suggestPlaylists, trackGenres, trackTerms, tokensOf, MOOD_WORDS } from '../src/utils/playlistSuggestions.js';
 import { cleanTags } from '../src/utils/lastfmTags.js';
 
 let pass = 0;
@@ -102,6 +102,15 @@ check('"pop" is shared, so it sinks below the mood words', moodRanked[0].profile
 const moodPicks = suggestPlaylists(sadSong, popGenres, moodRanked, { tagsByTrack: tags });
 check('a sad pop song goes to the sad pop playlist', moodPicks[0]?.id === 'sadpop');
 check('and says why', /Mostly sad/.test(moodPicks[0]?.reason || ''));
+// Genre-heavy playlists where the mood is a secondary word: the reason still names it
+const indieSad = { id: 'indiesad', name: 'Indie sad', profile: buildProfile([T('i1', A('tame')), T('i2', A('mgmt'))], genres, new Map([['i1', [{ name: 'sad', count: 60 }]], ['i2', [{ name: 'sad', count: 50 }]]])) };
+const indieFun = { id: 'indiefun', name: 'Indie fun', profile: buildProfile([T('f1', A('tame')), T('f2', A('mgmt'))], genres, new Map([['f1', [{ name: 'upbeat', count: 60 }]], ['f2', [{ name: 'upbeat', count: 50 }]]])) };
+const indieRanked = rankProfiles([indieSad, indieFun]);
+const sadIndie = T('n9', A('strokes', 'The Strokes'));
+const sadIndiePicks = suggestPlaylists(sadIndie, genres, indieRanked, { tagsByTrack: new Map([['n9', [{ name: 'sad', count: 80 }]]]) });
+check('mood decides between two playlists of the same genre', sadIndiePicks[0]?.id === 'indiesad');
+check('the reason names the mood alongside the genre', /, sad$/.test(sadIndiePicks[0]?.reason || '') || /^Mostly sad/.test(sadIndiePicks[0]?.reason || ''));
+check('mood words are known', MOOD_WORDS.has('sad') && MOOD_WORDS.has('upbeat') && !MOOD_WORDS.has('rock'));
 const noTags = suggestPlaylists(sadSong, popGenres, moodRanked);
 check('without tags the two pop playlists tie', noTags.length === 2 && Math.abs(noTags[0].score - noTags[1].score) < 1e-9);
 

@@ -9,6 +9,8 @@ import { playPlaylistFromTrack, addTracksToPlaylist, removeTrackFromPlaylist } f
 import { useProgress } from '../../hooks/useProgress';
 import { toast } from '../../store/toastStore';
 import { artUrl } from '../../utils/images';
+import { tagCache } from '../../services/tags';
+import { MOOD_WORDS } from '../../utils/playlistSuggestions';
 
 // Full-screen sorting for Unadded Songs: one song at a time as a card, the check playlists as
 // tiles, the suggested ones large. Drag the card onto a tile (or tap the tile) to file the song.
@@ -119,6 +121,8 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   const suggestedIds = new Set(suggestions.map((s) => s.id));
   const others = targets.filter((t) => !suggestedIds.has(t.id));
   const placedHere = track ? (placed[track.uri] || []) : [];
+  // What the song is being judged on, mood words first, so a decision is never a mystery
+  const songTags = track ? (tagCache.get(track.id) || []).slice(0, 6).sort((a, b) => Number(MOOD_WORDS.has(b.name)) - Number(MOOD_WORDS.has(a.name))) : [];
   const isThisPlaying = Boolean(track && currentPlayingTrack && (currentPlayingTrack.uri === track.uri || currentPlayingTrack.id === track.id));
 
   const advance = () => setIndex(cursor < 0 ? 0 : (cursor + 1) % Math.max(queue.length, 1));
@@ -388,6 +392,11 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
               <div className="min-w-0 flex-1 pointer-events-none">
                 <p className="font-extrabold text-base md:text-lg leading-tight tracking-tight line-clamp-2">{track.name}</p>
                 <p className="text-sm text-neutral-400 truncate">{track.artists?.map((a) => a.name).join(', ')}</p>
+                {songTags.length > 0 && (
+                  <p className="text-[11px] text-neutral-500 mt-1 truncate">
+                    {songTags.map((t, i) => <span key={t.name} className={MOOD_WORDS.has(t.name) ? 'text-neutral-300' : ''}>{i ? ' · ' : ''}{t.name}</span>)}
+                  </p>
+                )}
                 {placedHere.length > 0 && (
                   <p className="text-xs text-[var(--brand-mid)] mt-1 truncate">In {placedHere.map((id) => targets.find((t) => t.id === id)?.name).filter(Boolean).join(', ')}</p>
                 )}
