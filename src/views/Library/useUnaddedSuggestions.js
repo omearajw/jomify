@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchPlaylistSnapshot, fetchPlaylistTrackArtists, fetchArtistsByIds } from '../../services/spotify/api';
-import { buildProfile, suggestPlaylists } from '../../utils/playlistSuggestions';
+import { buildProfile, rankProfiles, suggestPlaylists } from '../../utils/playlistSuggestions';
 
 // Profiles the check playlists and ranks them for each row of Unadded Songs. Playlist track
 // lists are kept per snapshot id (Spotify bumps it on every edit), so reopening the page costs
@@ -87,7 +87,7 @@ export function useUnaddedSuggestions({ token, enabled, checkPlaylistIds, items 
         setLoaded({
           key: idsKey,
           status: 'ready',
-          profiles: loadedPlaylists.map((p) => ({ id: p.id, name: p.name, profile: buildProfile(p.tracks, genreCache) }))
+          profiles: rankProfiles(loadedPlaylists.map((p) => ({ id: p.id, name: p.name, profile: buildProfile(p.tracks, genreCache) })))
         });
       } catch (err) {
         console.warn('[unadded] suggestions unavailable:', err?.message || err);
