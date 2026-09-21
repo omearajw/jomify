@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Play, Pause, SkipForward, Undo2, Star, Check, Layers, Loader } from 'lucide-react';
 import { useUserStore } from '../../store/userStore';
+import { usePlayerStore } from '../../store/playerStore';
 import { usePlaybackSummary } from '../../store/selectors';
 import { playOn, togglePlay } from '../../services/spotify/playbackController';
 import { playSingleTrack, addTracksToPlaylist, removeTrackFromPlaylist } from '../../services/spotify/api';
@@ -92,6 +93,28 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   const isThisPlaying = track && currentPlayingTrack && (currentPlayingTrack.uri === track.uri || currentPlayingTrack.id === track.id);
 
   const advance = () => setIndex((i) => i + 1);
+
+  // When the card's song has played and then stops at the end (or rewinds to the start, which is
+  // how Spotify reports a finished single track), move on. A pause part-way through is the
+  // user's own and leaves the card alone.
+  useEffect(() => {
+    if (!settings.autoplay || !track) return undefined;
+    const uri = track.uri;
+    const id = track.id;
+    let heard = false;
+    const check = (state) => {
+      const pb = state.playbackState;
+      const now = pb?.track_window?.current_track;
+      const same = now && (now.uri === uri || now.id === id);
+      if (!pb || !same) return;
+      if (!pb.paused) { heard = true; return; }
+      if (!heard) return;
+      const atEnd = (pb.position || 0) === 0 || (pb.duration > 0 && pb.position >= pb.duration - 1500);
+      if (atEnd) { heard = false; advance(); }
+    };
+    check(usePlayerStore.getState());
+    return usePlayerStore.subscribe(check);
+  }, [settings.autoplay, track]);
 
   const fileInto = async (playlistId) => {
     if (!track || busy || !token) return;
