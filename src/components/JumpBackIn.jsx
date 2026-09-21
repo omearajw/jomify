@@ -3,6 +3,7 @@ import { useUserStore } from '../store/userStore';
 import { useSlice } from '../store/selectors';
 import { fetchRecentlyPlayed, fetchAlbumsByIds, fetchArtistsByIds, fetchPlaylistSummary } from '../services/spotify/api';
 import { artUrl } from '../utils/images';
+import { Skeleton } from './Skeleton';
 
 const MAX_ENTRIES = 10;
 
@@ -71,7 +72,24 @@ export default function JumpBackIn() {
     return () => { cancelled = true; };
   }, [token]);
 
-  if (!entries || entries.length === 0) return null;
+  // Still asking Spotify: hold the space with placeholders so the page doesn't reflow
+  if (entries === null) {
+    return (
+      <div className="w-full mb-8" aria-busy="true">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-3">Jump back in</h3>
+        <div className="flex gap-4 overflow-hidden pb-2">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="shrink-0 w-32 md:w-40">
+              <Skeleton className="w-32 h-32 md:w-40 md:h-40 rounded-xl mb-2" />
+              <Skeleton className="h-3.5 w-3/4 mb-1.5" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (entries.length === 0) return null;
 
   const open = (entry) => {
     if (entry.type === 'playlist') navigateToPlaylist(entry.id);

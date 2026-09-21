@@ -143,3 +143,8 @@
   from { width: 100%; }
   to { width: 0%; }
 }
+
+/* Skeleton placeholders shimmer; people who asked for less motion get them still */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse { animation: none; }
+}

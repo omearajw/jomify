@@ -3,6 +3,7 @@ import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { playOn } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
+import { SkeletonHeader, SkeletonRows } from '../../components/Skeleton';
 import { playContext, checkTracksLiked, fetchMoreTracks, spotifyFetch, saveAlbumToLibrary, unsaveAlbum } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Plus, Check, Loader2 } from 'lucide-react';
@@ -17,6 +18,9 @@ export default function Album() {
   const [album, setAlbum] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
+  // A saved album's header is known before Spotify answers
+  const summary = albums.find((a) => a.id === currentAlbumId) || null;
+  const shown = album || (loading ? summary : null);
   const [error, setError] = useState('');
 
 
@@ -111,17 +115,18 @@ export default function Album() {
     }
   };
 
-  if (loading) {
+  if (loading && !shown) {
     return (
-      <div className="flex items-center justify-center py-20 text-neutral-400">
-        <p className="text-lg">Loading album...</p>
+      <div className="flex flex-col pb-8">
+        <SkeletonHeader />
+        <SkeletonRows count={8} art={false} />
       </div>
     );
   }
 
   // Back navigation is the global button in MainLayout; this view used to render a second one
   // 64px below it doing the identical thing.
-  if (!album) {
+  if (!shown) {
     return (
       <div className="flex flex-col pb-8">
         <p className="text-neutral-400">{error || 'Album not found'}</p>
@@ -134,20 +139,20 @@ export default function Album() {
       {/* Album Header */}
       <div className="flex flex-row items-center md:items-end gap-4 md:gap-6 mb-6 md:mb-12">
         <div className="w-24 h-24 md:w-48 md:h-48 bg-neutral-700 rounded-lg overflow-hidden shadow-2xl flex-shrink-0">
-          {album.images?.[0]?.url && (
-            <img src={album.images[0].url} alt={album.name} className="w-full h-full object-cover" />
+          {shown.images?.[0]?.url && (
+            <img src={shown.images[0].url} alt={shown.name} className="w-full h-full object-cover" />
           )}
         </div>
         <div className="min-w-0">
           <p className="hidden md:block text-sm font-bold text-neutral-400 uppercase tracking-widest mb-2">Album</p>
-          <h1 className="text-2xl md:text-6xl font-extrabold text-white tracking-tighter mb-1 md:mb-4 break-words line-clamp-2 md:line-clamp-none">{album.name}</h1>
+          <h1 className="text-2xl md:text-6xl font-extrabold text-white tracking-tighter mb-1 md:mb-4 break-words line-clamp-2 md:line-clamp-none">{shown.name}</h1>
           <div className="text-sm md:text-base text-neutral-400 font-medium md:mb-4">
             <p>
               By{' '}
-              <TrackArtists artists={album.artists} className="text-white" linkClassName="hover:underline" />
+              <TrackArtists artists={shown.artists} className="text-white" linkClassName="hover:underline" />
             </p>
             <p className="mt-0.5 md:mt-2">
-              {album.release_date?.split('-')[0]} • {album.total_tracks} tracks
+              {shown.release_date ? `${shown.release_date.split('-')[0]} • ` : ''}{shown.total_tracks} tracks
             </p>
             <button
               type="button"
@@ -168,6 +173,12 @@ export default function Album() {
       </div>
 
       {/* Album Tracks */}
+      {loading && (
+        <div>
+          <h2 className="text-xl md:text-2xl font-bold text-white mb-3 md:mb-6">Tracks</h2>
+          <SkeletonRows count={8} art={false} />
+        </div>
+      )}
       {tracks.length > 0 && (
         <div>
           <h2 className="text-xl md:text-2xl font-bold text-white mb-3 md:mb-6">Tracks</h2>

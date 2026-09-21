@@ -8,6 +8,7 @@ import { Clock3, Play, Heart, Shuffle } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import { rowButtonProps } from '../../utils/a11y';
 import MoreButton from '../../components/MoreButton';
+import { Skeleton, SkeletonRows } from '../../components/Skeleton';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 
 const ROW_PAGE = 150;
@@ -116,9 +117,8 @@ export default function LikedSongsView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleCount, totalRows, nextPageUrl]);
 
-  if (!trackData) {
-    return <p className="text-neutral-400 animate-pulse text-lg mt-8">Loading your collection...</p>;
-  }
+  // The header and controls never wait for the songs
+  const data = trackData || { items: [], total: 0, next: null };
 
   return (
     <div className="flex flex-col pb-8">
@@ -130,18 +130,19 @@ export default function LikedSongsView() {
         <div className="min-w-0">
           <p className="hidden md:block text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2">Playlist</p>
           <h1 className="text-2xl md:text-5xl lg:text-7xl font-extrabold text-white tracking-tighter mb-1 md:mb-4">Liked Songs</h1>
-          <p className="text-neutral-400 text-sm font-medium">
-            {trackData.items.length < trackData.total
-              ? `${trackData.items.length.toLocaleString()} of ${trackData.total.toLocaleString()} songs loaded`
-              : `${trackData.total.toLocaleString()} songs`}
-          </p>
+          {!trackData && <Skeleton className="h-4 w-24 mt-1" />}
+          {trackData && <p className="text-neutral-400 text-sm font-medium">
+            {data.items.length < data.total
+              ? `${data.items.length.toLocaleString()} of ${data.total.toLocaleString()} songs loaded`
+              : `${data.total.toLocaleString()} songs`}
+          </p>}
           {loadError && (
             <p className="text-red-400 text-xs font-medium mt-2 flex items-center gap-3">
               {loadError}
-              {trackData.next && (
+              {data.next && (
                 <button
                   type="button"
-                  onClick={() => { if (!isFetchingMore.current) loadRestOfTracks(trackData.next); }}
+                  onClick={() => { if (!isFetchingMore.current) loadRestOfTracks(data.next); }}
                   className="underline hover:text-white transition-colors"
                 >
                   Try again
@@ -169,7 +170,8 @@ export default function LikedSongsView() {
 
       {/* Tracklist */}
       <div className="flex flex-col">
-        {trackData.items.slice(0, visibleCount).map((item, index) => {
+        {!trackData && <SkeletonRows count={8} art={false} />}
+        {data.items.slice(0, visibleCount).map((item, index) => {
           const track = item.track;
           if (!track) return null;
 
@@ -212,7 +214,7 @@ export default function LikedSongsView() {
         })}
         {(visibleCount < totalRows || nextPageUrl) && (
           <div ref={sentinelRef} className="py-6 text-center text-xs text-neutral-500">
-            {Math.max(0, (trackData.total || totalRows) - Math.min(visibleCount, totalRows))} more…
+            {Math.max(0, (data.total || totalRows) - Math.min(visibleCount, totalRows))} more…
           </div>
         )}
       </div>

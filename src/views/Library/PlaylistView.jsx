@@ -7,6 +7,7 @@ import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, up
 import SortIntoChips from '../../components/SortIntoChips';
 import { useUnaddedSuggestions, noteTrackSorted } from './useUnaddedSuggestions';
 import SortMode from './SortMode';
+import { SkeletonHeader, SkeletonRows } from '../../components/Skeleton';
 import { toast } from '../../store/toastStore';
 import { formatTime } from '../../utils/formatTime';
 import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink, Undo2, Pencil, Layers } from 'lucide-react';
@@ -73,6 +74,16 @@ export default function PlaylistView() {
   const { currentPlayingTrack, isCurrentTrackPaused } = usePlaybackSummary();
   const isShuffled = usePlayerStore((s) => s.isShuffled);
   const [playlist, setPlaylist] = useState(null);
+  // What the header shows: the loaded playlist, or the library's entry for it while that loads,
+  // so the name, art and play controls are up before the tracks arrive
+  const summary = playlists.find((p) => p.id === activePlaylistId);
+  const view = playlist || (summary ? {
+    ...summary,
+    description: summary.description || '',
+    owner: summary.owner || { display_name: '' },
+    images: summary.images || [],
+    tracks: { items: [], total: summary.tracks?.total ?? 0, next: null }
+  } : null);
   // Keyed by playlist id so switching playlists needs no reset; { id, status }
   const [loadError, setLoadError] = useState(null);
   const [visibleCount, setVisibleCount] = useState(ROW_PAGE);
@@ -131,7 +142,7 @@ export default function PlaylistView() {
   const selectedCheckPlaylistIds = useUserStore((s) => s.unaddedCheckPlaylists);
   const setUnaddedCheckPlaylists = useUserStore((s) => s.setUnaddedCheckPlaylists);
 
-  const isUnaddedSongsPlaylist = playlist?.name?.toLowerCase() === 'unadded songs';
+  const isUnaddedSongsPlaylist = (view?.name || '').toLowerCase() === 'unadded songs';
 
   // Sort mode works from a snapshot of the list, and the suggestions are computed over that
   // snapshot while it is open so a filed song keeps its tiles after leaving the list
@@ -508,7 +519,12 @@ export default function PlaylistView() {
   };
 
   const handleTrackSelect = (originalIndex) => {
-    if (!token || !playlist) return;
+    if (!token) return;
+    // Before the tracks arrive, Play still works: the playlist context starts from the top
+    if (!playlist) {
+      if (originalIndex === 0 && activePlaylistId) playOn((deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, 0));
+      return;
+    }
     playOn((deviceId) => startTrack(deviceId, originalIndex));
   };
 
@@ -653,11 +669,11 @@ export default function PlaylistView() {
   // Shuffle play: switch shuffle on, then start somewhere random so it doesn't always open on
   // the first track like a plain Play with shuffle would
   const handleShufflePlay = () => {
-    if (!token || !playlist || sortedTracks.length === 0) return;
     // Custom order plays by position in Spotify's order, so it can land on a page that hasn't
-    // loaded yet; a sorted view can only pick from what is on screen (and has loaded the lot)
+    // loaded yet (or before any page has); a sorted view can only pick from what is on screen
     const custom = sortBy === 'custom';
-    const total = custom ? (playlist.tracks.total || sortedTracks.length) : sortedTracks.length;
+    const total = custom ? (view?.tracks?.total || sortedTracks.length) : sortedTracks.length;
+    if (!token || total === 0 || (!custom && !playlist)) return;
     const index = Math.floor(Math.random() * total);
     playOn(async (deviceId) => {
       await setShuffle(true, deviceId);
@@ -678,7 +694,14 @@ export default function PlaylistView() {
         />
       );
     }
-    return <p className="text-neutral-400 animate-pulse text-lg mt-8">Loading playlist...</p>;
+    if (!view) {
+      return (
+        <div className="flex flex-col pb-8 mt-2 md:mt-4">
+          <SkeletonHeader />
+          <SkeletonRows count={8} />
+        </div>
+      );
+    }
   }
 
   // Phone: art, title/artists, like + duration + menu. Desktop keeps the full table.
@@ -691,8 +714,8 @@ export default function PlaylistView() {
       {/* Playlist Header */}
       <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-4 md:mb-8 mt-2 md:mt-4 select-none gap-4 md:gap-6">
         <div className="flex flex-row items-center md:items-end gap-4 md:gap-6 min-w-0">
-          {playlist.images?.length > 0 ? (
-            <img src={playlist.images[0].url} alt={playlist.name} className="w-24 h-24 md:w-48 md:h-48 shadow-2xl shadow-black/50 rounded shrink-0" />
+          {view.images?.length > 0 ? (
+            <img src={view.images[0].url} alt={view.name} className="w-24 h-24 md:w-48 md:h-48 shadow-2xl shadow-black/50 rounded shrink-0" />
           ) : (
             <div className="w-24 h-24 md:w-48 md:h-48 bg-neutral-800 flex items-center justify-center text-4xl shadow-2xl rounded shrink-0"> 🎵 </div>
           )}
@@ -706,13 +729,13 @@ export default function PlaylistView() {
                 </span>
               )}
             </p>
-            <h1 className="text-2xl md:text-5xl lg:text-7xl font-extrabold text-white tracking-tighter mb-1 md:mb-4 break-words line-clamp-2 md:line-clamp-none">{playlist.name}</h1>
+            <h1 className="text-2xl md:text-5xl lg:text-7xl font-extrabold text-white tracking-tighter mb-1 md:mb-4 break-words line-clamp-2 md:line-clamp-none">{view.name}</h1>
             <p className="text-neutral-400 text-sm font-medium">
-              {playlist.description && <span className="mr-2 hidden md:inline">{playlist.description} •</span>}
+              {view.description && <span className="mr-2 hidden md:inline">{view.description} •</span>}
               {isCollaborative && <span className="md:hidden">Collaborative • </span>}
-              {playlist.owner.display_name} • {playlist.tracks.total} songs
+              {view.owner.display_name} • {playlist || view.tracks.total > 0 ? view.tracks.total : '…'} songs
             </p>
-            {playlist.description && <p className="md:hidden text-neutral-500 text-xs mt-1 line-clamp-1">{playlist.description}</p>}
+            {view.description && <p className="md:hidden text-neutral-500 text-xs mt-1 line-clamp-1">{view.description}</p>}
           </div>
         </div>
         <div className="hidden md:flex flex-wrap items-center gap-3">
@@ -835,7 +858,7 @@ export default function PlaylistView() {
         <button
           type="button"
           onClick={() => handleTrackSelect(0)}
-          aria-label={`Play ${playlist.name}`}
+          aria-label={`Play ${view.name}`}
           className="w-12 h-12 md:w-14 md:h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-xl shrink-0"
         >
           <Play className="w-6 h-6 fill-current ml-1" />
@@ -975,13 +998,14 @@ export default function PlaylistView() {
           open={editDialogOpen}
           title="Edit playlist"
           submitLabel="Save changes"
-          initialName={playlist.name}
-          initialDescription={playlist.description || ''}
-          initialImageUrl={playlist.images?.[0]?.url || ''}
+          initialName={view.name}
+          initialDescription={view.description || ''}
+          initialImageUrl={view.images?.[0]?.url || ''}
           onSubmit={handleUpdatePlaylist}
           onCancel={() => setEditDialogOpen(false)}
           isSubmitting={isUpdatingPlaylist}
         />
+        {!playlist && <SkeletonRows count={8} />}
         {sortedTracks.slice(0, visibleCount).map((item, index) => {
           if (!item || !item.track) return null;
           const track = item.track;

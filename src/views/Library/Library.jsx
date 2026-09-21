@@ -3,6 +3,7 @@ import { useUserStore } from '../../store/userStore';
 import { fetchUserPlaylists, addTracksToPlaylist, unfollowPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../../services/spotify/api';
 import { Heart, Folder, Maximize2, ChevronLeft, ChevronRight, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2, FolderX, FolderInput, FolderOutput, Search, ArrowUpDown, X } from 'lucide-react';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { SkeletonCards } from '../../components/Skeleton';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
 import FolderFormDialog from '../../components/FolderFormDialog';
 import { getUnfolderedItems, descendantIds, descendantItemIds, folderPath, isDescendant, byOrder } from '../../utils/library';
@@ -507,7 +508,14 @@ export default function Library() {
 
   // `loading` only ever flips false from this view's own fetch; if App's load lands first the
   // count is already non-zero and there is nothing to wait for
-  if (loading && playlistCount === 0) return <p className="text-neutral-400 animate-pulse text-lg">Loading your collection...</p>;
+  if (loading && playlistCount === 0) {
+    return (
+      <div className="flex flex-col pb-8">
+        <h1 className="text-4xl font-extrabold text-white tracking-tighter mb-6">Your Library</h1>
+        <SkeletonCards count={8} gridClass={getGridClass()} />
+      </div>
+    );
+  }
 
   // Everything the module-scope ItemCard needs from this render, spread at each call site
   const itemCardProps = {
