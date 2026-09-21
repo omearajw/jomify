@@ -13,6 +13,11 @@ const TOKEN_SHARE = 0.3;
 // stretched before mixing with the 0..1 artist signal
 const GENRE_STRETCH = 2.5;
 export const MIN_SCORE = 0.08;
+// A song's best-matching genre says more than the average across its four or five micro-genres,
+// most of which no playlist will name
+const BEST_GENRE_SHARE = 0.6;
+// A genre has to be at least this much of a playlist before the reason claims "lots of" it
+const GENRE_REASON_MIN = 0.1;
 
 const tokensOf = (genre) => genre.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2);
 
@@ -80,15 +85,16 @@ export function scoreTrack(track, genresByArtist, profile) {
     let fuzzy = 0;
     for (const token of tokens) fuzzy += profile.tokenWeights.get(token) || 0;
     const exactMean = exact / genres.length;
+    const exactBlend = BEST_GENRE_SHARE * bestGenreWeight + (1 - BEST_GENRE_SHARE) * exactMean;
     const fuzzyMean = tokens.length ? fuzzy / tokens.length : 0;
-    genreScore = Math.min(1, (EXACT_SHARE * exactMean + TOKEN_SHARE * fuzzyMean) * GENRE_STRETCH);
+    genreScore = Math.min(1, (EXACT_SHARE * exactBlend + TOKEN_SHARE * fuzzyMean) * GENRE_STRETCH);
   }
 
   const score = ARTIST_WEIGHT * artistScore + GENRE_WEIGHT * genreScore;
-  const reason = matchedArtist
-    ? `Already has ${matchedArtist.name || 'this artist'}`
-    : (bestGenre ? `Lots of ${bestGenre}` : null);
-  return { score, reason };
+  const reasons = [];
+  if (matchedArtist) reasons.push(`Already has ${matchedArtist.name || 'this artist'}`);
+  if (bestGenre && bestGenreWeight >= GENRE_REASON_MIN) reasons.push(`${matchedArtist ? 'lots' : 'Lots'} of ${bestGenre}`);
+  return { score, reason: reasons.length ? reasons.join(' and ') : null };
 }
 
 // profiles: [{ id, name, profile }] -> [{ id, name, score, reason }] best first, at most `limit`
