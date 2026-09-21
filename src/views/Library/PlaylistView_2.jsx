@@ -744,7 +744,7 @@ const turnIndicator = useMemo(() => {
       </div>
 
       {/* Batches, newest first, in a grid that scrolls with the page */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 items-start gap-4 md:gap-6 px-2 md:px-8 pt-2 md:pt-4">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] items-start gap-4 md:gap-6 px-2 md:px-8 pt-2 md:pt-4">
         {chunks.map((chunk, chunkIdx) => {
           const collaborator = collaborators[chunk.adderId];
           const displayName = collaborator?.display_name || chunk.adderId || 'Unknown';
