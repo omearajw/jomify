@@ -202,8 +202,14 @@ function initLocalPlayer() {
       sdkPlayer.addListener(event, ({ message }) => fail(`${event}: ${message}`));
     }
     sdkPlayer.addListener('playback_error', ({ message }) => console.warn('[playback] SDK playback error:', message));
+    // The browser refused to start audio (a play command from Spotify's servers counts as
+    // autoplay on iOS). The element was activated in the tap that asked for the song, so one
+    // resume usually goes through; only if it doesn't is the user asked to tap play.
     sdkPlayer.addListener('autoplay_failed', () => {
-      toast('Tap play to start audio in this browser', { tone: 'info' });
+      sdkPlayer.resume().catch(() => {});
+      setTimeout(() => {
+        if (player().playbackState?.paused !== false) toast('Tap play to start audio in this browser', { tone: 'info' });
+      }, 600);
     });
 
     readyTimer = setTimeout(() => fail('the player did not become ready in time'), SDK_READY_TIMEOUT_MS);
@@ -225,7 +231,15 @@ function initLocalPlayer() {
 
 // Browsers (iOS in particular) only let media start from inside a user gesture. The SDK exposes
 // activateElement() for exactly this; it has to run synchronously in the handler, before any
-// await, and once is enough per page. Installed on capture so no stopPropagation can hide it.
+// await. It is called from the first gesture on the page and again at the start of every play
+// action, since Safari on iOS can forget the activation between taps. Installed on capture so
+// no stopPropagation can hide it.
+export function activateLocalPlayer() {
+  const sdkPlayer = player().player;
+  if (!sdkPlayer?.activateElement) return;
+  try { sdkPlayer.activateElement(); } catch { /* not fatal */ }
+}
+
 function installActivation() {
   if (activationInstalled || typeof document === 'undefined') return;
   activationInstalled = true;
@@ -349,6 +363,7 @@ function parkPlay(play) {
 }
 
 export async function playOn(play) {
+  activateLocalPlayer(); // synchronously, while still inside the tap
   if (!token()) return;
   const target = resolveDeviceId(player());
   if (!target) { parkPlay(play); return; }
@@ -364,6 +379,7 @@ export const hasPendingPlay = () => pendingPlay !== null;
 export function clearPendingPlay() { pendingPlay = null; }
 
 export async function playPendingOn(deviceId) {
+  activateLocalPlayer();
   const play = pendingPlay;
   pendingPlay = null;
   if (!play || !deviceId) return false;
@@ -403,6 +419,7 @@ async function remote(action, optimistic) {
 }
 
 export function togglePlay() {
+  activateLocalPlayer();
   const sdk = localSdk();
   if (sdk) return sdk.togglePlay().catch(console.error);
   const paused = player().playbackState?.paused ?? true;
@@ -410,12 +427,14 @@ export function togglePlay() {
 }
 
 export function next() {
+  activateLocalPlayer();
   const sdk = localSdk();
   if (sdk) return sdk.nextTrack().catch(console.error);
   return remote(skipToNext);
 }
 
 export function previous() {
+  activateLocalPlayer();
   const sdk = localSdk();
   if (sdk) return sdk.previousTrack().catch(console.error);
   return remote(skipToPrevious);
