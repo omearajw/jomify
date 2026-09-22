@@ -15,7 +15,8 @@ import {
   fetchPlayerState, fetchDevices, transferPlayback, pausePlayback, resumePlayback,
   skipToNext, skipToPrevious, seekPlayback, setPlaybackVolume, setRepeatMode, toggleShuffleState
 } from './api';
-import { toSdkShape, resolveDeviceId, REPEAT_NAMES, describePlatform, playerNameFor, localDeviceLabel } from './playbackAdapter';
+import { toSdkShape, resolveDeviceId, REPEAT_NAMES, describePlatform, playerNameFor, localDeviceLabel, sliderGain, startupGain } from './playbackAdapter';
+import { isMobileViewport } from '../../hooks/useMediaQuery';
 
 const SDK_SCRIPT_ID = 'spotify-player-script';
 const SDK_SCRIPT_SRC = 'https://sdk.scdn.co/spotify-player.js';
@@ -153,7 +154,9 @@ function initLocalPlayer() {
       name: PLAYER_NAME,
       // Read the token live so a refreshed token flows through without a reconnect
       getOAuthToken: (cb) => cb(useUserStore.getState().token),
-      volume: 0.5
+      // Phones have no volume slider, so the hardware buttons own loudness and the player runs
+      // at full gain; the stored desktop setting used to make them quiet with no way to fix it
+      volume: startupGain(useUserStore.getState().savedVolume, !isMobileViewport())
     });
 
     sdkPlayer.addListener('ready', async ({ device_id }) => {
@@ -162,10 +165,8 @@ function initLocalPlayer() {
       s.setDeviceId(device_id);
       s.setSdkStatus('ready');
 
-      // Apply the persisted volume; the SDK starts at its own default regardless of the slider.
-      // The cubic curve must match setVolume below.
-      const savedVolume = useUserStore.getState().savedVolume;
-      if (typeof savedVolume === 'number') sdkPlayer.setVolume(Math.pow(savedVolume / 100, 3)).catch(() => {});
+      // Apply the volume again once ready; the SDK sometimes starts at its own default regardless
+      sdkPlayer.setVolume(startupGain(useUserStore.getState().savedVolume, !isMobileViewport())).catch(() => {});
 
       // Take over playback only when nothing is playing anywhere. Grabbing it unconditionally
       // (the old behaviour) would yank a phone's Spotify app to silence every time the PWA opened.
@@ -433,7 +434,7 @@ export function setVolume(percent) {
   const s = player();
   if (s.isLocalActive) {
     useUserStore.getState().setSavedVolume(clamped);
-    s.player?.setVolume(Math.pow(clamped / 100, 3)).catch(() => {});
+    s.player?.setVolume(sliderGain(clamped)).catch(() => {});
     return;
   }
   s.setRemoteVolume(clamped);

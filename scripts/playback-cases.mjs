@@ -1,7 +1,7 @@
 // Case table for the playback adapter (Web API state -> SDK shape) and the history mirror.
 // Run with: node scripts/playback-cases.mjs
 
-import { toSdkShape, nextUid, resolveDeviceId, REPEAT_MODES, describePlatform, playerNameFor, localDeviceLabel, deviceTypeLabel } from '../src/services/spotify/playbackAdapter.js';
+import { toSdkShape, nextUid, resolveDeviceId, REPEAT_MODES, describePlatform, playerNameFor, localDeviceLabel, deviceTypeLabel, sliderGain, startupGain } from '../src/services/spotify/playbackAdapter.js';
 
 let pass = 0;
 let fail = 0;
@@ -59,6 +59,12 @@ check('active device wins', resolveDeviceId({ activeDevice: { id: 'remote' }, sd
 check('falls back to the local SDK device when ready', resolveDeviceId({ activeDevice: null, sdkStatus: 'ready', deviceId: 'local' }) === 'local');
 check('nothing when the SDK failed and nothing is active', resolveDeviceId({ activeDevice: null, sdkStatus: 'failed', deviceId: 'local' }) === null);
 check('nothing when the SDK is still loading', resolveDeviceId({ activeDevice: null, sdkStatus: 'loading', deviceId: null }) === null);
+
+section('startup volume');
+check('the slider curve is cubic', Math.abs(sliderGain(50) - 0.125) < 1e-9 && sliderGain(100) === 1 && sliderGain(0) === 0);
+check('a device with a slider starts at its saved setting', Math.abs(startupGain(50, true) - 0.125) < 1e-9);
+check('a device with a slider and nothing saved starts at half', Math.abs(startupGain(undefined, true) - 0.125) < 1e-9);
+check('a phone ignores the saved setting and runs at full gain', startupGain(50, false) === 1 && startupGain(10, false) === 1);
 
 section('device naming');
 const WIN_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0 Safari/537.36';

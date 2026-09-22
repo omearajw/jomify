@@ -121,3 +121,15 @@ const TYPE_LABELS = {
 };
 
 export const deviceTypeLabel = (type) => TYPE_LABELS[type] || type || 'Device';
+
+// --- Volume ----------------------------------------------------------------------------------
+// The desktop slider maps 0-100 onto a cubic curve so the low end is usable. A phone has no
+// slider: the hardware buttons set the volume, so the player must run at full gain or the
+// stored desktop setting (50% by default, an eighth of full gain on the curve) makes it quiet
+// with nothing in the app to fix it.
+export const sliderGain = (percent) => Math.pow(Math.max(0, Math.min(100, percent)) / 100, 3);
+
+export function startupGain(savedVolume, hasVolumeControl) {
+  if (!hasVolumeControl) return 1;
+  return typeof savedVolume === 'number' ? sliderGain(savedVolume) : sliderGain(50);
+}
