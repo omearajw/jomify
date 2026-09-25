@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useUserStore } from '../../store/userStore'; 
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
@@ -161,16 +161,23 @@ export default function PlaylistView_2() {
   const collaborators = useUserProfilesStore((s) => s.profiles);
   // { id, message } keyed by playlist so switching Sevens needs no reset
   const [loadError, setLoadError] = useState(null);
+  // The Seven already loaded: the effect needs the token, but a token refresh must not restart
+  // the streaming load and reset the batches on screen
+  const loadedSevenId = useRef(null);
   
 
 
   // --- FETCH MAIN PLAYLIST ---
   useEffect(() => {
     if (token && activePlaylistId) {
+      if (loadedSevenId.current === activePlaylistId) return undefined;
+      loadedSevenId.current = activePlaylistId;
+
       const requestedId = activePlaylistId;
       let cancelled = false;
       loadSeven(token, activePlaylistId, setPlaylist, () => cancelled)
         .catch((err) => {
+          loadedSevenId.current = null; // let a later attempt retry
           if (cancelled) return;
           console.error(err);
           setLoadError({ id: requestedId, message: err?.message === 'RATE_LIMITED' ? 'Spotify is rate-limiting Jomify; try again in a moment.' : "Couldn't load this Seven." });
@@ -317,6 +324,7 @@ const turnIndicator = useMemo(() => {
       await addTracksToPlaylist(token, activePlaylistId, uris);
 
       // Reload every page, not just the first 100, so the view doesn't lose older batches
+      loadedSevenId.current = activePlaylistId;
       await loadSeven(token, activePlaylistId, setPlaylist);
       clearStagedTracks();
       setIsWorkspaceOpen(false);

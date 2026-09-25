@@ -121,6 +121,10 @@ export default function PlaylistView() {
   };
 
   const isFetchingMore = useRef(false);
+  // The playlist this view has already loaded. The effect below needs the token to fetch at
+  // all, but the token rotates about once an hour, and re-running on that used to blank the
+  // playlist under whatever was on screen.
+  const loadedPlaylistId = useRef(null);
   // Mirrors isFetchingMore for rendering; the ref is what the loader checks
   const [fetchingMore, setFetchingMore] = useState(false);
   // Set when something needs every page (Sort mode); a one-page scroll load then keeps going
@@ -404,6 +408,9 @@ export default function PlaylistView() {
   // --- INITIAL LOAD ---
   useEffect(() => {
     if (token && activePlaylistId) {
+      if (loadedPlaylistId.current === activePlaylistId) return;
+      loadedPlaylistId.current = activePlaylistId;
+
       setPlaylist(null);
       setVisibleCount(ROW_PAGE);
       isFetchingMore.current = false;
@@ -416,7 +423,8 @@ export default function PlaylistView() {
         .then(async (res) => {
           // Spotify-owned playlists come back 403/404 for apps in development mode; say so
           // instead of spinning forever
-          if (!res.ok) { setLoadError({ id: requestedId, status: res.status }); return null; }
+          // Forget the load so a later attempt (a token refresh, coming back to the page) retries
+          if (!res.ok) { loadedPlaylistId.current = null; setLoadError({ id: requestedId, status: res.status }); return null; }
           return res.json();
         })
         .then(async (data) => {
@@ -430,7 +438,7 @@ export default function PlaylistView() {
             loadRestOfTracks(data.tracks.next);
           }
         })
-        .catch(console.error);
+        .catch((err) => { loadedPlaylistId.current = null; console.error(err); });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, activePlaylistId]); 
@@ -787,7 +795,7 @@ export default function PlaylistView() {
       {sortQueue && (
         <SortMode
           items={sortQueue}
-          total={playlist.tracks.total}
+          total={view.tracks.total}
           loadingMore={Boolean(nextPageUrl) && fetchingMore}
           suggestionsByTrack={suggestionsByTrack}
           suggestionsReady={suggestionStatus === 'ready' || suggestionStatus === 'error'}
@@ -1205,7 +1213,7 @@ export default function PlaylistView() {
         })}
         {(visibleCount < totalRows || nextPageUrl) && (
           <div ref={sentinelRef} className="py-6 text-center text-xs text-neutral-500">
-            {Math.max(0, (playlist.tracks.total || totalRows) - Math.min(visibleCount, totalRows))} more…
+            {Math.max(0, (view.tracks.total || totalRows) - Math.min(visibleCount, totalRows))} more…
           </div>
         )}
       </div>

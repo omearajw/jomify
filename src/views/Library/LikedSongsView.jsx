@@ -22,6 +22,7 @@ export default function LikedSongsView() {
   const sentinelRef = useRef(null);
 
   const isFetchingMore = useRef(false);
+  const loadedForToken = useRef(false);
 
   // Hoisted out of the row loop: the same split/lowercase used to run once per row per render
   const currentKey = currentTrack ? currentTrack.name.split(/[-(]/)[0].trim().toLowerCase() : '';
@@ -31,6 +32,9 @@ export default function LikedSongsView() {
 
   useEffect(() => {
     if (token) {
+      // Load once: the token rotates hourly and refetching here used to reset the scroll
+      if (loadedForToken.current) return;
+      loadedForToken.current = true;
       isFetchingMore.current = false;
       fetchInitialLikedSongs(token).then((data) => {
         setTrackData(data);
@@ -42,7 +46,7 @@ export default function LikedSongsView() {
         setLikedTracks(updates);
 
         // The rest pages in as you scroll (see the sentinel below)
-      }).catch(console.error);
+      }).catch((err) => { loadedForToken.current = false; console.error(err); });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
