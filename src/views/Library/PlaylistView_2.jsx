@@ -643,7 +643,7 @@ const turnIndicator = useMemo(() => {
                         <img src={artUrl(item.track.album.images, 40)} width="40" height="40" loading="lazy" decoding="async" className="w-full h-full object-cover" alt="" />
                         <div className={`absolute inset-0 bg-black/60 flex items-center justify-center transition-opacity ${isCurrentTrack ? 'opacity-100' : 'opacity-0 group-hover/poolrow:opacity-100'}`}>
                           {isCurrentTrack && !isCurrentTrackPaused ? (
-                            <span className="text-brand-gradient font-bold text-[10px] animate-pulse">🔊</span>
+                            <span className="text-[var(--brand-mid)] font-bold text-[10px] animate-pulse">🔊</span>
                           ) : (
                             <Play className="w-3.5 h-3.5 text-white fill-current ml-0.5" />
                           )}
@@ -736,7 +736,7 @@ const turnIndicator = useMemo(() => {
             onClick={shufflePlay}
             aria-label="Shuffle play"
             title="Shuffle play"
-            className={`w-11 h-11 flex items-center justify-center rounded-full hover:scale-110 active:scale-95 transition-all ${isShuffled ? 'text-brand-gradient' : 'text-neutral-400 hover:text-white'}`}
+            className={`w-11 h-11 flex items-center justify-center rounded-full hover:scale-110 active:scale-95 transition-all ${isShuffled ? 'text-[var(--brand-mid)]' : 'text-neutral-400 hover:text-white'}`}
           >
             <ShuffleIcon className="w-6 h-6" />
           </button>
@@ -820,7 +820,7 @@ const turnIndicator = useMemo(() => {
                       {/* 1. Play / Number Indicator */}
                       <div className="text-neutral-400 w-5 h-5 flex items-center justify-center shrink-0">
                         {isCurrentTrack && !isCurrentTrackPaused ? (
-                          <span className="text-brand-gradient font-bold animate-pulse">🔊</span>
+                          <span className="text-[var(--brand-mid)] font-bold animate-pulse">🔊</span>
                         ) : (
                           <>
                             <span className={`group-hover/track:hidden text-xs ${isCurrentTrack ? 'text-brand-gradient font-bold' : ''}`}>

@@ -235,8 +235,13 @@ function initLocalPlayer() {
 // action, since Safari on iOS can forget the activation between taps. Installed on capture so
 // no stopPropagation can hide it.
 export function activateLocalPlayer() {
-  const sdkPlayer = player().player;
+  const s = player();
+  const sdkPlayer = s.player;
   if (!sdkPlayer?.activateElement) return;
+  // Only worth doing before this browser starts making sound. Called while the SDK is already
+  // playing, it re-primes the audio element, which is what made a track run silent and then
+  // restart a few seconds later.
+  if (s.isLocalActive && s.playbackState && !s.playbackState.paused) return;
   try { sdkPlayer.activateElement(); } catch { /* not fatal */ }
 }
 

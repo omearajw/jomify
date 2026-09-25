@@ -120,7 +120,7 @@ function ManageCard({ item, action, onClick }) {
       <div className="relative aspect-square w-full mb-4 rounded-md overflow-hidden bg-neutral-800 flex items-center justify-center shadow-md shrink-0">
         {item.images?.length > 0 ? <img src={artUrl(item.images, 300)} draggable="false" alt={item.name} loading="lazy" decoding="async" className="object-cover w-full h-full opacity-60 group-hover:opacity-100 transition-opacity duration-300" /> : <span className="text-3xl opacity-60 group-hover:opacity-100">💿</span>}
         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-          {action === 'add' ? <Plus className="w-12 h-12 text-brand-gradient" /> : <Minus className="w-12 h-12 text-red-500" />}
+          {action === 'add' ? <Plus className="w-12 h-12 text-[var(--brand-mid)]" /> : <Minus className="w-12 h-12 text-red-500" />}
         </div>
       </div>
       <h3 className="font-bold text-sm text-white truncate mb-1">{item.name}</h3>
@@ -183,7 +183,7 @@ function FolderCard({ folder, ctx }) {
         <FolderStack folder={folder} folders={customFolders} items={itemsById} />
       </div>
       <h3 className="font-bold text-sm text-white truncate mb-1 flex items-center pointer-events-none">
-        <Folder className="w-4 h-4 mr-2 text-brand-gradient fill-current shrink-0" />
+        <Folder className="w-4 h-4 mr-2 text-[var(--brand-mid)] fill-current shrink-0" />
         <span className="truncate">{folder.name}</span>
       </h3>
       <p className="text-xs text-neutral-400 truncate mt-auto pointer-events-none">{itemLabel(folder.playlistIds.length)}{subfolderLabel(subfolders)}</p>
@@ -201,7 +201,7 @@ function FolderPanel({ folder, ctx }) {
     <div className="col-span-full bg-neutral-800/30 border border-neutral-700/50 rounded-2xl p-6 shadow-inner animate-fade-in mb-4">
       <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
         <div className="flex items-center cursor-pointer group hover:text-green-400 transition-colors" onClick={() => ctx.setIsolatedFolderId(folder.id)}>
-          <Folder className="w-8 h-8 text-brand-gradient fill-current mr-4" />
+          <Folder className="w-8 h-8 text-[var(--brand-mid)] fill-current mr-4" />
           <div>
             <h3 className="text-2xl font-extrabold text-white tracking-tight group-hover:text-green-400 transition-colors">{folder.name}</h3>
             <p className="text-sm text-neutral-400 font-medium">{itemLabel(folder.playlistIds.length)} inside{subfolderLabel(children.length)}</p>

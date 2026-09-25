@@ -162,7 +162,7 @@ export default function LikedSongsView() {
         <button onClick={() => handleTrackSelect(0)} aria-label="Play Liked Songs" className="w-12 h-12 md:w-14 md:h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-xl">
           <Play className="w-6 h-6 fill-current ml-1" />
         </button>
-        <button onClick={handleToggleShuffle} aria-label={isShuffled ? 'Disable shuffle' : 'Enable shuffle'} aria-pressed={isShuffled} className={`w-11 h-11 flex items-center justify-center hover:scale-110 transition-all ${isShuffled ? 'text-brand-gradient' : 'text-neutral-400 hover:text-white'}`}>
+        <button onClick={handleToggleShuffle} aria-label={isShuffled ? 'Disable shuffle' : 'Enable shuffle'} aria-pressed={isShuffled} className={`w-11 h-11 flex items-center justify-center hover:scale-110 transition-all ${isShuffled ? 'text-[var(--brand-mid)]' : 'text-neutral-400 hover:text-white'}`}>
           <Shuffle className="w-6 h-6" />
         </button>
       </div>
@@ -198,7 +198,7 @@ export default function LikedSongsView() {
             >
               <div className="text-neutral-400 w-4 h-4 hidden md:flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
-                  <span className="text-brand-gradient font-bold animate-pulse">🔊</span>
+                  <span className="text-[var(--brand-mid)] font-bold animate-pulse">🔊</span>
                 ) : (
                   <><span className={`group-hover:hidden ${isCurrentTrack ? 'text-brand-gradient font-bold' : ''}`}>{index + 1}</span><Play className="w-4 h-4 text-white hidden group-hover:block fill-current" /></>
                 )}

@@ -479,7 +479,7 @@ export default function ContextMenu() {
                           className="w-full px-4 py-2 flex items-center justify-between text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
                         >
                           <span className="flex items-center min-w-0">
-                            <Folder className={`w-3.5 h-3.5 mr-2 shrink-0 ${isOpen ? 'text-brand-gradient' : 'text-neutral-500'}`} />
+                            <Folder className={`w-3.5 h-3.5 mr-2 shrink-0 ${isOpen ? 'text-[var(--brand-mid)]' : 'text-neutral-500'}`} />
                             {/* Nested folders show their path; the accordion itself stays one level deep */}
                             <span className="truncate font-medium">{path.join(' › ')}</span>
                           </span>

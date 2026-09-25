@@ -2,6 +2,7 @@ import { shallow } from 'zustand/shallow';
 import { useUserStore } from '../store/userStore';
 import { useSyncStore } from '../store/syncStore';
 import { pullDoc, pushDoc, SyncApiError } from '../services/sync/client';
+import { ensureFreshToken } from '../services/spotify/session';
 import { mergeSyncDoc, isFolderLive } from './mergeSyncDoc';
 import { storeToDoc, docToStore, docToMetaClocks, docHasContent } from './transform';
 import {
@@ -235,14 +236,25 @@ function handleFailure(err, phase) {
 
   useSyncStore.getState().setStatus(status === 0 ? 'offline' : 'error', err?.message);
 
+  // A 401 almost always means the access token expired while the phone was asleep, not that the
+  // user is signed out: an iPhone freezes the heartbeat in the background. Renew it now and
+  // retry at the short delay. Escalating the backoff instead used to keep sync failing long
+  // enough to raise the "not backing up" banner for something that fixes itself.
+  const renewal = status === 401
+    ? ensureFreshToken({ force: true }).then(() => { backoffMs = BACKOFF_START_MS; }, () => {})
+    : Promise.resolve();
+
   // Stay dirty and try again. Because every push sends the whole document and the merge is
   // idempotent, the local state IS the retry queue -- there is nothing to replay in order.
   clearTimeout(backoffTimer);
-  backoffTimer = setTimeout(() => {
-    if (dirty) flushPush();
-    else pull();
-  }, backoffMs);
-  backoffMs = Math.min(backoffMs * 2, BACKOFF_MAX_MS);
+  renewal.then(() => {
+    clearTimeout(backoffTimer);
+    backoffTimer = setTimeout(() => {
+      if (dirty) flushPush();
+      else pull();
+    }, backoffMs);
+    backoffMs = Math.min(backoffMs * 2, BACKOFF_MAX_MS);
+  });
 }
 
 // --- pulling ----------------------------------------------------------------

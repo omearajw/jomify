@@ -49,7 +49,7 @@ export default function LikeButton({ trackId }) {
   };
 
   const heartClass = isLiked
-    ? 'fill-[var(--brand-mid)] text-brand-gradient'
+    ? 'fill-[var(--brand-mid)] text-[var(--brand-mid)]'
     : isKnown
       ? 'text-neutral-400 hover:text-white'
       : 'text-neutral-600 hover:text-white'; // dimmer: we haven't checked this one yet

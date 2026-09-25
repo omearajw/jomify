@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react';
-import { redirectToAuthCodeFlow, getAccessToken, refreshAccessToken } from './services/spotify/auth';
+import { redirectToAuthCodeFlow, getAccessToken } from './services/spotify/auth';
+import { ensureFreshToken } from './services/spotify/session';
 import { fetchUserProfile, fetchUserPlaylists, fetchUserAlbums, spotifyFetch } from './services/spotify/api';
 import { useUserStore } from './store/userStore';
 import { useSlice } from './store/selectors';
@@ -88,22 +89,17 @@ function App() {
     const checkAndRefreshToken = async () => {
       if (!token || !refreshToken || !tokenExpiresAt) return;
 
-      if (Date.now() > tokenExpiresAt - 300000) {
-        try {
-          const data = await refreshAccessToken(refreshToken);
-          setToken(data.access_token, data.expires_in);
-          
-          if (data.refresh_token) {
-             setRefreshToken(data.refresh_token);
-          }
-        } catch (err) {
-          if (err?.definitive) {
-            console.error("Spotify rejected the refresh token. Forcing re-login.", err);
-            logout();
-          } else {
-            // A dropped connection on a phone used to sign the user out here
-            console.warn("Token refresh failed; will retry on the next heartbeat.", err?.message || err);
-          }
+      try {
+        // The expiry check lives in ensureFreshToken, which the sync engine shares so a 401
+        // there renews the token immediately instead of waiting for this tick
+        await ensureFreshToken();
+      } catch (err) {
+        if (err?.definitive) {
+          console.error("Spotify rejected the refresh token. Forcing re-login.", err);
+          logout();
+        } else {
+          // A dropped connection on a phone used to sign the user out here
+          console.warn("Token refresh failed; will retry on the next heartbeat.", err?.message || err);
         }
       }
     };
@@ -479,7 +475,7 @@ function App() {
                         onClick={toggleAndLoadStats}
                         className="flex items-center px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:text-[#f91362] text-sm font-bold text-white transition-all group"
                       >
-                        <BarChart3 className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform text-brand-gradient" />
+                        <BarChart3 className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform text-[var(--brand-mid)]" />
                         {showStats ? 'Hide Stats' : 'View Stats'}
                         {showStats ? <ChevronUp className="w-4 h-4 ml-1 opacity-50" /> : <ChevronDown className="w-4 h-4 ml-1 opacity-50" />}
                       </button>

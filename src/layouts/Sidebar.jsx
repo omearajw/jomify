@@ -426,7 +426,7 @@ export default function Sidebar() {
               ))}
             </nav>
             <h3 className="text-white font-bold text-lg px-2 mb-3 flex items-center">
-              <Folder className="w-5 h-5 mr-2 text-brand-gradient fill-current shrink-0" /> <span className="truncate">{activeFolder.name}</span>
+              <Folder className="w-5 h-5 mr-2 text-[var(--brand-mid)] fill-current shrink-0" /> <span className="truncate">{activeFolder.name}</span>
             </h3>
             <div role="tree" aria-label={`Folders in ${activeFolder.name}`} className="space-y-1">
               {activeChildren.map(child => <FolderRow key={child.id} folder={child} depth={0} ctx={rowCtx} />)}

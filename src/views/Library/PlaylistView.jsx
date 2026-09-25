@@ -876,7 +876,7 @@ export default function PlaylistView() {
           onClick={handleShufflePlay}
           aria-label="Shuffle play"
           title="Shuffle play"
-          className={`w-11 h-11 flex items-center justify-center rounded-full hover:scale-110 active:scale-95 transition-all ${isShuffled ? 'text-brand-gradient' : 'text-neutral-400 hover:text-white'}`}
+          className={`w-11 h-11 flex items-center justify-center rounded-full hover:scale-110 active:scale-95 transition-all ${isShuffled ? 'text-[var(--brand-mid)]' : 'text-neutral-400 hover:text-white'}`}
         >
           <Shuffle className="w-6 h-6" />
         </button>
@@ -1101,7 +1101,7 @@ export default function PlaylistView() {
             >
               <div className="text-neutral-400 w-4 h-4 hidden md:flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
-                  <span className="text-brand-gradient font-bold animate-pulse">🔊</span>
+                  <span className="text-[var(--brand-mid)] font-bold animate-pulse">🔊</span>
                 ) : (
                   <>
                     <span className={`group-hover:hidden ${isCurrentTrack ? 'text-brand-gradient font-bold' : ''}`}>

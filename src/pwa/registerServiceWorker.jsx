@@ -17,7 +17,7 @@ export default function UpdatePrompt() {
         onClick={() => updateServiceWorker(true)}
         className="flex items-center gap-2 rounded-full bg-neutral-900/95 border border-white/10 px-4 py-2 text-sm font-semibold text-white shadow-2xl backdrop-blur-md hover:bg-neutral-800 transition-colors"
       >
-        <RefreshCw className="w-4 h-4 text-brand-gradient" />
+        <RefreshCw className="w-4 h-4 text-[var(--brand-mid)]" />
         Update ready · Reload
       </button>
     </div>
