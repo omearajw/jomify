@@ -148,12 +148,12 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.uri, settings.autoplay]);
 
-  // Follow playback. Once the card's song has played: if Spotify moves on to another song in
-  // this list (you are listening to the playlist itself) the card follows it; if the song stops
-  // at the end (or rewinds to the start, how Spotify reports a finished single track) the pile
-  // moves on. A pause part-way through is the user's own and leaves the card alone.
+  // Keep the card on whatever is actually playing. Following runs whether or not songs are
+  // started automatically, so the card and the controls below it never disagree about a song
+  // that is in this pile. Moving on when a song finishes is the automatic half, and only that
+  // half follows the toggle.
   useEffect(() => {
-    if (!settings.autoplay || !track) return undefined;
+    if (!track) return undefined;
     const uri = track.uri;
     let heard = false;
     const check = (state) => {
@@ -161,14 +161,17 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
       const now = pb?.track_window?.current_track;
       if (!pb || !now) return;
       if (now.uri !== uri) {
-        if (!heard) return;
+        // Spotify moved on. Follow it when the new song is one of ours, whether that came from
+        // the song ending, the skip button or the lock screen. When it is something else
+        // entirely (the playlist ran out, another app queued a song) stay put rather than
+        // marching the pile past a song nobody sorted.
         const at = queue.findIndex((i) => i?.track?.uri === now.uri);
         heard = false;
-        if (at >= 0) setIndex(at); else advance();
+        if (at >= 0) setIndex(at);
         return;
       }
       if (!pb.paused) { heard = true; return; }
-      if (!heard) return;
+      if (!heard || !settings.autoplay) return;
       const atEnd = (pb.position || 0) === 0 || (pb.duration > 0 && pb.position >= pb.duration - 1500);
       if (atEnd) { heard = false; advance(); }
     };

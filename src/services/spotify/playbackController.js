@@ -17,10 +17,15 @@ import {
 } from './api';
 import { toSdkShape, resolveDeviceId, REPEAT_NAMES, describePlatform, playerNameFor, localDeviceLabel, sliderGain, startupGain } from './playbackAdapter';
 import { isMobileViewport } from '../../hooks/useMediaQuery';
+import { ensureFreshToken } from './session';
 
 const SDK_SCRIPT_ID = 'spotify-player-script';
 const SDK_SCRIPT_SRC = 'https://sdk.scdn.co/spotify-player.js';
 const SDK_READY_TIMEOUT_MS = 15000;
+// The SDK device drops off Spotify Connect when a phone sleeps or the network flaps. Come back
+// rather than leaving a dead player, but give up rather than loop if it keeps refusing.
+const SDK_RECONNECT_DELAY_MS = 2000;
+const SDK_MAX_RECOVERIES = 4;
 
 // Poll cadence while remote. Spotify's rate limit is shared with everything else the app does,
 // so the fast tier only applies while someone is actually looking at the player.
@@ -141,7 +146,10 @@ function initLocalPlayer() {
   store.setSdkStatus('loading');
 
   let readyTimer = null;
+  let reconnectTimer = null;
+  let recoveries = 0;
   const fail = (message) => {
+    clearTimeout(reconnectTimer);
     clearTimeout(readyTimer);
     if (player().sdkStatus === 'ready') return;
     player().setSdkStatus('failed', message);
@@ -152,8 +160,14 @@ function initLocalPlayer() {
   window.onSpotifyWebPlaybackSDKReady = () => {
     const sdkPlayer = new window.Spotify.Player({
       name: PLAYER_NAME,
-      // Read the token live so a refreshed token flows through without a reconnect
-      getOAuthToken: (cb) => cb(useUserStore.getState().token),
+      // The SDK asks for a token whenever it needs to renew the stream. Handing it the stored
+      // one meant handing it an expired one after an hour asleep, which Spotify answers with an
+      // authentication error and the player dies mid-song. Renew first, every time.
+      getOAuthToken: (cb) => {
+        ensureFreshToken()
+          .then((fresh) => cb(fresh || useUserStore.getState().token))
+          .catch(() => cb(useUserStore.getState().token));
+      },
       // Phones have no volume slider, so the hardware buttons own loudness and the player runs
       // at full gain; the stored desktop setting used to make them quiet with no way to fix it
       volume: startupGain(useUserStore.getState().savedVolume, !isMobileViewport())
@@ -161,6 +175,8 @@ function initLocalPlayer() {
 
     sdkPlayer.addListener('ready', async ({ device_id }) => {
       clearTimeout(readyTimer);
+      clearTimeout(reconnectTimer);
+      recoveries = 0;
       const s = player();
       s.setDeviceId(device_id);
       s.setSdkStatus('ready');
@@ -181,6 +197,10 @@ function initLocalPlayer() {
     sdkPlayer.addListener('not_ready', () => {
       const s = player();
       if (s.isLocalActive) { s.setIsLocalActive(false); refreshSoon(); }
+      if (recoveries >= SDK_MAX_RECOVERIES) return;
+      recoveries += 1;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => { sdkPlayer.connect().catch(() => {}); }, SDK_RECONNECT_DELAY_MS);
     });
 
     sdkPlayer.addListener('player_state_changed', (state) => {
@@ -198,9 +218,20 @@ function initLocalPlayer() {
       }
     });
 
-    for (const event of ['initialization_error', 'authentication_error', 'account_error']) {
+    // A browser that cannot run the player and an account that cannot use it are both permanent
+    for (const event of ['initialization_error', 'account_error']) {
       sdkPlayer.addListener(event, ({ message }) => fail(`${event}: ${message}`));
     }
+
+    // An expired token is not permanent: renew it and reconnect instead of killing the player
+    sdkPlayer.addListener('authentication_error', ({ message }) => {
+      if (recoveries >= SDK_MAX_RECOVERIES) { fail(`authentication_error: ${message}`); return; }
+      recoveries += 1;
+      console.warn('[playback] SDK token rejected; renewing and reconnecting');
+      ensureFreshToken({ force: true })
+        .then(() => sdkPlayer.connect())
+        .catch(() => fail(`authentication_error: ${message}`));
+    });
     sdkPlayer.addListener('playback_error', ({ message }) => console.warn('[playback] SDK playback error:', message));
     // The browser refused to start audio (a play command from Spotify's servers counts as
     // autoplay on iOS). The element was activated in the tap that asked for the song, so one
@@ -350,9 +381,29 @@ export function handlePlaybackError(err) {
 // The device a play request should target, or null after opening the picker so the user can
 // choose one. Replaces the old `if (!deviceId) return` guards that silently did nothing.
 export function resolvePlaybackDeviceId() {
-  const target = resolveDeviceId(player());
+  const target = pickDevice();
   if (!target) useUserStore.getState().setDevicePickerOpen(true);
   return target;
+}
+
+// The device the user last chose. Spotify only reports an active device once it has actually
+// started playing, so without this a second tap during those few seconds looked like "nowhere to
+// play" all over again and reopened the picker.
+let preferredDeviceId = null;
+
+export function rememberDevice(deviceId) {
+  if (deviceId) preferredDeviceId = deviceId;
+}
+
+// Where a play should go without troubling the user: whatever is already playing, this browser's
+// own player, the last device they chose, or the only one there is.
+function pickDevice() {
+  const direct = resolveDeviceId(player());
+  if (direct) return direct;
+  const devices = player().devices || [];
+  if (preferredDeviceId && devices.some((d) => d.id === preferredDeviceId)) return preferredDeviceId;
+  if (devices.length === 1) return devices[0].id;
+  return null;
 }
 
 // --- Starting playback -----------------------------------------------------------------------
@@ -370,13 +421,36 @@ function parkPlay(play) {
 export async function playOn(play) {
   activateLocalPlayer(); // synchronously, while still inside the tap
   if (!token()) return;
-  const target = resolveDeviceId(player());
+
+  let target = pickDevice();
+  if (!target) {
+    // The device list goes stale between plays; ask Spotify before bothering the user, since
+    // the answer is often "there is only one, use that"
+    await refreshDevices();
+    target = pickDevice();
+  }
   if (!target) { parkPlay(play); return; }
+
   try {
     await play(target);
+    rememberDevice(target);
   } catch (err) {
-    if (err?.code === 'NO_ACTIVE_DEVICE') parkPlay(play);
-    else handlePlaybackError(err);
+    if (err?.code !== 'NO_ACTIVE_DEVICE') { handlePlaybackError(err); return; }
+
+    // Whatever we aimed at has gone away. Forget it, look again, and only ask if there is a
+    // real choice to make; this is the loop where picking a device led straight back to the
+    // picker on the next tap.
+    if (preferredDeviceId === target) preferredDeviceId = null;
+    await refreshDevices();
+    const retry = pickDevice();
+    if (retry && retry !== target) {
+      try {
+        await play(retry);
+        rememberDevice(retry);
+        return;
+      } catch { /* fall through to the picker */ }
+    }
+    parkPlay(play);
   }
 }
 
@@ -385,6 +459,7 @@ export function clearPendingPlay() { pendingPlay = null; }
 
 export async function playPendingOn(deviceId) {
   activateLocalPlayer();
+  rememberDevice(deviceId);
   const play = pendingPlay;
   pendingPlay = null;
   if (!play || !deviceId) return false;
@@ -523,6 +598,7 @@ export async function refreshDevices() {
 export async function transferTo(deviceId, { play } = {}) {
   const t = token();
   if (!t || !deviceId) return;
+  rememberDevice(deviceId);
   const s = player();
   const shouldPlay = typeof play === 'boolean' ? play : Boolean(s.playbackState && !s.playbackState.paused);
   try {
