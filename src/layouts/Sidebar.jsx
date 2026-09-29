@@ -370,10 +370,10 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="hidden md:flex w-64 bg-black/40 backdrop-blur-md border-r border-white/5 flex-col p-6 space-y-6 select-none overflow-hidden h-full relative z-10">
-      <div className="text-brand-gradient font-extrabold text-3xl tracking-tighter shrink-0"><img src="/Jomify-Logo.png" alt="Jomify" className="w-30 object-contain"/></div>
-      
-      <nav className="flex flex-col space-y-4 font-semibold shrink-0">
+    <aside className="hidden md:flex w-64 xl:w-72 bg-black/40 backdrop-blur-md border-r border-white/5 flex-col px-3 py-4 space-y-3 select-none overflow-hidden h-full relative z-10">
+      <div className="shrink-0 px-2"><img src="/Jomify-Logo.png" alt="Jomify" className="h-8 w-auto object-contain" /></div>
+
+      <nav className="flex flex-col space-y-0.5 font-semibold shrink-0">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
@@ -382,17 +382,17 @@ export default function Sidebar() {
               key={item.id}
               // Navigate first so the history frame captures the folder you were in, then leave it
               onClick={() => { setCurrentView(item.id); setIsolatedFolderId(null); }}
-              className={`flex items-center space-x-4 transition-colors duration-200 text-left ${isActive ? 'text-white font-bold' : 'text-neutral-400 hover:text-white'}`}
+              className={`flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors text-left ${isActive ? 'text-white font-bold bg-white/5' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}
             >
-              <Icon className={`w-6 h-6 ${isActive ? 'text-[var(--brand-mid)]' : 'text-neutral-400'}`} />
-              <span>{item.label}</span>
+              <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-[var(--brand-mid)]' : ''}`} />
+              <span className="truncate">{item.label}</span>
             </button>
           );
         })}
       </nav>
 
       <div 
-        className="flex-1 overflow-y-auto pr-2 -mr-2 space-y-1 custom-scrollbar text-sm font-medium"
+        className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-1 custom-scrollbar text-sm font-medium"
         onDragOver={(e) => { 
           e.preventDefault(); 
           if (draggedItem?.parentFolderId) e.dataTransfer.dropEffect = 'move'; 
@@ -441,7 +441,7 @@ export default function Sidebar() {
           </div>
         ) : (
           <div className="animate-fade-in space-y-1">
-            <div className="sticky top-0 flex items-center justify-between px-2 pb-3 pt-3 text-neutral-400 bg-transparent backdrop-blur-[3px] border-b border-t border-white/10 z-10">
+            <div className="sticky top-0 flex items-center justify-between px-2 pb-2 pt-1 text-neutral-400 bg-transparent backdrop-blur-[3px] border-b border-white/10 z-10">
               <span className="text-xs uppercase tracking-wider font-bold">Library</span>
               <div className="flex items-center gap-3">
                 <button onClick={() => { setCreateParentId(null); setShowCreateFolderDialog(true); }} className="hover:text-white transition-colors" title="Create Folder"><FolderPlus className="w-4 h-4" /></button>

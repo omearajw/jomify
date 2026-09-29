@@ -129,20 +129,20 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
 
   if (variant === 'footer') {
     return (
-      <div className="mt-auto border-t border-neutral-800 pt-6 flex flex-col space-y-2 text-xs text-neutral-600 shrink-0">
-        {tagline && <p>{tagline}</p>}
-        <p className="text-neutral-700">Build {__BUILD_ID__}</p>
-        <div className="flex items-center gap-3">
-          <button onClick={handleExportBackup} className="text-left hover:text-white transition-colors">Back up data</button>
-          <span className="w-1 h-1 rounded-full bg-neutral-700" />
-          <button onClick={() => backupFileInputRef.current?.click()} className="text-left hover:text-white transition-colors">Restore</button>
-        </div>
+      <div className="mt-auto border-t border-neutral-800 pt-2 flex flex-col gap-1 text-[11px] leading-tight text-neutral-600 shrink-0">
+        <p className={syncLabel.isError ? 'text-red-400' : 'text-neutral-600'}>{syncLabel.text}</p>
         {backupMessage && (
           <p className={backupMessage.isError ? 'text-red-400' : 'text-[var(--brand-start)]'}>{backupMessage.text}</p>
         )}
+        <div className="flex items-center gap-2">
+          <button onClick={handleExportBackup} className="hover:text-white transition-colors">Back up</button>
+          <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
+          <button onClick={() => backupFileInputRef.current?.click()} className="hover:text-white transition-colors">Restore</button>
+          <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
+          <button onClick={handleDisconnect} className="hover:text-white transition-colors">Disconnect</button>
+        </div>
+        <p className="text-neutral-700 truncate" title={tagline}>Build {__BUILD_ID__}{tagline ? ` · ${tagline}` : ''}</p>
         {fileInput}
-        <p className={syncLabel.isError ? 'text-red-400' : 'text-neutral-600'}>{syncLabel.text}</p>
-        <button onClick={handleDisconnect} className="text-left hover:text-white transition-colors">Disconnect Account</button>
         {restoreDialog}
       </div>
     );
