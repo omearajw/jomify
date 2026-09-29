@@ -4,7 +4,7 @@ import { X, Play, Pause, SkipForward, SkipBack, ChevronRight, Undo2, Star, Check
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { usePlaybackSummary } from '../../store/selectors';
-import { playOn, togglePlay, next as nextTrack, previous as previousTrack, seek } from '../../services/spotify/playbackController';
+import { playOn, togglePlay, next as nextTrack, previous as previousTrack, seek, requestFastPlaybackUpdates } from '../../services/spotify/playbackController';
 import { playPlaylistFromTrack, addTracksToPlaylist, removeTrackFromPlaylist } from '../../services/spotify/api';
 import { useProgress } from '../../hooks/useProgress';
 import { toast } from '../../store/toastStore';
@@ -25,6 +25,9 @@ const SETTINGS_KEY = 'jomify_sort_mode';
 const skippedKey = (playlistId) => `jomify_sort_skipped:${playlistId}`;
 const DROP_THRESHOLD_PX = 8;
 const SWIPE_SKIP_PX = 140;
+// Spotify is told to change song, but the next poll can still be describing the old one for a
+// few seconds. Anything naming the song the card just left is treated as stale for this long.
+const LEAVING_GRACE_MS = 8000;
 
 function loadSettings() {
   try { return { autoplay: true, advance: false, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
@@ -125,7 +128,14 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   const songTags = track ? (tagCache.get(track.id) || []).slice(0, 6).sort((a, b) => Number(MOOD_WORDS.has(b.name)) - Number(MOOD_WORDS.has(a.name))) : [];
   const isThisPlaying = Boolean(track && currentPlayingTrack && (currentPlayingTrack.uri === track.uri || currentPlayingTrack.id === track.id));
 
-  const advance = () => setIndex(cursor < 0 ? 0 : (cursor + 1) % Math.max(queue.length, 1));
+  // Moving the card on our own account, as opposed to following what is playing. The song being
+  // left is remembered so a stale report of it cannot drag the card back.
+  const leaving = useRef({ uri: null, until: 0 });
+  const goTo = (nextIndex) => {
+    if (track) leaving.current = { uri: track.uri, until: Date.now() + LEAVING_GRACE_MS };
+    setIndex(nextIndex);
+  };
+  const advance = () => goTo(cursor < 0 ? 0 : (cursor + 1) % Math.max(queue.length, 1));
   const filed = placedHere.length > 0;
   const skip = () => {
     if (!track) return;
@@ -161,15 +171,23 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
       const now = pb?.track_window?.current_track;
       if (!pb || !now) return;
       if (now.uri !== uri) {
-        // Spotify moved on. Follow it when the new song is one of ours, whether that came from
-        // the song ending, the skip button or the lock screen. When it is something else
-        // entirely (the playlist ran out, another app queued a song) stay put rather than
-        // marching the pile past a song nobody sorted.
+        // The card has just moved on and this report still names the song it came from: it was
+        // captured before Spotify caught up. Following it would bounce the card backwards,
+        // which is what made the card and the controls below it disagree.
+        const left = leaving.current;
+        if (now.uri === left.uri && Date.now() < left.until) return;
+
+        // Otherwise Spotify really did move. Follow it when the new song is one of ours,
+        // whether that came from the song ending, the skip button or the lock screen. When it
+        // is something else entirely (the playlist ran out, another app queued a song) stay put
+        // rather than marching the pile past a song nobody sorted.
         const at = queue.findIndex((i) => i?.track?.uri === now.uri);
         heard = false;
         if (at >= 0) setIndex(at);
         return;
       }
+      // The card's song is the one playing, so nothing is in flight any more
+      leaving.current = { uri: null, until: 0 };
       if (!pb.paused) { heard = true; return; }
       if (!heard || !settings.autoplay) return;
       const atEnd = (pb.position || 0) === 0 || (pb.duration > 0 && pb.position >= pb.duration - 1500);
@@ -179,6 +197,9 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     return usePlayerStore.subscribe(check);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.autoplay, track?.uri, queue]);
+
+  // This screen shows the pile and what is playing side by side, so it needs the quick cadence
+  useEffect(() => requestFastPlaybackUpdates(), []);
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -311,7 +332,7 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   const transport = (
     <div className="w-full max-w-[22rem] rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md px-3 py-2">
       <div className="flex items-center gap-2">
-        <p className="flex-1 min-w-0 text-xs text-neutral-300 truncate">
+        <p data-sort-transport="" className="flex-1 min-w-0 text-xs text-neutral-300 truncate">
           {playingTrack ? <><span className="text-white font-semibold">{playingTrack.name}</span> · {playingTrack.artists?.map((a) => a.name).join(', ')}</> : 'Nothing playing'}
         </p>
         <button type="button" onClick={previousTrack} aria-label="Previous" className="w-9 h-9 rounded-full flex items-center justify-center text-neutral-300 hover:text-white"><SkipBack className="w-4 h-4 fill-current" /></button>

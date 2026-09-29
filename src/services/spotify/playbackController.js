@@ -116,9 +116,28 @@ export async function refreshRemoteState() {
 
 const refreshSoon = () => setTimeout(refreshRemoteState, REMOTE_REFRESH_DELAY_MS);
 
+// Spotify needs a moment to report a song we just asked for, and the first answer is sometimes
+// still the previous one, so ask twice. Without this the UI sat on the old song until the next
+// scheduled poll, which is what made a screen showing both disagree with itself.
+function confirmPlayback() {
+  refreshSoon();
+  setTimeout(refreshRemoteState, 1500);
+}
+
+// Screens that show what is playing next to something else can ask for the quicker cadence, so
+// the two do not sit disagreeing for a poll interval
+let fastPollers = 0;
+export function requestFastPlaybackUpdates() {
+  fastPollers += 1;
+  schedulePoll(POLL_FAST_MS);
+  let released = false;
+  return () => { if (released) return; released = true; fastPollers = Math.max(0, fastPollers - 1); };
+}
+
 function pollInterval() {
   if (backoffMs) return backoffMs;
   if (player().isLocalActive) return POLL_LOCAL_MS;
+  if (fastPollers > 0) return POLL_FAST_MS;
   const { isNowPlayingOpen, isQueueOpen, isDevicePickerOpen } = useUserStore.getState();
   return (isNowPlayingOpen || isQueueOpen || isDevicePickerOpen) ? POLL_FAST_MS : POLL_NORMAL_MS;
 }
@@ -434,6 +453,7 @@ export async function playOn(play) {
   try {
     await play(target);
     rememberDevice(target);
+    confirmPlayback();
   } catch (err) {
     if (err?.code !== 'NO_ACTIVE_DEVICE') { handlePlaybackError(err); return; }
 
@@ -447,6 +467,7 @@ export async function playOn(play) {
       try {
         await play(retry);
         rememberDevice(retry);
+        confirmPlayback();
         return;
       } catch { /* fall through to the picker */ }
     }
