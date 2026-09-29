@@ -24,7 +24,7 @@ export function nextUid(prev, item, progressMs) {
   return `remote:${item?.id || 'unknown'}:${Date.now()}:${mintCounter}`;
 }
 
-function toSdkTrack(item, uid) {
+export function toSdkTrack(item, uid) {
   if (!item) return null;
   const isEpisode = item.type === 'episode';
   const images = item.album?.images || item.images || item.show?.images || [];

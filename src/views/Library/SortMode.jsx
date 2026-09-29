@@ -150,7 +150,7 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
 
   // Play each song as it comes up, when asked to, from the playlist itself so playback carries
   // on through it; a song already playing is left alone
-  const playCard = () => playOn((deviceId) => playPlaylistFromTrack(token, deviceId, sourcePlaylistId, track.uri));
+  const playCard = () => playOn((deviceId) => playPlaylistFromTrack(token, deviceId, sourcePlaylistId, track.uri), { track });
   useEffect(() => {
     if (!settings.autoplay || !track || !token) return;
     if (nowPlayingUri() === track.uri) return;
@@ -333,7 +333,9 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     <div className="w-full max-w-[22rem] rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md px-3 py-2">
       <div className="flex items-center gap-2">
         <p data-sort-transport="" className="flex-1 min-w-0 text-xs text-neutral-300 truncate">
-          {playingTrack ? <><span className="text-white font-semibold">{playingTrack.name}</span> · {playingTrack.artists?.map((a) => a.name).join(', ')}</> : 'Nothing playing'}
+          {playingTrack
+            ? <>{!isThisPlaying && <span className="text-neutral-500">Playing: </span>}<span className="text-white font-semibold">{playingTrack.name}</span> · {playingTrack.artists?.map((a) => a.name).join(', ')}</>
+            : 'Nothing playing'}
         </p>
         <button type="button" onClick={previousTrack} aria-label="Previous" className="w-9 h-9 rounded-full flex items-center justify-center text-neutral-300 hover:text-white"><SkipBack className="w-4 h-4 fill-current" /></button>
         <button type="button" onClick={togglePlay} aria-label={paused ? 'Play' : 'Pause'} className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center active:scale-95 transition-transform">

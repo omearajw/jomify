@@ -131,6 +131,7 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
     return (
       <div className="mt-auto border-t border-neutral-800 pt-6 flex flex-col space-y-2 text-xs text-neutral-600 shrink-0">
         {tagline && <p>{tagline}</p>}
+        <p className="text-neutral-700">Build {__BUILD_ID__}</p>
         <div className="flex items-center gap-3">
           <button onClick={handleExportBackup} className="text-left hover:text-white transition-colors">Back up data</button>
           <span className="w-1 h-1 rounded-full bg-neutral-700" />
@@ -173,6 +174,7 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
           <LogOut className="w-5 h-5" /> Disconnect account
         </button>
       </div>
+      <p className="px-1 text-xs text-neutral-600">Build {__BUILD_ID__}</p>
       {fileInput}
       {restoreDialog}
     </div>

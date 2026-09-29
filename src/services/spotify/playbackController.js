@@ -15,7 +15,7 @@ import {
   fetchPlayerState, fetchDevices, transferPlayback, pausePlayback, resumePlayback,
   skipToNext, skipToPrevious, seekPlayback, setPlaybackVolume, setRepeatMode, toggleShuffleState
 } from './api';
-import { toSdkShape, resolveDeviceId, REPEAT_NAMES, describePlatform, playerNameFor, localDeviceLabel, sliderGain, startupGain } from './playbackAdapter';
+import { toSdkShape, toSdkTrack, resolveDeviceId, REPEAT_NAMES, describePlatform, playerNameFor, localDeviceLabel, sliderGain, startupGain } from './playbackAdapter';
 import { isMobileViewport } from '../../hooks/useMediaQuery';
 import { ensureFreshToken } from './session';
 
@@ -122,6 +122,25 @@ const refreshSoon = () => setTimeout(refreshRemoteState, REMOTE_REFRESH_DELAY_MS
 function confirmPlayback() {
   refreshSoon();
   setTimeout(refreshRemoteState, 1500);
+}
+
+// Show the song that was just asked for, without waiting to be told. Spotify takes a moment to
+// report a change and until then every screen keeps naming the song before it, which is what
+// made Sort mode's card and the controls under it disagree. confirmPlayback above replaces this
+// with Spotify's own account a moment later.
+function showTrackOptimistically(track) {
+  const shaped = track?.uri ? toSdkTrack(track, `pending:${track.uri}`) : null;
+  if (!shaped) return;
+  const s = player();
+  const window_ = { ...(s.playbackState?.track_window || {}), current_track: shaped };
+  if (!s.playbackState) {
+    s.setPlaybackState({
+      paused: false, position: 0, duration: shaped.duration_ms, shuffle: false, repeat_mode: 0,
+      context: null, timestamp: Date.now(), track_window: window_, remote: true
+    });
+    return;
+  }
+  patchState({ paused: false, position: 0, duration: shaped.duration_ms, track_window: window_ });
 }
 
 // Screens that show what is playing next to something else can ask for the quicker cadence, so
@@ -437,7 +456,7 @@ function parkPlay(play) {
   useUserStore.getState().setDevicePickerOpen(true);
 }
 
-export async function playOn(play) {
+export async function playOn(play, { track } = {}) {
   activateLocalPlayer(); // synchronously, while still inside the tap
   if (!token()) return;
 
@@ -450,11 +469,14 @@ export async function playOn(play) {
   }
   if (!target) { parkPlay(play); return; }
 
+  showTrackOptimistically(track);
   try {
     await play(target);
     rememberDevice(target);
     confirmPlayback();
   } catch (err) {
+    // Whatever was shown optimistically was a guess; let Spotify correct it
+    refreshSoon();
     if (err?.code !== 'NO_ACTIVE_DEVICE') { handlePlaybackError(err); return; }
 
     // Whatever we aimed at has gone away. Forget it, look again, and only ask if there is a

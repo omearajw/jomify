@@ -10,7 +10,17 @@ import { VitePWA } from 'vite-plugin-pwa';
 // (no service worker, no Widevine behind a certificate error).
 const useSsl = !globalThis.process?.env?.JOMIFY_HTTP;
 
+// Stamped into the bundle so the running app can tell you which build it is. Vercel supplies the
+// commit; a local build falls back to the working copy's.
+const env = globalThis.process?.env || {};
+let buildId = env.VERCEL_GIT_COMMIT_SHA || '';
+if (!buildId) {
+  try { buildId = (await import('node:child_process')).execSync('git rev-parse HEAD', { encoding: 'utf8' }); } catch { buildId = 'dev'; }
+}
+buildId = String(buildId).trim().slice(0, 7) || 'dev';
+
 export default defineConfig({
+  define: { __BUILD_ID__: JSON.stringify(buildId) },
   plugins: [
     react(),
     tailwindcss(),
