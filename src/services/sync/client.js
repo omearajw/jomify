@@ -1,5 +1,6 @@
 import { useUserStore } from '../../store/userStore';
 import { SCHEMA_VERSION } from '../../sync/mergeSyncDoc';
+import { timeoutSignal } from '../spotify/api';
 
 // HTTP layer for the sync API. Mirrors the interceptor style of spotifyFetch in
 // services/spotify/api.js: one place that knows about transport, so the engine above it only
@@ -43,10 +44,14 @@ async function readError(response) {
   }
 }
 
+// The engine treats a request as in flight until it settles, so without a deadline one stalled
+// request stops syncing for the rest of the session
+const SYNC_TIMEOUT_MS = 15000;
+
 export async function pullDoc() {
   let response;
   try {
-    response = await fetch(`${apiBaseUrl()}/api/sync`, { headers: authHeader() });
+    response = await fetch(`${apiBaseUrl()}/api/sync`, { headers: authHeader(), signal: timeoutSignal(SYNC_TIMEOUT_MS) });
   } catch (err) {
     // Network-level failure: offline, DNS, or a CORS rejection. Never "empty".
     throw new SyncApiError(0, err?.message || 'Network unavailable');
@@ -63,7 +68,8 @@ export async function pushDoc(doc, deviceId, { keepalive = false } = {}) {
       method: 'POST',
       headers: { ...authHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ schemaVersion: SCHEMA_VERSION, doc, deviceId }),
-      keepalive
+      keepalive,
+      signal: keepalive ? undefined : timeoutSignal(SYNC_TIMEOUT_MS)
     });
   } catch (err) {
     throw new SyncApiError(0, err?.message || 'Network unavailable');

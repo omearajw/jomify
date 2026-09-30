@@ -23,9 +23,20 @@ const SDK_SCRIPT_ID = 'spotify-player-script';
 const SDK_SCRIPT_SRC = 'https://sdk.scdn.co/spotify-player.js';
 const SDK_READY_TIMEOUT_MS = 15000;
 // The SDK device drops off Spotify Connect when a phone sleeps or the network flaps. Come back
-// rather than leaving a dead player, but give up rather than loop if it keeps refusing.
+// rather than leaving a dead player.
 const SDK_RECONNECT_DELAY_MS = 2000;
-const SDK_MAX_RECOVERIES = 4;
+// Attempts back off instead of running out. A phone leaves Connect every time it sleeps or the
+// signal dips, and an evening of that used to exhaust a fixed budget of retries and leave the
+// player dead until the app was reopened. Backing off keeps a genuinely broken player from
+// spinning without ever giving up on one that would have come back.
+const SDK_RECONNECT_MAX_DELAY_MS = 60000;
+// A connection that lasted this long counts as good, so the next drop starts from the short delay
+const SDK_STABLE_MS = 60000;
+// How often returning to the app may spend a request checking the player is still on Connect
+const SDK_ALIVE_CHECK_MS = 30000;
+// The player stops playing if it asks for a token and never gets one, so a slow renewal must
+// not mean silence: past this we hand over the token we already hold
+const SDK_TOKEN_DEADLINE_MS = 5000;
 
 // Poll cadence while remote. Spotify's rate limit is shared with everything else the app does,
 // so the fast tier only applies while someone is actually looking at the player.
@@ -67,6 +78,9 @@ let activationInstalled = false;
 function applyRemoteState(state) {
   const store = player();
   if (state === null) {
+    // Spotify answers 204 for a moment now and then, including while this browser's own player
+    // is mid-song. The player itself is the authority on that, so believe it over the poll.
+    if (store.isLocalActive && store.playbackState && !store.playbackState.paused) return;
     // Nothing active anywhere. Keep the last track on screen but show it stopped.
     store.setActiveDevice(null);
     store.setIsLocalActive(false);
@@ -165,14 +179,24 @@ function schedulePoll(delay = pollInterval()) {
   clearTimeout(pollTimer);
   if (!polling || (typeof document !== 'undefined' && document.hidden)) return;
   pollTimer = setTimeout(async () => {
-    if (token()) await refreshRemoteState();
-    schedulePoll();
+    // The next poll is scheduled whatever happens to this one; a single request that never
+    // settles used to end polling for the rest of the session
+    try { if (token()) await refreshRemoteState(); }
+    finally { schedulePoll(); }
   }, delay);
 }
 
+// Assigned once the SDK exists. A page frozen in the background can miss its own drop, so
+// coming back to the app is the moment to make sure the player is still there.
+let reviveLocalPlayer = null;
+
 function onVisibilityChange() {
   if (document.hidden) clearTimeout(pollTimer);
-  else { refreshRemoteState(); schedulePoll(); }
+  else {
+    refreshRemoteState();
+    schedulePoll();
+    if (reviveLocalPlayer) reviveLocalPlayer().catch(() => {});
+  }
 }
 
 // --- Local SDK -----------------------------------------------------------------------------
@@ -183,12 +207,33 @@ function initLocalPlayer() {
   const store = player();
   store.setSdkStatus('loading');
 
+  let sdkPlayer = null;
   let readyTimer = null;
   let reconnectTimer = null;
-  let recoveries = 0;
-  const fail = (message) => {
+  let attempts = 0;
+  let readyAt = 0;
+  let lastAliveCheckAt = 0;
+  // Nothing is worth retrying after these two: the browser cannot run the player at all, or the
+  // account may not use it. Every other failure is the network having a moment.
+  let permanentlyFailed = false;
+
+  // Each attempt waits longer than the last. Clearing the count on every 'ready' let a device
+  // that dropped a second after connecting loop at the shortest delay, so it only clears once a
+  // connection has actually held.
+  const reconnectDelay = () => {
+    if (readyAt && Date.now() - readyAt > SDK_STABLE_MS) attempts = 0;
+    const delay = Math.min(SDK_RECONNECT_MAX_DELAY_MS, SDK_RECONNECT_DELAY_MS * 2 ** attempts);
+    attempts += 1;
+    return delay;
+  };
+  const reconnect = (delay = reconnectDelay()) => {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => { sdkPlayer?.connect().catch(() => {}); }, delay);
+  };
+  const fail = (message, permanent = false) => {
     clearTimeout(reconnectTimer);
     clearTimeout(readyTimer);
+    if (permanent) permanentlyFailed = true;
     if (player().sdkStatus === 'ready') return;
     player().setSdkStatus('failed', message);
     console.warn('[playback] Web Playback SDK unavailable:', message);
@@ -196,15 +241,25 @@ function initLocalPlayer() {
 
   // Defined before the script is injected so the callback can never be missed
   window.onSpotifyWebPlaybackSDKReady = () => {
-    const sdkPlayer = new window.Spotify.Player({
+    sdkPlayer = new window.Spotify.Player({
       name: PLAYER_NAME,
       // The SDK asks for a token whenever it needs to renew the stream. Handing it the stored
       // one meant handing it an expired one after an hour asleep, which Spotify answers with an
       // authentication error and the player dies mid-song. Renew first, every time.
       getOAuthToken: (cb) => {
+        let answered = false;
+        const answer = (value) => {
+          if (answered) return;
+          answered = true;
+          cb(value || useUserStore.getState().token);
+        };
+        // Answer with the stored token rather than leave the player waiting. A token that turns
+        // out to be expired raises authentication_error, which recovers below; no answer at all
+        // is silence with nothing to recover from.
+        const deadline = setTimeout(() => answer(null), SDK_TOKEN_DEADLINE_MS);
         ensureFreshToken()
-          .then((fresh) => cb(fresh || useUserStore.getState().token))
-          .catch(() => cb(useUserStore.getState().token));
+          .then((fresh) => { clearTimeout(deadline); answer(fresh); })
+          .catch(() => { clearTimeout(deadline); answer(null); });
       },
       // Phones have no volume slider, so the hardware buttons own loudness and the player runs
       // at full gain; the stored desktop setting used to make them quiet with no way to fix it
@@ -214,7 +269,7 @@ function initLocalPlayer() {
     sdkPlayer.addListener('ready', async ({ device_id }) => {
       clearTimeout(readyTimer);
       clearTimeout(reconnectTimer);
-      recoveries = 0;
+      readyAt = Date.now();
       const s = player();
       s.setDeviceId(device_id);
       s.setSdkStatus('ready');
@@ -235,10 +290,7 @@ function initLocalPlayer() {
     sdkPlayer.addListener('not_ready', () => {
       const s = player();
       if (s.isLocalActive) { s.setIsLocalActive(false); refreshSoon(); }
-      if (recoveries >= SDK_MAX_RECOVERIES) return;
-      recoveries += 1;
-      clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(() => { sdkPlayer.connect().catch(() => {}); }, SDK_RECONNECT_DELAY_MS);
+      reconnect();
     });
 
     sdkPlayer.addListener('player_state_changed', (state) => {
@@ -258,16 +310,17 @@ function initLocalPlayer() {
 
     // A browser that cannot run the player and an account that cannot use it are both permanent
     for (const event of ['initialization_error', 'account_error']) {
-      sdkPlayer.addListener(event, ({ message }) => fail(`${event}: ${message}`));
+      sdkPlayer.addListener(event, ({ message }) => fail(`${event}: ${message}`, true));
     }
 
     // An expired token is not permanent: renew it and reconnect instead of killing the player
     sdkPlayer.addListener('authentication_error', ({ message }) => {
-      if (recoveries >= SDK_MAX_RECOVERIES) { fail(`authentication_error: ${message}`); return; }
-      recoveries += 1;
       console.warn('[playback] SDK token rejected; renewing and reconnecting');
+      // A token Spotify keeps rejecting must not mean a tight loop of renewals, so the retry
+      // waits the same growing delay as any other reconnect
+      const delay = reconnectDelay();
       ensureFreshToken({ force: true })
-        .then(() => sdkPlayer.connect())
+        .then(() => reconnect(delay))
         .catch(() => fail(`authentication_error: ${message}`));
     });
     sdkPlayer.addListener('playback_error', ({ message }) => console.warn('[playback] SDK playback error:', message));
@@ -280,6 +333,21 @@ function initLocalPlayer() {
         if (player().playbackState?.paused !== false) toast('Tap play to start audio in this browser', { tone: 'info' });
       }, 600);
     });
+
+    reviveLocalPlayer = async () => {
+      if (permanentlyFailed || !sdkPlayer) return;
+      if (player().sdkStatus === 'ready') {
+        // Still believed to be connected, which a page that was frozen mid-drop would also
+        // believe. Spotify's device list is the only reliable word on whether it is really there.
+        const id = player().deviceId;
+        if (!id || Date.now() - lastAliveCheckAt < SDK_ALIVE_CHECK_MS) return;
+        lastAliveCheckAt = Date.now();
+        if ((await refreshDevices()).some(d => d.id === id)) return;
+      }
+      // The user is looking at the app, so connect now rather than waiting out a backoff
+      clearTimeout(reconnectTimer);
+      sdkPlayer.connect().catch(() => {});
+    };
 
     readyTimer = setTimeout(() => fail('the player did not become ready in time'), SDK_READY_TIMEOUT_MS);
     sdkPlayer.connect().then((ok) => { if (!ok) fail('connect() was refused'); }).catch((err) => fail(String(err)));

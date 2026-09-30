@@ -1,4 +1,5 @@
 import { useUserStore } from '../../store/userStore';
+import { timeoutSignal } from './api';
 
 const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
 const redirectUri = import.meta.env.VITE_REDIRECT_URI;
@@ -84,16 +85,22 @@ export async function getAccessToken(code) {
   return { access_token: data.access_token, expires_in: data.expires_in };
 }
 
+// Long enough for a slow connection, short enough that the player is never left waiting
+const REFRESH_TIMEOUT_MS = 10000;
+
 export async function refreshAccessToken(refreshToken) {
   const params = new URLSearchParams();
   params.append("client_id", clientId);
   params.append("grant_type", "refresh_token");
   params.append("refresh_token", refreshToken);
 
+  // Without a deadline a stalled connection leaves this pending forever, and with it every
+  // caller waiting on the renewal -- including the player, which then falls silent.
   const result = await fetch("https://accounts.spotify.com/api/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params
+    body: params,
+    signal: timeoutSignal(REFRESH_TIMEOUT_MS)
   });
 
   if (!result.ok) {

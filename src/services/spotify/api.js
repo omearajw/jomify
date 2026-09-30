@@ -3,6 +3,14 @@ import { useUserStore } from '../../store/userStore';
 // THE NETWORK INTERCEPTOR
 // Exported so that every Spotify call in the app goes through it. Calls that bypassed it kept
 // hammering the API during a 429 cooldown and never read Retry-After, deepening the ban.
+// A mobile radio can leave a request outstanding indefinitely, and fetch has no timeout of its
+// own. One such request used to stall the playback poller for the rest of the session.
+const REQUEST_TIMEOUT_MS = 15000;
+
+// Undefined where the browser lacks it, which simply means no deadline rather than a hard failure
+export const timeoutSignal = (ms) =>
+  (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') ? AbortSignal.timeout(ms) : undefined;
+
 export async function spotifyFetch(url, options) {
   const store = useUserStore.getState();
   
@@ -11,7 +19,10 @@ export async function spotifyFetch(url, options) {
     throw new Error("RATE_LIMITED");
   }
 
-  const response = await fetch(url, options);
+  const response = await fetch(url, {
+    ...options,
+    signal: options?.signal ?? timeoutSignal(REQUEST_TIMEOUT_MS)
+  });
 
   // 2. If Spotify tells us to back off, read the exact wait time and trigger the global lock
   if (response.status === 429) {
