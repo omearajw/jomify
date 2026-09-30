@@ -23,6 +23,11 @@ import { MOOD_WORDS } from '../../utils/playlistSuggestions';
 
 const SETTINGS_KEY = 'jomify_sort_mode';
 const skippedKey = (playlistId) => `jomify_sort_skipped:${playlistId}`;
+
+// How long the card must hold still before its song is started. Long enough that a run of taps
+// on Skip asks Spotify for one song rather than all of them, short enough not to feel sluggish
+// on a single deliberate skip, where only the audio waits and the card moves at once.
+const AUTOPLAY_SETTLE_MS = 300;
 const DROP_THRESHOLD_PX = 8;
 const SWIPE_SKIP_PX = 140;
 // Spotify is told to change song, but the next poll can still be describing the old one for a
@@ -150,11 +155,30 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
 
   // Play each song as it comes up, when asked to, from the playlist itself so playback carries
   // on through it; a song already playing is left alone
-  const playCard = () => playOn((deviceId) => playPlaylistFromTrack(token, deviceId, sourcePlaylistId, track.uri), { track });
+  const playGeneration = useRef(0);
+  const playCard = () => {
+    const uri = track.uri;
+    const mine = ++playGeneration.current;
+    return playOn((deviceId) => {
+      // Finding a device can take a moment, and the card may have moved on while it did. Asking
+      // Spotify for a song the user has already skipped past is worse than asking for nothing.
+      if (playGeneration.current !== mine) return Promise.resolve();
+      return playPlaylistFromTrack(token, deviceId, sourcePlaylistId, uri);
+    }, { track });
+  };
+
+  // Only the card the user settles on is played. Skipping through a run of songs used to send one
+  // play request per card it passed, so every song being skipped started in turn, a few hundred
+  // milliseconds of each. The effect's own cleanup cancels a pending start when the card moves.
   useEffect(() => {
-    if (!settings.autoplay || !track || !token) return;
-    if (nowPlayingUri() === track.uri) return;
-    playCard();
+    if (!settings.autoplay || !track || !token) return undefined;
+    if (nowPlayingUri() === track.uri) return undefined;
+    const uri = track.uri;
+    const timer = setTimeout(() => {
+      if (nowPlayingUri() === uri) return;
+      playCard();
+    }, AUTOPLAY_SETTLE_MS);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.uri, settings.autoplay]);
 
