@@ -1,6 +1,6 @@
 import { useUserStore } from '../../store/userStore';
 import { SCHEMA_VERSION } from '../../sync/mergeSyncDoc';
-import { timeoutSignal } from '../spotify/api';
+import { timeoutSignal } from '../spotify/http';
 
 // HTTP layer for the sync API. Mirrors the interceptor style of spotifyFetch in
 // services/spotify/api.js: one place that knows about transport, so the engine above it only

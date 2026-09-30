@@ -1,15 +1,25 @@
 import { useUserStore } from '../../store/userStore';
+import { ensureFreshToken, isTokenStale } from './session';
+import { timeoutSignal, REQUEST_TIMEOUT_MS } from './http';
 
 // THE NETWORK INTERCEPTOR
 // Exported so that every Spotify call in the app goes through it. Calls that bypassed it kept
 // hammering the API during a 429 cooldown and never read Retry-After, deepening the ban.
-// A mobile radio can leave a request outstanding indefinitely, and fetch has no timeout of its
-// own. One such request used to stall the playback poller for the rest of the session.
-const REQUEST_TIMEOUT_MS = 15000;
+// It also owns the access token: renewing it here, in one place, is what lets a page that has
+// been open for hours keep working without every call site having to think about expiry.
 
-// Undefined where the browser lacks it, which simply means no deadline rather than a hard failure
-export const timeoutSignal = (ms) =>
-  (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') ? AbortSignal.timeout(ms) : undefined;
+// Callers pass an Authorization header built from the token they held when they rendered, which
+// on a long-lived page can be hours old. The store always has the newest one, so use that.
+function withCurrentToken(options) {
+  const headers = options?.headers;
+  if (!headers || !(headers.Authorization || headers.authorization)) return options;
+  const current = useUserStore.getState().token;
+  if (!current) return options;
+  const next = { ...headers };
+  delete next.authorization; // a lower-case copy would otherwise shadow the one we set
+  next.Authorization = `Bearer ${current}`;
+  return { ...options, headers: next };
+}
 
 export async function spotifyFetch(url, options) {
   const store = useUserStore.getState();
@@ -19,12 +29,27 @@ export async function spotifyFetch(url, options) {
     throw new Error("RATE_LIMITED");
   }
 
-  const response = await fetch(url, {
-    ...options,
+  // 2. Renew a token that has already expired before spending a request on it. Launching the app
+  // an hour after last using it now costs one refresh, which every concurrent caller shares,
+  // instead of a page full of failures. App.jsx used to react to this by signing out and
+  // reloading, which is what made the first half-minute after launch unusable.
+  if (isTokenStale()) await ensureFreshToken().catch(() => {});
+
+  const send = () => fetch(url, {
+    ...withCurrentToken(options),
     signal: options?.signal ?? timeoutSignal(REQUEST_TIMEOUT_MS)
   });
 
-  // 2. If Spotify tells us to back off, read the exact wait time and trigger the global lock
+  let response = await send();
+
+  // 3. Spotify rejected the token even though the app believed it was good: a clock that drifted,
+  // or a token revoked elsewhere. Renew once and try again rather than failing the call.
+  if (response.status === 401) {
+    const renewed = await ensureFreshToken({ force: true }).catch(() => null);
+    if (renewed) response = await send();
+  }
+
+  // 4. If Spotify tells us to back off, read the exact wait time and trigger the global lock
   if (response.status === 429) {
     const retryAfter = response.headers.get('Retry-After');
     const waitSeconds = retryAfter ? parseInt(retryAfter, 10) : 10; // Default to 10s if missing

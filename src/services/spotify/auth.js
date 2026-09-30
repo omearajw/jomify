@@ -1,5 +1,5 @@
 import { useUserStore } from '../../store/userStore';
-import { timeoutSignal } from './api';
+import { timeoutSignal } from './http';
 
 const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
 const redirectUri = import.meta.env.VITE_REDIRECT_URI;

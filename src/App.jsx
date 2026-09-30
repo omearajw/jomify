@@ -239,14 +239,12 @@ function App() {
     }
   }, [token, setPlaylists]);
 
-  useEffect(() => {
-    if (token) {
-      if (!tokenExpiresAt || Date.now() > tokenExpiresAt) {
-        logout();
-        window.location.href = "/"; 
-      }
-    }
-  }, [token, tokenExpiresAt, logout]);
+  // There was an effect here that signed the user out and reloaded the page whenever the stored
+  // token had expired. Since tokens last an hour, that fired on nearly every launch: a full
+  // second boot before anything could play, racing the renewal that would have made it
+  // unnecessary, and sometimes wiping the refresh token first and landing on the sign-in screen.
+  // spotifyFetch now renews an expired token before the request goes out, and the heartbeat
+  // above signs out only when Spotify actually rejects the refresh token.
 
   // --- PINNED ITEM HYDRATION ENGINE (RACE-CONDITION SAFE) ---
   // Resolves PINNED playlists/albums the main library load didn't return (something you pinned

@@ -34,6 +34,10 @@ const SDK_RECONNECT_MAX_DELAY_MS = 60000;
 const SDK_STABLE_MS = 60000;
 // How often returning to the app may spend a request checking the player is still on Connect
 const SDK_ALIVE_CHECK_MS = 30000;
+// A play tap in the first seconds after launch used to dead-end in a picker reporting no
+// devices, while this browser's own player was still registering with Spotify Connect. Wait for
+// it rather than asking a question the user cannot usefully answer.
+const SDK_WAIT_FOR_DEVICE_MS = 8000;
 // The player stops playing if it asks for a token and never gets one, so a slow renewal must
 // not mean silence: past this we hand over the token we already hold
 const SDK_TOKEN_DEADLINE_MS = 5000;
@@ -512,6 +516,27 @@ function pickDevice() {
   return null;
 }
 
+// Resolves with this browser's device id once the player has registered, or null if it does not
+// within the wait. The store is the only thing that knows, so watch it rather than poll.
+function waitForLocalDevice(ms = SDK_WAIT_FOR_DEVICE_MS) {
+  const readyId = () => {
+    const s = player();
+    return s.sdkStatus === 'ready' && s.deviceId ? s.deviceId : null;
+  };
+  const already = readyId();
+  if (already) return Promise.resolve(already);
+  if (player().sdkStatus === 'failed') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const finish = (value) => { clearTimeout(timer); unsubscribe(); resolve(value); };
+    const timer = setTimeout(() => finish(null), ms);
+    const unsubscribe = usePlayerStore.subscribe(() => {
+      const id = readyId();
+      if (id) finish(id);
+      else if (player().sdkStatus === 'failed') finish(null);
+    });
+  });
+}
+
 // --- Starting playback -----------------------------------------------------------------------
 // A play request that finds no device used to open the picker and forget the song, so choosing
 // a device there merely made it active and silent. The request is parked instead and re-run on
@@ -528,6 +553,10 @@ export async function playOn(play, { track } = {}) {
   activateLocalPlayer(); // synchronously, while still inside the tap
   if (!token()) return;
 
+  // Name the song straight away. Finding a device can take a round trip, and a tap that shows
+  // nothing for half a second reads as a button that did not work.
+  showTrackOptimistically(track);
+
   let target = pickDevice();
   if (!target) {
     // The device list goes stale between plays; ask Spotify before bothering the user, since
@@ -535,9 +564,13 @@ export async function playOn(play, { track } = {}) {
     await refreshDevices();
     target = pickDevice();
   }
+  if (!target) {
+    // Just after launch the only device that will ever appear is this browser's own player,
+    // still registering with Spotify Connect.
+    target = await waitForLocalDevice();
+  }
   if (!target) { parkPlay(play); return; }
 
-  showTrackOptimistically(track);
   try {
     await play(target);
     rememberDevice(target);
