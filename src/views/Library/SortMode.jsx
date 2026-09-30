@@ -99,10 +99,20 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   // The card shown is the first song from `index` on that is neither skipped nor already filed,
   // wrapping round to the start so a pile begun mid-way (on the song that was playing) still
   // visits everything before it
-  const isPassed = (item, i) => !item?.track?.uri || skipped.has(item.track.uri) || (i !== index && (placed[item.track.uri] || []).length > 0);
+  // Set when a song is filed without moving on, so the card can stay on it to be undone or
+  // added to a second playlist. Anything else already filed is behind us and should be stepped
+  // over, including when the pile wraps round to the start.
+  const parkedOn = useRef(null);
+  const isSettled = (uri) => skipped.has(uri) || (placed[uri] || []).length > 0;
+  const isPassed = (item) => {
+    const uri = item?.track?.uri;
+    if (!uri) return true;
+    if (uri === parkedOn.current) return false;
+    return isSettled(uri);
+  };
   const findCard = (from) => {
     const n = queue.length;
-    for (let k = 0; k < n; k++) { const i = (from + k) % n; if (!isPassed(queue[i], i)) return i; }
+    for (let k = 0; k < n; k++) { const i = (from + k) % n; if (!isPassed(queue[i])) return i; }
     return -1;
   };
   const cursor = queue.length ? findCard(index % queue.length) : -1;
@@ -133,11 +143,12 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   const songTags = track ? (tagCache.get(track.id) || []).slice(0, 6).sort((a, b) => Number(MOOD_WORDS.has(b.name)) - Number(MOOD_WORDS.has(a.name))) : [];
   const isThisPlaying = Boolean(track && currentPlayingTrack && (currentPlayingTrack.uri === track.uri || currentPlayingTrack.id === track.id));
 
-  // Moving the card on our own account, as opposed to following what is playing. The song being
-  // left is remembered so a stale report of it cannot drag the card back.
-  const leaving = useRef({ uri: null, until: 0 });
+  // Every song the card has recently left, against the moment a report of it stops being
+  // believable. Keeping only the most recent one meant that after two quick skips a report
+  // naming the song before last was taken at face value, dragging the card back onto it.
+  const leaving = useRef({});
   const goTo = (nextIndex) => {
-    if (track) leaving.current = { uri: track.uri, until: Date.now() + LEAVING_GRACE_MS };
+    if (track) parkedOn.current = null;
     setIndex(nextIndex);
   };
   const advance = () => goTo(cursor < 0 ? 0 : (cursor + 1) % Math.max(queue.length, 1));
@@ -182,6 +193,18 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.uri, settings.autoplay]);
 
+  // Record every song the card leaves, with the moment a report of it stops being believable.
+  // Declared before the subscriber below so that it has already run by the time that one checks
+  // the current state. It also catches card changes that no skip caused.
+  const previousUri = useRef(null);
+  useEffect(() => {
+    const was = previousUri.current;
+    previousUri.current = track?.uri || null;
+    if (!was || was === track?.uri) return;
+    // Emptied again as soon as playback catches up, so this never grows for long
+    leaving.current = { ...leaving.current, [was]: Date.now() + LEAVING_GRACE_MS };
+  }, [track?.uri]);
+
   // Keep the card on whatever is actually playing. Following runs whether or not songs are
   // started automatically, so the card and the controls below it never disagree about a song
   // that is in this pile. Moving on when a song finishes is the automatic half, and only that
@@ -195,23 +218,25 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
       const now = pb?.track_window?.current_track;
       if (!pb || !now) return;
       if (now.uri !== uri) {
-        // The card has just moved on and this report still names the song it came from: it was
+        // The card has just moved on and this report still names a song it came from: it was
         // captured before Spotify caught up. Following it would bounce the card backwards,
         // which is what made the card and the controls below it disagree.
-        const left = leaving.current;
-        if (now.uri === left.uri && Date.now() < left.until) return;
+        const until = leaving.current[now.uri];
+        if (until && Date.now() < until) return;
 
         // Otherwise Spotify really did move. Follow it when the new song is one of ours,
         // whether that came from the song ending, the skip button or the lock screen. When it
         // is something else entirely (the playlist ran out, another app queued a song) stay put
-        // rather than marching the pile past a song nobody sorted.
+        // rather than marching the pile past a song nobody sorted. A song already filed or
+        // skipped is finished with: following Spotify back onto one of those put the card back
+        // on a song that had just been dealt with, so the next press looked like it did nothing.
         const at = queue.findIndex((i) => i?.track?.uri === now.uri);
         heard = false;
-        if (at >= 0) setIndex(at);
+        if (at >= 0 && !isSettled(now.uri)) setIndex(at);
         return;
       }
       // The card's song is the one playing, so nothing is in flight any more
-      leaving.current = { uri: null, until: 0 };
+      leaving.current = {};
       if (!pb.paused) { heard = true; return; }
       if (!heard || !settings.autoplay) return;
       const atEnd = (pb.position || 0) === 0 || (pb.duration > 0 && pb.position >= pb.duration - 1500);
@@ -219,8 +244,10 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     };
     check(usePlayerStore.getState());
     return usePlayerStore.subscribe(check);
+    // `skipped` and `placed` are read by check, so it has to be rebuilt when they change:
+    // filing a song without moving on changes neither the card nor the queue.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.autoplay, track?.uri, queue]);
+  }, [settings.autoplay, track?.uri, queue, skipped, placed]);
 
   // This screen shows the pile and what is playing side by side, so it needs the quick cadence
   useEffect(() => requestFastPlaybackUpdates(), []);
@@ -254,6 +281,7 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     setLastAction({ uri: track.uri, item: current, index: cursor, playlistId, playlistName: target.name, first });
     toast(`Added to ${target.name}`, { tone: 'success', duration: 1500 });
     if (settings.advance) advance();
+    else parkedOn.current = track.uri; // stay on it, so it can be undone or filed again
   };
 
   const undo = async () => {
