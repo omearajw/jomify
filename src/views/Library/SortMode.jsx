@@ -11,6 +11,7 @@ import { toast } from '../../store/toastStore';
 import { artUrl } from '../../utils/images';
 import { tagCache } from '../../services/tags';
 import { MOOD_WORDS } from '../../utils/playlistSuggestions';
+import { isSameTrack, trackIdentities } from '../../utils/spotifyUri';
 
 // Full-screen sorting for Unadded Songs: one song at a time as a card, the check playlists as
 // tiles, the suggested ones large. Drag the card onto a tile (or tap the tile) to file the song.
@@ -51,7 +52,7 @@ function saveSkipped(playlistId, set) {
   } catch { /* fine */ }
 }
 
-const nowPlayingUri = () => usePlayerStore.getState().playbackState?.track_window?.current_track?.uri || null;
+const nowPlayingTrack = () => usePlayerStore.getState().playbackState?.track_window?.current_track || null;
 
 function Toggle({ label, on, onChange }) {
   return (
@@ -84,9 +85,9 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   // Start on whatever is playing from this list (unless it was skipped), otherwise the first
   // song not yet skipped
   const [index, setIndex] = useState(() => {
-    const playing = nowPlayingUri();
-    const at = playing && !skipped.has(playing) ? queue.findIndex((i) => i?.track?.uri === playing) : -1;
-    return at >= 0 ? at : 0;
+    const playing = nowPlayingTrack();
+    const at = playing ? queue.findIndex((i) => i?.track && isSameTrack(i.track, playing)) : -1;
+    return at >= 0 && !skipped.has(queue[at].track.uri) ? at : 0;
   });
   const [placed, setPlaced] = useState({}); // uri -> [playlistId]
   const [busy, setBusy] = useState(false);
@@ -141,7 +142,7 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   const placedHere = track ? (placed[track.uri] || []) : [];
   // What the song is being judged on, mood words first, so a decision is never a mystery
   const songTags = track ? (tagCache.get(track.id) || []).slice(0, 6).sort((a, b) => Number(MOOD_WORDS.has(b.name)) - Number(MOOD_WORDS.has(a.name))) : [];
-  const isThisPlaying = Boolean(track && currentPlayingTrack && (currentPlayingTrack.uri === track.uri || currentPlayingTrack.id === track.id));
+  const isThisPlaying = isSameTrack(currentPlayingTrack, track);
 
   // Every song the card has recently left, against the moment a report of it stops being
   // believable. Keeping only the most recent one meant that after two quick skips a report
@@ -183,10 +184,10 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   // milliseconds of each. The effect's own cleanup cancels a pending start when the card moves.
   useEffect(() => {
     if (!settings.autoplay || !track || !token) return undefined;
-    if (nowPlayingUri() === track.uri) return undefined;
-    const uri = track.uri;
+    if (isSameTrack(nowPlayingTrack(), track)) return undefined;
+    const wanted = track;
     const timer = setTimeout(() => {
-      if (nowPlayingUri() === uri) return;
+      if (isSameTrack(nowPlayingTrack(), wanted)) return;
       playCard();
     }, AUTOPLAY_SETTLE_MS);
     return () => clearTimeout(timer);
@@ -196,13 +197,19 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   // Record every song the card leaves, with the moment a report of it stops being believable.
   // Declared before the subscriber below so that it has already run by the time that one checks
   // the current state. It also catches card changes that no skip caused.
-  const previousUri = useRef(null);
+  const lastCard = useRef(null);
   useEffect(() => {
-    const was = previousUri.current;
-    previousUri.current = track?.uri || null;
-    if (!was || was === track?.uri) return;
-    // Emptied again as soon as playback catches up, so this never grows for long
-    leaving.current = { ...leaving.current, [was]: Date.now() + LEAVING_GRACE_MS };
+    const was = lastCard.current;
+    lastCard.current = track || null;
+    if (!was || was.uri === track?.uri) return;
+    // Every id the song answers to, since a report of it may name any of them. Emptied again as
+    // soon as playback catches up, so this never grows for long.
+    const until = Date.now() + LEAVING_GRACE_MS;
+    const left = {};
+    for (const id of trackIdentities(was)) left[id] = until;
+    leaving.current = { ...leaving.current, ...left };
+    // Only the song's identity matters here, not the rest of the record
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.uri]);
 
   // Keep the card on whatever is actually playing. Following runs whether or not songs are
@@ -211,18 +218,18 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   // half follows the toggle.
   useEffect(() => {
     if (!track) return undefined;
-    const uri = track.uri;
+    const card = track;
     let heard = false;
     const check = (state) => {
       const pb = state.playbackState;
       const now = pb?.track_window?.current_track;
       if (!pb || !now) return;
-      if (now.uri !== uri) {
+      if (!isSameTrack(now, card)) {
         // The card has just moved on and this report still names a song it came from: it was
         // captured before Spotify caught up. Following it would bounce the card backwards,
         // which is what made the card and the controls below it disagree.
-        const until = leaving.current[now.uri];
-        if (until && Date.now() < until) return;
+        const stale = leaving.current;
+        if (trackIdentities(now).some((id) => stale[id] && Date.now() < stale[id])) return;
 
         // Otherwise Spotify really did move. Follow it when the new song is one of ours,
         // whether that came from the song ending, the skip button or the lock screen. When it
@@ -230,9 +237,9 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
         // rather than marching the pile past a song nobody sorted. A song already filed or
         // skipped is finished with: following Spotify back onto one of those put the card back
         // on a song that had just been dealt with, so the next press looked like it did nothing.
-        const at = queue.findIndex((i) => i?.track?.uri === now.uri);
+        const at = queue.findIndex((i) => i?.track && isSameTrack(i.track, now));
         heard = false;
-        if (at >= 0 && !isSettled(now.uri)) setIndex(at);
+        if (at >= 0 && !isSettled(queue[at].track.uri)) setIndex(at);
         return;
       }
       // The card's song is the one playing, so nothing is in flight any more

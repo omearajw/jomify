@@ -36,3 +36,19 @@ export function idFromUri(uri, expectedType) {
 
   return parts[2] || null;
 }
+
+// Spotify "relinks" tracks: a playlist can hold one track id while playback in the listener's
+// market uses another, naming the one that was asked for under `linked_from`. Comparing ids
+// alone then reports two records of the same song as different songs, which is what left the
+// sorting card stuck while playback walked on through the playlist. Re-released catalogue is
+// relinked most, so this shows up as "every song by one artist" rather than as a general fault.
+export function trackIdentities(track) {
+  if (!track) return [];
+  return [track.uri, track.id, track.linked_from?.uri, track.linked_from?.id].filter(Boolean);
+}
+
+export function isSameTrack(a, b) {
+  if (!a || !b) return false;
+  const left = trackIdentities(a);
+  return trackIdentities(b).some((id) => left.includes(id));
+}
