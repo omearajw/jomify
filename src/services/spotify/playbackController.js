@@ -18,6 +18,7 @@ import {
 import { toSdkShape, toSdkTrack, resolveDeviceId, REPEAT_NAMES, describePlatform, playerNameFor, localDeviceLabel, sliderGain, startupGain } from './playbackAdapter';
 import { isMobileViewport } from '../../hooks/useMediaQuery';
 import { ensureFreshToken } from './session';
+import { log } from '../debugLog';
 
 const SDK_SCRIPT_ID = 'spotify-player-script';
 const SDK_SCRIPT_SRC = 'https://sdk.scdn.co/spotify-player.js';
@@ -84,8 +85,12 @@ function applyRemoteState(state) {
   if (state === null) {
     // Spotify answers 204 for a moment now and then, including while this browser's own player
     // is mid-song. The player itself is the authority on that, so believe it over the poll.
-    if (store.isLocalActive && store.playbackState && !store.playbackState.paused) return;
+    if (store.isLocalActive && store.playbackState && !store.playbackState.paused) {
+      log('playback', "Spotify reported nothing playing; believing this browser's player instead");
+      return;
+    }
     // Nothing active anywhere. Keep the last track on screen but show it stopped.
+    if (store.activeDevice) log('playback', 'nothing playing on any device');
     store.setActiveDevice(null);
     store.setIsLocalActive(false);
     if (store.playbackState && !store.playbackState.paused) {
@@ -96,6 +101,9 @@ function applyRemoteState(state) {
 
   const device = state.device || null;
   const isLocal = Boolean(device?.id && device.id === store.deviceId);
+  if ((device?.id || null) !== (store.activeDevice?.id || null)) {
+    log('playback', 'playing on', device ? `${isLocal ? THIS_BROWSER : device.name} (${device.type})` : 'nothing');
+  }
   store.setActiveDevice(device ? {
     id: device.id,
     name: isLocal ? THIS_BROWSER : device.name,
@@ -210,6 +218,7 @@ function initLocalPlayer() {
   sdkInitialised = true;
   const store = player();
   store.setSdkStatus('loading');
+  log('sdk', 'loading the player');
 
   let sdkPlayer = null;
   let readyTimer = null;
@@ -231,6 +240,7 @@ function initLocalPlayer() {
     return delay;
   };
   const reconnect = (delay = reconnectDelay()) => {
+    log('sdk', 'reconnecting', `in ${delay}ms, attempt ${attempts}`);
     clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(() => { sdkPlayer?.connect().catch(() => {}); }, delay);
   };
@@ -252,18 +262,19 @@ function initLocalPlayer() {
       // authentication error and the player dies mid-song. Renew first, every time.
       getOAuthToken: (cb) => {
         let answered = false;
-        const answer = (value) => {
+        const answer = (value, how) => {
           if (answered) return;
           answered = true;
+          log('sdk', 'player asked for a token', how);
           cb(value || useUserStore.getState().token);
         };
         // Answer with the stored token rather than leave the player waiting. A token that turns
         // out to be expired raises authentication_error, which recovers below; no answer at all
         // is silence with nothing to recover from.
-        const deadline = setTimeout(() => answer(null), SDK_TOKEN_DEADLINE_MS);
+        const deadline = setTimeout(() => answer(null, 'renewal too slow, gave it the stored one'), SDK_TOKEN_DEADLINE_MS);
         ensureFreshToken()
-          .then((fresh) => { clearTimeout(deadline); answer(fresh); })
-          .catch(() => { clearTimeout(deadline); answer(null); });
+          .then((fresh) => { clearTimeout(deadline); answer(fresh, 'gave it a current token'); })
+          .catch((err) => { clearTimeout(deadline); answer(null, `renewal failed (${err?.message || err}), gave it the stored one`); });
       },
       // Phones have no volume slider, so the hardware buttons own loudness and the player runs
       // at full gain; the stored desktop setting used to make them quiet with no way to fix it
@@ -274,6 +285,7 @@ function initLocalPlayer() {
       clearTimeout(readyTimer);
       clearTimeout(reconnectTimer);
       readyAt = Date.now();
+      log('sdk', 'ready on Spotify Connect', `device ${String(device_id).slice(0, 8)}`);
       const s = player();
       s.setDeviceId(device_id);
       s.setSdkStatus('ready');
@@ -292,6 +304,7 @@ function initLocalPlayer() {
     });
 
     sdkPlayer.addListener('not_ready', () => {
+      log('sdk', 'dropped off Spotify Connect');
       const s = player();
       if (s.isLocalActive) { s.setIsLocalActive(false); refreshSoon(); }
       reconnect();
@@ -299,6 +312,16 @@ function initLocalPlayer() {
 
     sdkPlayer.addListener('player_state_changed', (state) => {
       const s = player();
+      const before = s.playbackState;
+      if (!state && s.isLocalActive) log('playback', 'this browser stopped being the device playing');
+      if (state) {
+        const track = state.track_window?.current_track;
+        if (track?.uri !== before?.track_window?.current_track?.uri) {
+          log('playback', 'now playing', `${track?.name || '?'} by ${track?.artists?.map((a) => a.name).join(', ') || '?'}`);
+        } else if (Boolean(state.paused) !== Boolean(before?.paused)) {
+          log('playback', state.paused ? 'paused' : 'resumed', `at ${Math.round((state.position || 0) / 1000)}s of ${Math.round((state.duration || 0) / 1000)}s`);
+        }
+      }
       if (!state) {
         // The SDK reports null when this device stops being the active one
         if (s.isLocalActive) { s.setIsLocalActive(false); refreshSoon(); }
@@ -307,6 +330,7 @@ function initLocalPlayer() {
       s.setPlaybackState(state);
       syncMediaSession(state);
       if (!s.isLocalActive) {
+        log('playback', 'playing on', `${THIS_BROWSER} (this device)`);
         s.setIsLocalActive(true);
         s.setActiveDevice({ id: s.deviceId, name: THIS_BROWSER, type: 'Computer', isLocal: true, supportsVolume: true, volumePercent: null });
       }
@@ -332,6 +356,7 @@ function initLocalPlayer() {
     // autoplay on iOS). The element was activated in the tap that asked for the song, so one
     // resume usually goes through; only if it doesn't is the user asked to tap play.
     sdkPlayer.addListener('autoplay_failed', () => {
+      log('sdk', 'browser refused to start audio by itself; retrying');
       sdkPlayer.resume().catch(() => {});
       setTimeout(() => {
         if (player().playbackState?.paused !== false) toast('Tap play to start audio in this browser', { tone: 'info' });
@@ -339,14 +364,18 @@ function initLocalPlayer() {
     });
 
     reviveLocalPlayer = async () => {
-      if (permanentlyFailed || !sdkPlayer) return;
+      // Still starting up: the first connect is in flight and has its own deadline
+      if (permanentlyFailed || !sdkPlayer || player().sdkStatus === 'loading') return;
       if (player().sdkStatus === 'ready') {
         // Still believed to be connected, which a page that was frozen mid-drop would also
         // believe. Spotify's device list is the only reliable word on whether it is really there.
         const id = player().deviceId;
         if (!id || Date.now() - lastAliveCheckAt < SDK_ALIVE_CHECK_MS) return;
         lastAliveCheckAt = Date.now();
-        if ((await refreshDevices()).some(d => d.id === id)) return;
+        if ((await refreshDevices()).some(d => d.id === id)) { log('sdk', 'back in the app: player still on Spotify Connect'); return; }
+        log('sdk', 'back in the app: player had silently left Spotify Connect, reconnecting');
+      } else {
+        log('sdk', `back in the app: player was ${player().sdkStatus}, reconnecting`);
       }
       // The user is looking at the app, so connect now rather than waiting out a backoff
       clearTimeout(reconnectTimer);
@@ -420,7 +449,10 @@ function installMediaSession() {
     ['seekforward', (d) => seek(interpolatedPosition() + (d?.seekOffset || 10) * 1000)]
   ];
   for (const [action, handler] of handlers) {
-    try { ms.setActionHandler(action, handler); } catch { /* action not supported here */ }
+    // A pause from here is the phone's doing (a headset unplugged, another app taking audio),
+    // which is worth telling apart from the music simply stopping
+    const logged = (details) => { log('media session', action); handler(details); };
+    try { ms.setActionHandler(action, logged); } catch { /* action not supported here */ }
   }
 }
 
@@ -470,6 +502,7 @@ export function startPlaybackController() {
 
 export function handlePlaybackError(err) {
   if (!err) return;
+  log('playback', 'request failed', err.code || err.message);
   if (err.message === 'RATE_LIMITED') {
     // A tap during the cooldown used to do nothing at all, which reads as a broken button
     const until = useUserStore.getState().apiCooldownUntil;
@@ -545,6 +578,7 @@ function waitForLocalDevice(ms = SDK_WAIT_FOR_DEVICE_MS) {
 let pendingPlay = null;
 
 function parkPlay(play) {
+  log('playback', 'no device to play on; asked where to play');
   pendingPlay = play;
   useUserStore.getState().setDevicePickerOpen(true);
 }
@@ -567,7 +601,9 @@ export async function playOn(play, { track } = {}) {
   if (!target) {
     // Just after launch the only device that will ever appear is this browser's own player,
     // still registering with Spotify Connect.
+    log('playback', "nowhere to play yet; waiting for this browser's player");
     target = await waitForLocalDevice();
+    log('playback', target ? "this browser's player arrived" : "this browser's player did not arrive in time");
   }
   if (!target) { parkPlay(play); return; }
 
@@ -645,6 +681,7 @@ async function remote(action, optimistic) {
 export function togglePlay() {
   activateLocalPlayer();
   const sdk = localSdk();
+  log('transport', player().playbackState?.paused ? 'play' : 'pause', sdk ? 'this browser' : 'remote device');
   if (sdk) return sdk.togglePlay().catch(console.error);
   const paused = player().playbackState?.paused ?? true;
   return remote(paused ? resumePlayback : pausePlayback, () => patchState({ paused: !paused }));
@@ -653,6 +690,7 @@ export function togglePlay() {
 export function next() {
   activateLocalPlayer();
   const sdk = localSdk();
+  log('transport', 'next', sdk ? 'this browser' : 'remote device');
   if (sdk) return sdk.nextTrack().catch(console.error);
   return remote(skipToNext);
 }
@@ -660,6 +698,7 @@ export function next() {
 export function previous() {
   activateLocalPlayer();
   const sdk = localSdk();
+  log('transport', 'previous', sdk ? 'this browser' : 'remote device');
   if (sdk) return sdk.previousTrack().catch(console.error);
   return remote(skipToPrevious);
 }

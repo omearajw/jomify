@@ -1,6 +1,14 @@
 import { useUserStore } from '../../store/userStore';
 import { ensureFreshToken, isTokenStale } from './session';
 import { timeoutSignal, REQUEST_TIMEOUT_MS } from './http';
+import { log } from '../debugLog';
+
+// "GET /v1/me/player" for the log: the path names the endpoint, and the query string adds nothing
+const describeRequest = (url, options) => {
+  let path = url;
+  try { path = new URL(url).pathname; } catch { /* keep it as given */ }
+  return `${(options?.method || 'GET').toUpperCase()} ${path}`;
+};
 
 // THE NETWORK INTERCEPTOR
 // Exported so that every Spotify call in the app goes through it. Calls that bypassed it kept
@@ -35,16 +43,24 @@ export async function spotifyFetch(url, options) {
   // reloading, which is what made the first half-minute after launch unusable.
   if (isTokenStale()) await ensureFreshToken().catch(() => {});
 
-  const send = () => fetch(url, {
-    ...withCurrentToken(options),
-    signal: options?.signal ?? timeoutSignal(REQUEST_TIMEOUT_MS)
-  });
+  const send = async () => {
+    try {
+      return await fetch(url, {
+        ...withCurrentToken(options),
+        signal: options?.signal ?? timeoutSignal(REQUEST_TIMEOUT_MS)
+      });
+    } catch (err) {
+      log('api', err?.name === 'TimeoutError' ? 'timed out' : 'no response', `${describeRequest(url, options)} (${err?.name || err})`);
+      throw err;
+    }
+  };
 
   let response = await send();
 
   // 3. Spotify rejected the token even though the app believed it was good: a clock that drifted,
   // or a token revoked elsewhere. Renew once and try again rather than failing the call.
   if (response.status === 401) {
+    log('api', 'token rejected; renewing and retrying', describeRequest(url, options));
     const renewed = await ensureFreshToken({ force: true }).catch(() => null);
     if (renewed) response = await send();
   }
@@ -54,9 +70,11 @@ export async function spotifyFetch(url, options) {
     const retryAfter = response.headers.get('Retry-After');
     const waitSeconds = retryAfter ? parseInt(retryAfter, 10) : 10; // Default to 10s if missing
     store.setApiCooldown(Date.now() + (waitSeconds * 1000));
+    log('api', 'rate limited by Spotify', `${describeRequest(url, options)}, backing off ${waitSeconds}s`);
     throw new Error("RATE_LIMITED");
   }
 
+  if (!response.ok) log('api', `failed with ${response.status}`, describeRequest(url, options));
   return response;
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, Upload, RefreshCw, LogOut } from 'lucide-react';
+import { Download, Upload, RefreshCw, LogOut, Bug } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { useSyncStore } from '../store/syncStore';
 import { downloadBackup, parseBackup, applyBackup } from '../sync/backup';
@@ -7,6 +7,7 @@ import { isSafeToHardLogout, pullNow, syncNowIfPending } from '../sync/engine';
 import { clearMeta } from '../sync/meta';
 import ConfirmDialog from './ConfirmDialog';
 import NotificationToggle from './NotificationToggle';
+import DebugLogPanel from './DebugLogPanel';
 
 function formatAgo(timestamp) {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -51,6 +52,8 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
   const [backupMessage, setBackupMessage] = useState(null);
   const [pendingRestore, setPendingRestore] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [showLog, setShowLog] = useState(false);
+  const logPanel = showLog && <DebugLogPanel onClose={() => setShowLog(false)} />;
 
   const flashMessage = (text, isError = false) => {
     setBackupMessage({ text, isError });
@@ -140,10 +143,13 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
           <button onClick={() => backupFileInputRef.current?.click()} className="hover:text-white transition-colors">Restore</button>
           <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
           <button onClick={handleDisconnect} className="hover:text-white transition-colors">Disconnect</button>
+          <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
+          <button onClick={() => setShowLog(true)} className="hover:text-white transition-colors">Log</button>
         </div>
         <p className="text-neutral-700 truncate" title={tagline}>Build {__BUILD_ID__}{tagline ? ` · ${tagline}` : ''}</p>
         {fileInput}
         {restoreDialog}
+        {logPanel}
       </div>
     );
   }
@@ -170,6 +176,9 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
         <button type="button" onClick={() => backupFileInputRef.current?.click()} className={row}>
           <Upload className="w-5 h-5 text-neutral-400" /> Restore a backup
         </button>
+        <button type="button" onClick={() => setShowLog(true)} className={row}>
+          <Bug className="w-5 h-5 text-neutral-400" /> Debug log
+        </button>
         <button type="button" onClick={handleDisconnect} className={`${row} text-red-400`}>
           <LogOut className="w-5 h-5" /> Disconnect account
         </button>
@@ -177,6 +186,7 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
       <p className="px-1 text-xs text-neutral-600">Build {__BUILD_ID__}</p>
       {fileInput}
       {restoreDialog}
+      {logPanel}
     </div>
   );
 }

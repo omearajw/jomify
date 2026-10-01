@@ -1,5 +1,6 @@
 import { useUserStore } from '../../store/userStore';
 import { refreshAccessToken } from './auth';
+import { log } from '../debugLog';
 
 // One place that renews the Spotify access token. The heartbeat in App.jsx calls it on a timer;
 // anything that meets a 401 can call it directly rather than waiting up to a minute for the next
@@ -25,12 +26,18 @@ export function ensureFreshToken({ force = false } = {}) {
   if (!force && !isTokenStale()) return Promise.resolve(useUserStore.getState().token);
   if (inFlight) return inFlight;
 
+  log('auth', 'renewing the access token', force ? 'Spotify rejected the current one' : 'it has expired or is about to');
   inFlight = refreshAccessToken(refreshToken)
     .then((data) => {
+      log('auth', 'access token renewed', `good for ${data.expires_in}s`);
       setToken(data.access_token, data.expires_in);
       // PKCE rotates refresh tokens; losing the new one signs the device out an hour later
       if (data.refresh_token) setRefreshToken(data.refresh_token);
       return data.access_token;
+    })
+    .catch((err) => {
+      log('auth', err?.definitive ? 'Spotify refused the refresh token' : 'could not renew the access token', err?.message || err);
+      throw err;
     })
     .finally(() => { inFlight = null; });
 
