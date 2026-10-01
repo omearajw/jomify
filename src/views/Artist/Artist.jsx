@@ -8,8 +8,8 @@ import { playUris, checkTracksLiked, spotifyFetch } from '../../services/spotify
 import { formatTime } from '../../utils/formatTime';
 import { Play } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
-import { cleanString } from '../../utils/strings';
 import { rowButtonProps } from '../../utils/a11y';
+import { isSameTrack } from '../../utils/spotifyUri';
 
 export default function Artist() {
   const { token, setLikedTracks, currentArtistId, setContextMenu, navigateToAlbum } = useSlice(useUserStore, ['token', 'setLikedTracks', 'currentArtistId', 'setContextMenu', 'navigateToAlbum']);
@@ -145,12 +145,7 @@ export default function Artist() {
           <h2 className="text-xl md:text-2xl font-bold text-white mb-3 md:mb-6">Popular Tracks</h2>
           <div className="flex flex-col space-y-1">
             {topTracks.slice(0, 10).map((track) => {
-              const isCurrentTrack = currentPlayingTrack && (
-                track.id === currentPlayingTrack.id || 
-                track.uri === currentPlayingTrack.uri ||
-                (cleanString(track.name) === cleanString(currentPlayingTrack.name) && 
-                 track.artists?.[0]?.name === currentPlayingTrack.artists?.[0]?.name)
-              );
+              const isCurrentTrack = isSameTrack(track, currentPlayingTrack);
 
                 return (
                   <div

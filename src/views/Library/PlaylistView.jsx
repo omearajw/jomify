@@ -20,6 +20,7 @@ import { collaboratorStyleFor } from '../../utils/collaboratorStyle';
 import { rowButtonProps } from '../../utils/a11y';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
+import { isSameTrack } from '../../utils/spotifyUri';
 
 // Rows rendered at once; more appear as you scroll. A 1000-track playlist used to mount every
 // row (25k DOM nodes) up front.
@@ -130,8 +131,6 @@ export default function PlaylistView() {
   // Set when something needs every page (Sort mode); a one-page scroll load then keeps going
   const wantAllPages = useRef(false);
 
-  // Computed once per render, not once per row
-  const currentPlayingKey = currentPlayingTrack ? cleanString(currentPlayingTrack.name) : '';
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [isUpdatingPlaylist, setIsUpdatingPlaylist] = useState(false);
 
@@ -1018,13 +1017,7 @@ export default function PlaylistView() {
           if (!item || !item.track) return null;
           const track = item.track;
 
-          const isCurrentTrack = currentPlayingTrack && (
-            track.id === currentPlayingTrack.id ||
-            track.uri === currentPlayingTrack.uri ||
-            (track.linked_from && track.linked_from.id === currentPlayingTrack.id) ||
-            (cleanString(track.name) === currentPlayingKey &&
-             track.artists?.[0]?.name === currentPlayingTrack.artists?.[0]?.name)
-          );
+          const isCurrentTrack = isSameTrack(track, currentPlayingTrack);
 
           // Advanced Group Adjacency Logic for the Seamless Glow Effect
           const adderId = item.added_by?.id;

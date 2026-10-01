@@ -7,8 +7,8 @@ import { searchSpotify, playSingleTrack, checkTracksLiked, fetchSearchPage } fro
 import { formatTime } from '../../utils/formatTime';
 import { Search, Play, ChevronLeft, Loader } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
-import { cleanString } from '../../utils/strings';
 import { rowButtonProps } from '../../utils/a11y';
+import { isSameTrack } from '../../utils/spotifyUri';
 
 const MAX_CACHED_RESULTS_BYTES = 500 * 1024;
 
@@ -226,12 +226,7 @@ export default function Browse() {
             <h1 className="text-3xl font-extrabold text-white mb-6">All Songs</h1>
             <div className="flex flex-col space-y-1">
               {trackItems.map((track) => {
-                const isCurrentTrack = currentPlayingTrack && (
-                  track.id === currentPlayingTrack.id || 
-                  track.uri === currentPlayingTrack.uri ||
-                  (cleanString(track.name) === cleanString(currentPlayingTrack.name) && 
-                   track.artists?.[0]?.name === currentPlayingTrack.artists?.[0]?.name)
-                );
+                const isCurrentTrack = isSameTrack(track, currentPlayingTrack);
 
                 return (
                   <div 
@@ -499,12 +494,7 @@ export default function Browse() {
                 </div>
                 <div className="flex flex-col space-y-1">
                 {results.tracks.items.slice(0, 4).map((track) => {
-                  const isCurrentTrack = currentPlayingTrack && (
-                    track.id === currentPlayingTrack.id || 
-                    track.uri === currentPlayingTrack.uri ||
-                    (cleanString(track.name) === cleanString(currentPlayingTrack.name) && 
-                     track.artists?.[0]?.name === currentPlayingTrack.artists?.[0]?.name)
-                  );
+                  const isCurrentTrack = isSameTrack(track, currentPlayingTrack);
 
                   return (
                     <div 

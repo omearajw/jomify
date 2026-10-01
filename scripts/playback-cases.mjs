@@ -2,6 +2,7 @@
 // Run with: node scripts/playback-cases.mjs
 
 import { toSdkShape, nextUid, resolveDeviceId, REPEAT_MODES, describePlatform, playerNameFor, localDeviceLabel, deviceTypeLabel, sliderGain, startupGain } from '../src/services/spotify/playbackAdapter.js';
+import { isSameTrack } from '../src/utils/spotifyUri.js';
 
 let pass = 0;
 let fail = 0;
@@ -145,6 +146,20 @@ store().setQueueOpen(false);
 unsubGated();
 unsub();
 stop();
+
+section('isSameTrack: one answer to "is this the song that is playing"');
+const rec = (id, name, artist, ms, extra = {}) => ({ id, uri: `spotify:track:${id}`, name, duration_ms: ms, artists: [{ name: artist }], ...extra });
+const original = rec('old', 'Virtual Insanity', 'Jamiroquai', 230000);
+check('the same id', isSameTrack(original, rec('old', 'Anything', 'Anyone', 1)));
+check('a relinked or migrated id with nothing to say so', isSameTrack(original, rec('new', 'Virtual Insanity', 'Jamiroquai', 230000)));
+check('a remastered title of the same length', isSameTrack(original, rec('new', 'Virtual Insanity - Remastered 2013', 'Jamiroquai', 231500)));
+check('linked_from where Spotify still sends it', isSameTrack(original, rec('new', 'x', 'y', 1, { linked_from: { id: 'old', uri: 'spotify:track:old' } })));
+check('"Song" and "Song - Live" stay apart', !isSameTrack(rec('a', 'Song', 'Band', 200000), rec('b', 'Song - Live', 'Band', 262000)));
+check('the same title by someone else', !isSameTrack(original, rec('new', 'Virtual Insanity', 'A Cover Band', 230000)));
+check('an unknown length never matches on title', !isSameTrack(rec('a', 'Song', 'Band', 0), rec('b', 'Song', 'Band', 200000)));
+check('a title with nothing comparable never matches', !isSameTrack(rec('a', '東京', 'Band', 200000), rec('b', '大阪', 'Band', 200000)));
+check('nothing playing', !isSameTrack(original, null) && !isSameTrack(null, original));
+check('symmetric', isSameTrack(rec('new', 'Virtual Insanity', 'Jamiroquai', 230000), original));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) { console.log(failures.map(f => `  - ${f}`).join('\n')); process.exit(1); }

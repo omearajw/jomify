@@ -9,24 +9,7 @@ import { fetchQueue } from '../services/spotify/api';
 import { formatTime } from '../utils/formatTime';
 import { X, ListPlus } from 'lucide-react';
 import { cleanString } from '../utils/strings';
-
-// Identity only. The old fallback compared the part of the name before any "-" or "(", so
-// "Song" and "Song - Live" by the same artist matched and the wrong row was dropped from the
-// queue. Relinked tracks are the one legitimate id mismatch, and Spotify reports those.
-const isTrackMatch = (a, b) => {
-  if (!a || !b) return false;
-
-  if (a.id && b.id && a.id === b.id) return true;
-  if (a.uri && b.uri && a.uri === b.uri) return true;
-
-  const linked = a.linked_from || b.linked_from;
-  if (linked) {
-    if (linked.id && (linked.id === a.id || linked.id === b.id)) return true;
-    if (linked.uri && (linked.uri === a.uri || linked.uri === b.uri)) return true;
-  }
-
-  return false;
-};
+import { isSameTrack } from '../utils/spotifyUri';
 
 // The queue endpoint returns episode objects whenever a podcast is queued. They have `show`
 // instead of `album`, and rendering them as tracks used to throw and blank the whole app.
@@ -39,7 +22,7 @@ const removeManualMatchesFromQueue = (queueTracks, manualTracks) => {
     const manualTrack = manualTracks[manualIndex];
 
     for (let queueIndex = remaining.length - 1; queueIndex >= 0; queueIndex -= 1) {
-      if (isTrackMatch(remaining[queueIndex], manualTrack)) {
+      if (isSameTrack(remaining[queueIndex], manualTrack)) {
         remaining.splice(queueIndex, 1);
         break;
       }

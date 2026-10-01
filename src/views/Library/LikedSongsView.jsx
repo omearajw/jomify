@@ -10,6 +10,7 @@ import { rowButtonProps } from '../../utils/a11y';
 import MoreButton from '../../components/MoreButton';
 import { Skeleton, SkeletonRows } from '../../components/Skeleton';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
+import { isSameTrack } from '../../utils/spotifyUri';
 
 const ROW_PAGE = 150;
 
@@ -23,9 +24,6 @@ export default function LikedSongsView() {
 
   const isFetchingMore = useRef(false);
   const loadedForToken = useRef(false);
-
-  // Hoisted out of the row loop: the same split/lowercase used to run once per row per render
-  const currentKey = currentTrack ? currentTrack.name.split(/[-(]/)[0].trim().toLowerCase() : '';
 
   // Set when a page fails to load partway; the header then says how much is actually here
   const [loadError, setLoadError] = useState('');
@@ -179,14 +177,7 @@ export default function LikedSongsView() {
           const track = item.track;
           if (!track) return null;
 
-          // ROBUST MATCH: Checks ID, URI, and falls back to exact Title + Artist match
-          const isCurrentTrack = currentTrack && (
-            track.id === currentTrack.id ||
-            track.uri === currentTrack.uri ||
-            (track.linked_from && track.linked_from.id === currentTrack.id) ||
-            (track.name.split(/[-(]/)[0].trim().toLowerCase() === currentKey &&
-             track.artists?.[0]?.name === currentTrack.artists?.[0]?.name)
-          );
+          const isCurrentTrack = isSameTrack(track, currentTrack);
 
           return (
             <div

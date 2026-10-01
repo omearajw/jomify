@@ -9,8 +9,8 @@ import { formatTime } from '../../utils/formatTime';
 import { Plus, Check, Loader2 } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import TrackArtists from '../../components/TrackArtists';
-import { cleanString } from '../../utils/strings';
 import { rowButtonProps } from '../../utils/a11y';
+import { isSameTrack } from '../../utils/spotifyUri';
 
 export default function Album() {
   const { token, setLikedTracks, currentAlbumId, setContextMenu, albums, setAlbums, removeAlbumFromLibrary } = useSlice(useUserStore, ['token', 'setLikedTracks', 'currentAlbumId', 'setContextMenu', 'albums', 'setAlbums', 'removeAlbumFromLibrary']);
@@ -184,12 +184,7 @@ export default function Album() {
           <h2 className="text-xl md:text-2xl font-bold text-white mb-3 md:mb-6">Tracks</h2>
           <div className="flex flex-col space-y-1">
             {tracks.map((track, index) => {
-              const isCurrentTrack = currentPlayingTrack && (
-                track.id === currentPlayingTrack.id || 
-                track.uri === currentPlayingTrack.uri ||
-                (cleanString(track.name) === cleanString(currentPlayingTrack.name) && 
-                 track.artists?.[0]?.name === currentPlayingTrack.artists?.[0]?.name)
-              );
+              const isCurrentTrack = isSameTrack(track, currentPlayingTrack);
 
               return (
                 <div

@@ -20,6 +20,7 @@ import { formatTime } from '../../utils/formatTime';
 import { Play, X, LayoutPanelLeft, ArrowRight, Loader2, Disc3 } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import { getCollaboratorStyle } from '../../utils/collaboratorStyle';
+import { isSameTrack } from '../../utils/spotifyUri';
 
 const PAGE = 100;
 const pageUrl = (playlistId, offset, limit) => `https://api.spotify.com/v1/playlists/${playlistId}/tracks?offset=${offset}&limit=${limit}`;
@@ -614,7 +615,7 @@ const turnIndicator = useMemo(() => {
                   if (!item.track) return null;
                   const isDuplicate = mainPlaylistUris.has(item.track.uri);
                   const isStaged = stagedSeven.some(t => t.uri === item.track.uri);
-                  const isCurrentTrack = currentPlayingTrack && (item.track.uri === currentPlayingTrack.uri);
+                  const isCurrentTrack = isSameTrack(item.track, currentPlayingTrack);
                   // Already given to this same partner on one of your other Sevens. Not blocked --
                   // just pushed into the background, with the reason spelled out on the row.
                   const sentBefore = !isDuplicate ? crossSevenMatches[item.track.uri] : null;
@@ -787,7 +788,7 @@ const turnIndicator = useMemo(() => {
                 {chunk.tracks.map((item, idx) => {
                   if (!item.track) return null;
                   const track = item.track;
-                  const isCurrentTrack = currentPlayingTrack && (track.uri === currentPlayingTrack.uri);
+                  const isCurrentTrack = isSameTrack(track, currentPlayingTrack);
                   
                   const isFirst = idx === 0;
                   const isLast = idx === chunk.tracks.length - 1;
