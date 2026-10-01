@@ -16,7 +16,11 @@ let mintCounter = 0; // two plays minted in the same millisecond must still diff
 
 export function nextUid(prev, item, progressMs) {
   const prevTrack = prev?.track_window?.current_track;
-  if (prevTrack?.uid && item?.id && prevTrack.id === item.id) {
+  // A "pending:" uid is the app's own guess at what it has just asked for. Spotify's confirmation
+  // replaces the guess rather than inheriting it, or anything waiting for Spotify's word would
+  // mistake the confirmation for the guess and keep waiting.
+  const guessed = String(prevTrack?.uid || '').startsWith('pending:');
+  if (prevTrack?.uid && !guessed && item?.id && prevTrack.id === item.id) {
     const prevPosition = prev.position ?? 0;
     if ((progressMs ?? 0) + RESTART_TOLERANCE_MS >= prevPosition) return prevTrack.uid;
   }

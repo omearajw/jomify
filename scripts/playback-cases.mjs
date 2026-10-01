@@ -147,6 +147,13 @@ unsubGated();
 unsub();
 stop();
 
+section('a guess is replaced by Spotify confirming it');
+const guess = { position: 0, track_window: { current_track: { ...TRACK, uid: 'pending:spotify:track:t1' } } };
+const confirmed = toSdkShape(webState({ progress_ms: 900 }), guess);
+check('confirmation of the guessed song gets its own uid', !String(confirmed.track_window.current_track.uid).startsWith('pending:'));
+const settled = toSdkShape(webState({ progress_ms: 2900 }), confirmed);
+check('later polls of the same play keep the confirmed uid', settled.track_window.current_track.uid === confirmed.track_window.current_track.uid);
+
 section('isSameTrack: one answer to "is this the song that is playing"');
 const rec = (id, name, artist, ms, extra = {}) => ({ id, uri: `spotify:track:${id}`, name, duration_ms: ms, artists: [{ name: artist }], ...extra });
 const original = rec('old', 'Virtual Insanity', 'Jamiroquai', 230000);
