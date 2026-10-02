@@ -6,7 +6,7 @@ import { checkTracksLiked } from '../services/spotify/api';
 import { useUserStore } from '../store/userStore';
 import LikeButton from '../components/LikeButton';
 import TrackArtists from '../components/TrackArtists';
-import { idFromUri } from '../utils/spotifyUri';
+import { idFromUri, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import { useSlice } from '../store/selectors';
 import { artUrl } from '../utils/images';
 import {
@@ -20,12 +20,12 @@ export default function PlayerBar() {
     token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack,
     toggleZenMode, savedVolume, setSavedVolume, setDevicePickerOpen,
     currentView, setCurrentView, goBack, navigateToAlbum, viewHistory,
-    isQueueOpen, isZenMode
+    isQueueOpen, isZenMode, setContextMenu
   } = useSlice(useUserStore, [
     'token', 'setLikedTracks', 'toggleQueue', 'consumeManuallyQueuedTrack',
     'toggleZenMode', 'savedVolume', 'setSavedVolume', 'setDevicePickerOpen',
     'currentView', 'setCurrentView', 'goBack', 'navigateToAlbum', 'viewHistory',
-    'isQueueOpen', 'isZenMode'
+    'isQueueOpen', 'isZenMode', 'setContextMenu'
   ]);
 
   const [progressMs, setProgressMs] = useState(0);
@@ -179,6 +179,7 @@ export default function PlayerBar() {
       width="56"
       height="56"
       decoding="async"
+      draggable="false"
       className="w-14 h-14 rounded shadow-md object-cover"
     />
   ) : (
@@ -190,7 +191,23 @@ export default function PlayerBar() {
   return (
     <div className="h-24 bg-black/60 backdrop-blur-xl border-t border-white/5 flex items-center justify-between px-6 text-white select-none relative z-10">
 
-      <div className="flex items-center space-x-4 w-1/3 min-w-0">
+      {/* The playing song can be dragged onto a playlist in the sidebar, and right-clicked for the
+          same menu as a song anywhere else */}
+      <div
+        draggable={Boolean(currentTrack?.uri)}
+        onDragStart={(e) => {
+          if (!currentTrack?.uri) { e.preventDefault(); return; }
+          e.dataTransfer.effectAllowed = 'copy';
+          e.dataTransfer.setData(TRACK_DRAG_TYPE, currentTrack.uri);
+          e.dataTransfer.setData('text/plain', currentTrack.uri);
+        }}
+        onContextMenu={(e) => {
+          if (!currentTrack) return;
+          e.preventDefault();
+          setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track: currentTrack });
+        }}
+        className="flex items-center space-x-4 w-1/3 min-w-0"
+      >
         {albumId ? (
           <button
             type="button"

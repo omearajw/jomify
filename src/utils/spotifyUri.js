@@ -53,6 +53,10 @@ export function idFromUri(uri, expectedType) {
 // artist alone used to confuse.
 const LENGTH_TOLERANCE_MS = 3000;
 
+// Marks a drag as carrying a song, so a drop target can tell one from a playlist being reordered
+// while the drag is still in the air, when only the drag's types can be read and not its data
+export const TRACK_DRAG_TYPE = 'application/x-jomify-track';
+
 export function trackIdentities(track) {
   if (!track) return [];
   return [track.uri, track.id, track.linked_from?.uri, track.linked_from?.id].filter(Boolean);

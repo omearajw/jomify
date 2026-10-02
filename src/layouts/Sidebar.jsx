@@ -9,6 +9,8 @@ import { getUnfolderedItems, buildFolderTree, folderPath, isDescendant, byOrder 
 import { rowButtonProps } from '../utils/a11y';
 import { useSlice } from '../store/selectors';
 import { artUrl } from '../utils/images';
+import { TRACK_DRAG_TYPE } from '../utils/spotifyUri';
+import { toast } from '../store/toastStore';
 
 const TAGLINES = [
   "All my homies HATE Spotify!",
@@ -246,11 +248,24 @@ export default function Sidebar() {
     setTimeout(() => { setDraggedItem(item); }, 0);
   };
 
+  // A song dragged in from the player bar. Only its types can be read until it is dropped.
+  const isTrackDrag = (e) => Array.from(e.dataTransfer?.types || []).includes(TRACK_DRAG_TYPE);
+  // Only playlists you own or collaborate on can take a song; albums and followed playlists can't
+  const takesSongs = (id) => {
+    const p = playlists.find((x) => x.id === id);
+    return Boolean(p && (p.owner?.id === profile?.id || p.collaborative));
+  };
+
   const handleDragOver = (e, id) => { 
     e.preventDefault(); 
     e.stopPropagation();
-    
-    if (draggedItem?.type === 'track') {
+
+    if (isTrackDrag(e)) {
+      if (!takesSongs(id)) {
+        e.dataTransfer.dropEffect = 'none';
+        if (dragOverId) setDragOverId(null);
+        return;
+      }
       e.dataTransfer.dropEffect = 'copy';
     } else {
       e.dataTransfer.dropEffect = 'move';
@@ -264,8 +279,8 @@ export default function Sidebar() {
 
   const handleFolderDragOver = (e, folder, forbidden) => {
     e.preventDefault(); e.stopPropagation();
-    if (forbidden) { e.dataTransfer.dropEffect = 'none'; return; }
-    e.dataTransfer.dropEffect = draggedItem?.type === 'track' ? 'copy' : 'move';
+    if (forbidden || isTrackDrag(e)) { e.dataTransfer.dropEffect = 'none'; return; }
+    e.dataTransfer.dropEffect = 'move';
     const position = dropPositionFor(e, draggedItem);
     if (dropTarget?.id !== folder.id || dropTarget.position !== position) setDropTarget({ id: folder.id, position });
     if (position === 'into') armSpringLoad(folder.id); else disarmSpringLoad(folder.id);
@@ -298,15 +313,20 @@ export default function Sidebar() {
     e.preventDefault(); e.stopPropagation();
     setDragOverId(null);
 
-    const droppedUri = e.dataTransfer.getData('text/plain');
+    const plain = e.dataTransfer.getData('text/plain');
+    const droppedUri = e.dataTransfer.getData(TRACK_DRAG_TYPE) || (plain.startsWith('spotify:track:') ? plain : '');
 
-    if (droppedUri && droppedUri.includes('spotify:track:')) {
+    if (droppedUri) {
+      setDraggedItem(null);
+      if (!takesSongs(targetPlaylistId)) return;
+      const name = playlists.find((p) => p.id === targetPlaylistId)?.name || 'the playlist';
       try {
         await addTracksToPlaylist(token, targetPlaylistId, [droppedUri]);
+        toast(`Added to ${name}`, { tone: 'success', duration: 1500 });
       } catch (err) {
         console.error('Failed to drop track:', err);
+        toast(`Couldn't add it to ${name}`, { tone: 'error' });
       }
-      setDraggedItem(null);
       return;
     }
 
@@ -395,7 +415,8 @@ export default function Sidebar() {
         className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-1 custom-scrollbar text-sm font-medium"
         onDragOver={(e) => { 
           e.preventDefault(); 
-          if (draggedItem?.parentFolderId) e.dataTransfer.dropEffect = 'move'; 
+          if (isTrackDrag(e)) e.dataTransfer.dropEffect = 'none';
+          else if (draggedItem?.parentFolderId) e.dataTransfer.dropEffect = 'move'; 
         }}
         onDrop={handleDropOnRoot}
       >
