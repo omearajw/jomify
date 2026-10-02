@@ -14,6 +14,25 @@ import {
   toggleShuffle, cycleRepeat
 } from '../services/spotify/playbackController';
 
+// The browser builds a drag picture from what is painted inside the dragged element's box, and
+// the player bar is drawn as one blurred layer, so the picture picked up the time code that sits
+// right against the song. A picture of our own avoids that, and says plainly what is being dragged.
+function songDragImage(track) {
+  const artists = (track.artists || []).map((a) => a.name).filter(Boolean).join(', ');
+  const pill = document.createElement('div');
+  pill.textContent = artists ? `${track.name} · ${artists}` : track.name;
+  Object.assign(pill.style, {
+    position: 'fixed', top: '-1000px', left: '-1000px', maxWidth: '320px',
+    padding: '8px 14px', borderRadius: '9999px', background: '#262626', color: '#fff',
+    font: '600 13px system-ui, -apple-system, "Segoe UI", sans-serif',
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+  });
+  document.body.appendChild(pill);
+  // The browser copies the picture during dragstart, so the element can go straight after
+  setTimeout(() => pill.remove(), 0);
+  return pill;
+}
+
 export default function PlayerBar() {
   const { playbackState, isShuffled, repeatMode, activeDevice, sdkStatus, isLocalActive, remoteVolume } = useSlice(usePlayerStore, ['playbackState', 'isShuffled', 'repeatMode', 'activeDevice', 'sdkStatus', 'isLocalActive', 'remoteVolume']);
   const {
@@ -200,6 +219,7 @@ export default function PlayerBar() {
           e.dataTransfer.effectAllowed = 'copy';
           e.dataTransfer.setData(TRACK_DRAG_TYPE, currentTrack.uri);
           e.dataTransfer.setData('text/plain', currentTrack.uri);
+          e.dataTransfer.setDragImage(songDragImage(currentTrack), 16, 16);
         }}
         onContextMenu={(e) => {
           if (!currentTrack) return;
