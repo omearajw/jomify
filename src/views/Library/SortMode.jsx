@@ -286,34 +286,53 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     }
     setBusy(false);
     setPlaced((prev) => ({ ...prev, [track.uri]: [...(prev[track.uri] || []), playlistId] }));
-    setLastAction({ uri: track.uri, item: current, playlistId, playlistName: target.name, first });
+    setLastAction({ uri: track.uri, item: current, playlistId });
     toast(`Added to ${target.name}`, { tone: 'success', duration: 1500 });
     log('sort', 'filed', `${track.name} into ${target.name}`);
     // Without "Next after sorting" the card stays on the song, so it can be undone or filed again
     setCardUri(settings.advance ? nextCard() : track.uri);
   };
 
-  const undo = async () => {
-    if (!lastAction || busy || !token) return;
+  // Takes a song back out of a playlist, from Undo or from tapping a playlist it is already in.
+  // The first filing took it out of Unadded Songs, so taking it out of the last playlist it is in
+  // puts it back there. That is decided from where the song is now, not from which filing came
+  // first, so undoing and deselecting in any order never leaves a song in no playlist at all.
+  const takeOut = async (uri, item, playlistId) => {
+    const inPlaylists = placed[uri] || [];
+    if (!inPlaylists.includes(playlistId)) return false;
+    const target = targets.find((t) => t.id === playlistId);
+    const name = item?.track?.name || 'the song';
+    const last = inPlaylists.length === 1;
     setBusy(true);
     try {
-      await removeTrackFromPlaylist(token, lastAction.playlistId, lastAction.uri);
-      if (lastAction.first) {
-        await addTracksToPlaylist(token, sourcePlaylistId, [lastAction.uri]);
-        onRestoredToSource(lastAction.item);
+      await removeTrackFromPlaylist(token, playlistId, uri);
+      if (last) {
+        await addTracksToPlaylist(token, sourcePlaylistId, [uri]);
+        onRestoredToSource(item);
       }
     } catch (err) {
-      console.error('Undo failed:', err);
-      toast("Couldn't undo that", { tone: 'error' });
+      console.error('Taking the song back out failed:', err);
+      toast(`Couldn't remove "${name}" from ${target?.name || 'that playlist'}`, { tone: 'error' });
       setBusy(false);
-      return;
+      return false;
     }
     setBusy(false);
-    setPlaced((prev) => ({ ...prev, [lastAction.uri]: (prev[lastAction.uri] || []).filter((id) => id !== lastAction.playlistId) }));
-    log('sort', 'undid filing', `${lastAction.item?.track?.name || lastAction.uri} from ${lastAction.playlistName}`);
-    setCardUri(lastAction.uri);
-    setLastAction(null);
-    toast(`Removed from ${lastAction.playlistName}`, { tone: 'info', duration: 1500 });
+    setPlaced((prev) => ({ ...prev, [uri]: (prev[uri] || []).filter((id) => id !== playlistId) }));
+    if (lastAction?.uri === uri && lastAction.playlistId === playlistId) setLastAction(null);
+    log('sort', last ? 'took out of its last playlist, back in Unadded Songs' : 'took out', `${name} from ${target?.name || playlistId}`);
+    toast(last ? `Removed from ${target?.name || 'the playlist'}, back in Unadded Songs` : `Removed from ${target?.name || 'the playlist'}`, { tone: 'info', duration: 1800 });
+    return true;
+  };
+
+  const unfile = (playlistId) => {
+    if (!track || busy || !token) return;
+    takeOut(track.uri, current, playlistId);
+  };
+
+  const undo = async () => {
+    if (!lastAction || busy || !token) return;
+    const { uri, item, playlistId } = lastAction;
+    if (await takeOut(uri, item, playlistId)) setCardUri(uri);
   };
 
   // --- Dragging the card ---
@@ -364,11 +383,12 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
         key={t.id}
         type="button"
         data-sort-target={t.id}
-        disabled={busy || already}
-        onClick={() => fileInto(t.id)}
-        title={suggestion?.reason || `Add to ${t.name}`}
+        disabled={busy}
+        onClick={() => (already ? unfile(t.id) : fileInto(t.id))}
+        aria-pressed={already}
+        title={already ? `In ${t.name}. Tap to take it back out` : (suggestion?.reason || `Add to ${t.name}`)}
         className={`group relative flex ${large ? 'flex-col items-stretch p-3 rounded-3xl' : 'items-center gap-3 p-2 rounded-2xl'} border text-left backdrop-blur-md transition-all
-          ${over ? 'border-[var(--brand-mid)] bg-[var(--brand-mid)]/20 scale-[1.04] shadow-brand-glow' : already ? 'border-white/5 bg-white/[0.02] opacity-60' : large ? 'border-white/10 bg-white/[0.05] hover:border-white/25' : 'border-white/5 bg-white/[0.03] hover:border-white/20'}`}
+          ${over ? 'border-[var(--brand-mid)] bg-[var(--brand-mid)]/20 scale-[1.04] shadow-brand-glow' : already ? 'border-[var(--brand-mid)]/60 bg-[var(--brand-mid)]/10 hover:border-red-400/60 hover:bg-red-500/10' : large ? 'border-white/10 bg-white/[0.05] hover:border-white/25' : 'border-white/5 bg-white/[0.03] hover:border-white/20'}`}
       >
         <div className={`${large ? 'w-full aspect-square mb-3' : 'w-10 h-10 shrink-0'} rounded-xl overflow-hidden bg-neutral-800 flex items-center justify-center pointer-events-none`}>
           {images?.[0]?.url ? <img src={artUrl(images, large ? 240 : 40)} alt="" className="w-full h-full object-cover" draggable="false" /> : <span className="text-2xl">🎵</span>}
@@ -377,7 +397,12 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
           <p className={`font-bold text-white truncate ${large ? 'text-sm' : 'text-xs'}`}>{t.name}</p>
           {large && suggestion?.reason && <p className="text-[11px] text-neutral-400 truncate">{suggestion.reason}</p>}
         </div>
-        {already && <Check className="absolute top-2 right-2 w-4 h-4 text-[var(--brand-mid)] pointer-events-none" />}
+        {already && (
+          <span className="absolute top-2 right-2 pointer-events-none">
+            <Check className="w-4 h-4 text-[var(--brand-mid)] group-hover:hidden" />
+            <X className="w-4 h-4 text-red-300 hidden group-hover:block" />
+          </span>
+        )}
         {large && suggestion && !already && <Star className="absolute top-2 right-2 w-4 h-4 fill-current text-[var(--brand-mid)] pointer-events-none" />}
       </button>
     );
