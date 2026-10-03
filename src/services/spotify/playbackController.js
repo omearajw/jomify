@@ -202,7 +202,34 @@ function schedulePoll(delay = pollInterval()) {
 // coming back to the app is the moment to make sure the player is still there.
 let reviveLocalPlayer = null;
 
+// While the app is in the background, note every minute what this browser's player says it is
+// doing. A page Chrome freezes or kills simply stops writing notes, so the gap says when, and a
+// player that has stopped by itself says so while the page is still alive.
+const BACKGROUND_NOTE_MS = 60000;
+let backgroundNotes = null;
+function noteBackgroundState() {
+  const s = player();
+  if (!s.isLocalActive || !s.player?.getCurrentState) return;
+  s.player.getCurrentState()
+    .then((st) => {
+      if (!st) { log('background', 'player has no playback'); return; }
+      const t = st.track_window?.current_track;
+      log('background', st.paused ? 'player paused' : 'player playing', `${t?.name || '?'} at ${Math.round((st.position || 0) / 1000)}s of ${Math.round((st.duration || 0) / 1000)}s`);
+    })
+    .catch((err) => log('background', 'player did not answer', err?.message || err));
+}
+
 function onVisibilityChange() {
+  clearInterval(backgroundNotes);
+  backgroundNotes = null;
+  if (document.hidden) {
+    const s = player();
+    const song = s.playbackState?.track_window?.current_track?.name;
+    log('background', 'app went to the background', s.isLocalActive
+      ? `${s.playbackState?.paused ? 'paused on' : 'playing'} ${song || '?'} on this device`
+      : `playback is ${s.activeDevice ? `on ${s.activeDevice.name}` : 'nowhere'}`);
+    backgroundNotes = setInterval(noteBackgroundState, BACKGROUND_NOTE_MS);
+  }
   if (document.hidden) clearTimeout(pollTimer);
   else {
     refreshRemoteState();
@@ -298,14 +325,23 @@ function initLocalPlayer() {
       const t = token();
       if (!t) return;
       let state;
-      try { state = await fetchPlayerState(t); } catch { return; }
-      if (state === null) transferPlayback(t, device_id, false).catch(() => {});
-      else applyRemoteState(state);
+      try { state = await fetchPlayerState(t); } catch (err) { log('sdk', 'ready, but could not read playback', err?.message || err); return; }
+      if (state === null) {
+        log('sdk', 'ready, nothing playing anywhere: made this the device, paused');
+        transferPlayback(t, device_id, false).catch(() => {});
+      } else {
+        log('sdk', 'ready, playback is on', `${state.device?.name || '?'}${state.is_playing ? ', playing' : ', paused'} ${state.item?.name || ''}`.trim());
+        applyRemoteState(state);
+      }
     });
 
     sdkPlayer.addListener('not_ready', () => {
-      log('sdk', 'dropped off Spotify Connect');
       const s = player();
+      const was = s.playbackState;
+      const song = was?.track_window?.current_track?.name;
+      log('sdk', 'dropped off Spotify Connect', s.isLocalActive && was
+        ? `while ${was.paused ? 'paused on' : 'playing'} ${song || '?'} at ${Math.round(interpolatedPosition() / 1000)}s${document.hidden ? ', in the background' : ''}`
+        : `while not the device playing${document.hidden ? ', in the background' : ''}`);
       if (s.isLocalActive) { s.setIsLocalActive(false); refreshSoon(); }
       reconnect();
     });

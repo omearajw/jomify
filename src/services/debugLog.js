@@ -91,10 +91,15 @@ export function installDebugLog() {
   installed = true;
 
   const standalone = window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const connection = navigator.connection;
   log('app', 'started', {
     build: typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : 'unknown',
     installed: standalone,
+    // True when Chrome threw the page away while it was in the background, which is the browser
+    // killing playback rather than anything the app did
+    discarded: document.wasDiscarded === true,
     online: navigator.onLine,
+    network: connection ? `${connection.type || '?'} ${connection.effectiveType || '?'}` : 'unknown',
     ua: navigator.userAgent
   });
 
@@ -113,6 +118,10 @@ export function installDebugLog() {
   window.addEventListener('pageshow', (e) => { if (e.persisted) log('page', 'restored from memory'); });
   window.addEventListener('online', () => log('network', 'online'));
   window.addEventListener('offline', () => log('network', 'offline'));
+  // A weak signal never fires offline, but it does change the connection
+  connection?.addEventListener?.('change', () => {
+    log('network', 'connection changed', `${connection.type || '?'} ${connection.effectiveType || '?'}, ${connection.downlink ?? '?'}Mbps, ${connection.rtt ?? '?'}ms`);
+  });
 
   // Every warning and error the app already prints, without touching each call site
   for (const level of ['warn', 'error']) {
