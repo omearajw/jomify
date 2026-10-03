@@ -225,9 +225,13 @@ function onVisibilityChange() {
   if (document.hidden) {
     const s = player();
     const song = s.playbackState?.track_window?.current_track?.name;
-    log('background', 'app went to the background', s.isLocalActive
+    // Whether the page has had a tap since it opened, and what the lock screen was told: Android
+    // treats audio that started without a tap, or that it doesn't know is playing, differently
+    const tapped = navigator.userActivation ? (navigator.userActivation.hasBeenActive ? 'yes' : 'no') : 'unknown';
+    const lockScreen = 'mediaSession' in navigator ? navigator.mediaSession.playbackState : 'unsupported';
+    log('background', 'app went to the background', `${s.isLocalActive
       ? `${s.playbackState?.paused ? 'paused on' : 'playing'} ${song || '?'} on this device`
-      : `playback is ${s.activeDevice ? `on ${s.activeDevice.name}` : 'nowhere'}`);
+      : `playback is ${s.activeDevice ? `on ${s.activeDevice.name}` : 'nowhere'}`}; tapped since opening: ${tapped}; lock screen told: ${lockScreen}`);
     backgroundNotes = setInterval(noteBackgroundState, BACKGROUND_NOTE_MS);
   }
   if (document.hidden) clearTimeout(pollTimer);
