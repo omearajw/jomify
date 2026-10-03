@@ -53,6 +53,9 @@ const REMOTE_REFRESH_DELAY_MS = 350;
 const VOLUME_DEBOUNCE_MS = 250;
 
 const PLATFORM = describePlatform();
+// When someone last asked Jomify to play, pause or skip, from the app or the lock screen
+let lastIntentAt = 0;
+const INTENT_WINDOW_MS = 4000;
 // What Spotify Connect lists this browser as, everywhere; and what this browser calls itself
 export const PLAYER_NAME = playerNameFor(PLATFORM);
 const THIS_BROWSER = localDeviceLabel(PLATFORM);
@@ -347,6 +350,8 @@ function initLocalPlayer() {
         ? `while ${was.paused ? 'paused on' : 'playing'} ${song || '?'} at ${Math.round(interpolatedPosition() / 1000)}s${document.hidden ? ', in the background' : ''}`
         : `while not the device playing${document.hidden ? ', in the background' : ''}`);
       if (s.isLocalActive) { s.setIsLocalActive(false); refreshSoon(); }
+      // Keep the lock screen, paused, so its play button still reaches Jomify once it reconnects
+      if (presence?.getAttribute('src')) setPresence('paused');
       reconnect();
     });
 
@@ -359,16 +364,21 @@ function initLocalPlayer() {
         if (track?.uri !== before?.track_window?.current_track?.uri) {
           log('playback', 'now playing', `${track?.name || '?'} by ${track?.artists?.map((a) => a.name).join(', ') || '?'}`);
         } else if (Boolean(state.paused) !== Boolean(before?.paused)) {
-          log('playback', state.paused ? 'paused' : 'resumed', `at ${Math.round((state.position || 0) / 1000)}s of ${Math.round((state.duration || 0) / 1000)}s`);
+          // Something outside Jomify (Android, another app taking the audio) pausing the music
+          // looks exactly like any other pause unless it is marked
+          const unasked = Date.now() - lastIntentAt > INTENT_WINDOW_MS ? ', nobody in Jomify asked for it' : '';
+          log('playback', state.paused ? 'paused' : 'resumed', `at ${Math.round((state.position || 0) / 1000)}s of ${Math.round((state.duration || 0) / 1000)}s${unasked}`);
         }
       }
       if (!state) {
         // The SDK reports null when this device stops being the active one
         if (s.isLocalActive) { s.setIsLocalActive(false); refreshSoon(); }
+        setPresence('off');
         return;
       }
       s.setPlaybackState(state);
       syncMediaSession(state);
+      setPresence(state.paused ? 'paused' : 'playing');
       if (!s.isLocalActive) {
         log('playback', 'playing on', `${THIS_BROWSER} (this device)`);
         s.setIsLocalActive(true);
@@ -387,9 +397,16 @@ function initLocalPlayer() {
       // A token Spotify keeps rejecting must not mean a tight loop of renewals, so the retry
       // waits the same growing delay as any other reconnect
       const delay = reconnectDelay();
+      // A renewal that fails because the phone has cut the network (battery saver does that to
+      // apps in the background) used to end recovery for good: playback stayed broken until the
+      // app was opened again. Only Spotify refusing the refresh token is final.
       ensureFreshToken({ force: true })
         .then(() => reconnect(delay))
-        .catch(() => fail(`authentication_error: ${message}`));
+        .catch((err) => {
+          if (err?.definitive) { fail(`authentication_error: ${message}`); return; }
+          log('sdk', 'could not renew the token, will try again', `in ${delay}ms`);
+          reconnect(delay);
+        });
     });
     sdkPlayer.addListener('playback_error', ({ message }) => console.warn('[playback] SDK playback error:', message));
     // The browser refused to start audio (a play command from Spotify's servers counts as
@@ -491,7 +508,7 @@ function installMediaSession() {
   for (const [action, handler] of handlers) {
     // A pause from here is the phone's doing (a headset unplugged, another app taking audio),
     // which is worth telling apart from the music simply stopping
-    const logged = (details) => { log('media session', action); handler(details); };
+    const logged = (details) => { lastIntentAt = Date.now(); log('media session', action); handler(details); };
     try { ms.setActionHandler(action, logged); } catch { /* action not supported here */ }
   }
 }
@@ -516,6 +533,61 @@ function syncMediaSession(state) {
     }
   } catch (err) {
     console.debug('[playback] media session update failed:', err?.message || err);
+  }
+}
+
+// --- Lock screen presence ----------------------------------------------------------------------
+// The music plays inside Spotify's player frame, which belongs to another site. Chrome hands the
+// notification, the lock screen and headset buttons to the top-most frame that is itself playing
+// something, and only to one from the same site as that player (MediaSessionImpl::
+// ComputeFrameForRouting). Jomify's page played nothing, so the song details and buttons set
+// above were ignored: the notification showed no song, and its buttons went straight to Spotify's
+// frame behind Jomify's back. A silent track in Jomify's own page whenever this device is the one
+// playing makes Jomify that frame.
+//
+// Chromium only, which is where that routing applies. iPhones can stop one page's audio when
+// another starts, and the music there must not be put at risk for a notification.
+const PRESENCE_SUPPORTED = typeof navigator !== 'undefined' && Boolean(navigator.userAgentData) && typeof Audio !== 'undefined';
+let presence = null;
+let presenceUrl = null;
+
+// Ten seconds of 16-bit silence. Chrome treats anything under five seconds as a sound effect,
+// which gets no notification.
+function silentTrackUrl(seconds = 10, rate = 8000) {
+  const samples = seconds * rate;
+  const view = new DataView(new ArrayBuffer(44 + samples * 2));
+  const text = (at, value) => [...value].forEach((c, i) => view.setUint8(at + i, c.charCodeAt(0)));
+  text(0, 'RIFF'); view.setUint32(4, 36 + samples * 2, true); text(8, 'WAVE');
+  text(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  text(36, 'data'); view.setUint32(40, samples * 2, true);
+  return URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }));
+}
+
+// 'playing' and 'paused' keep Jomify holding the lock screen, so its play button still reaches
+// Jomify after a pause. 'off' lets go entirely, for when the music is playing somewhere else.
+function setPresence(mode) {
+  if (!PRESENCE_SUPPORTED) return;
+  if (mode === 'off') {
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
+    if (presence?.getAttribute('src')) {
+      presence.pause();
+      presence.removeAttribute('src');
+      presence.load();
+    }
+    return;
+  }
+  if (!presence) {
+    presence = new Audio();
+    presence.loop = true;
+  }
+  if (!presence.getAttribute('src')) {
+    presenceUrl = presenceUrl || silentTrackUrl();
+    presence.src = presenceUrl;
+  }
+  if (mode === 'paused') { presence.pause(); return; }
+  if (presence.paused) {
+    presence.play().catch((err) => log('media session', 'browser would not let Jomify hold the lock screen', err?.name || err));
   }
 }
 
@@ -719,6 +791,7 @@ async function remote(action, optimistic) {
 }
 
 export function togglePlay() {
+  lastIntentAt = Date.now();
   activateLocalPlayer();
   const sdk = localSdk();
   log('transport', player().playbackState?.paused ? 'play' : 'pause', sdk ? 'this browser' : 'remote device');
@@ -728,6 +801,7 @@ export function togglePlay() {
 }
 
 export function next() {
+  lastIntentAt = Date.now();
   activateLocalPlayer();
   const sdk = localSdk();
   log('transport', 'next', sdk ? 'this browser' : 'remote device');
@@ -736,6 +810,7 @@ export function next() {
 }
 
 export function previous() {
+  lastIntentAt = Date.now();
   activateLocalPlayer();
   const sdk = localSdk();
   log('transport', 'previous', sdk ? 'this browser' : 'remote device');
