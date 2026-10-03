@@ -205,6 +205,21 @@ function schedulePoll(delay = pollInterval()) {
 // coming back to the app is the moment to make sure the player is still there.
 let reviveLocalPlayer = null;
 
+// A pause nobody asked for while the app is in the background is one of two things: the phone has
+// cut the network (battery saver does that to apps in the background) and the player has run out
+// of audio it had already downloaded, or something else has taken the audio away. One request
+// settles which.
+function checkNetworkAfterPause() {
+  const t = token();
+  if (!t) return;
+  const started = Date.now();
+  const conn = navigator.connection;
+  const net = `${navigator.onLine ? 'online' : 'offline'}${conn ? `, ${conn.type || '?'} ${conn.effectiveType || '?'}` : ''}`;
+  fetchPlayerState(t)
+    .then(() => log('background', 'network check after the pause: reachable', `${Date.now() - started}ms, ${net}`))
+    .catch((err) => log('background', 'network check after the pause: failed', `${err?.name || err} after ${Date.now() - started}ms, ${net}`));
+}
+
 // While the app is in the background, note every minute what this browser's player says it is
 // doing. A page Chrome freezes or kills simply stops writing notes, so the gap says when, and a
 // player that has stopped by itself says so while the page is still alive.
@@ -366,8 +381,9 @@ function initLocalPlayer() {
         } else if (Boolean(state.paused) !== Boolean(before?.paused)) {
           // Something outside Jomify (Android, another app taking the audio) pausing the music
           // looks exactly like any other pause unless it is marked
-          const unasked = Date.now() - lastIntentAt > INTENT_WINDOW_MS ? ', nobody in Jomify asked for it' : '';
-          log('playback', state.paused ? 'paused' : 'resumed', `at ${Math.round((state.position || 0) / 1000)}s of ${Math.round((state.duration || 0) / 1000)}s${unasked}`);
+          const unasked = Date.now() - lastIntentAt > INTENT_WINDOW_MS;
+          log('playback', state.paused ? 'paused' : 'resumed', `at ${Math.round((state.position || 0) / 1000)}s of ${Math.round((state.duration || 0) / 1000)}s${unasked ? ', nobody in Jomify asked for it' : ''}`);
+          if (unasked && state.paused && document.hidden) checkNetworkAfterPause();
         }
       }
       if (!state) {
