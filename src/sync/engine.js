@@ -3,7 +3,7 @@ import { useUserStore } from '../store/userStore';
 import { useSyncStore } from '../store/syncStore';
 import { pullDoc, pushDoc, SyncApiError } from '../services/sync/client';
 import { ensureFreshToken } from '../services/spotify/session';
-import { mergeSyncDoc, isFolderLive } from './mergeSyncDoc';
+import { mergeSyncDoc, isFolderLive, isPinLive } from './mergeSyncDoc';
 import { storeToDoc, docToStore, docToMetaClocks, docHasContent } from './transform';
 import {
   getMeta, saveMeta, resetMeta, setServerTime, syncNow,
@@ -129,6 +129,16 @@ function stampChanges(prev, next) {
   }
   if (prev.friends !== next.friends) {
     patch.friendsT = at;
+  }
+  if (prev.sortModeSettings !== next.sortModeSettings) {
+    patch.sortModeT = at;
+  }
+  if (prev.sortSkips !== next.sortSkips) {
+    const skipsT = { ...meta.skipsT };
+    for (const id of new Set([...Object.keys(prev.sortSkips || {}), ...Object.keys(next.sortSkips || {})])) {
+      if ((prev.sortSkips || {})[id] !== (next.sortSkips || {})[id]) skipsT[id] = at;
+    }
+    patch.skipsT = skipsT;
   }
   if (prev.playlistSortSettings !== next.playlistSortSettings) {
     const sortT = { ...meta.sortT };
@@ -338,7 +348,8 @@ export async function start(currentUserId) {
     try {
       useUserStore.setState({
         customFolders: [], pinnedItems: [], sevens: [], sevensSeeded: false,
-        stagedSeven: [], playlistSortSettings: {}, unaddedCheckPlaylists: [], friends: []
+        stagedSeven: [], playlistSortSettings: {}, unaddedCheckPlaylists: [], friends: [],
+        sortModeSettings: { autoplay: true, advance: false }, sortSkips: {}
       });
     } finally {
       isApplyingRemote = false;
@@ -357,7 +368,9 @@ export async function start(currentUserId) {
       stagedSeven: state.stagedSeven,
       playlistSortSettings: state.playlistSortSettings,
       unaddedCheckPlaylists: state.unaddedCheckPlaylists,
-      friends: state.friends
+      friends: state.friends,
+      sortModeSettings: state.sortModeSettings,
+      sortSkips: state.sortSkips
     }),
     (next, prev) => {
       if (isApplyingRemote) return;
@@ -394,8 +407,8 @@ export async function start(currentUserId) {
   if (needsChoice && docHasContent(result.remote)) {
     pendingConflict = result;
     useSyncStore.getState().setFirstSyncConflict({
-      localFolders: countLiveFolders(localBefore),
-      remoteFolders: countLiveFolders(result.remote)
+      local: summarizeDoc(localBefore),
+      remote: summarizeDoc(result.remote)
     });
     useSyncStore.getState().setStatus('idle');
     return false;
@@ -410,8 +423,14 @@ export async function start(currentUserId) {
   return true;
 }
 
-function countLiveFolders(doc) {
-  return Object.values(doc?.folders || {}).filter(isFolderLive).length;
+// What a first-sync conflict is actually about: folders, pins, Sevens and friends all sync
+function summarizeDoc(doc) {
+  return {
+    folders: Object.values(doc?.folders || {}).filter(isFolderLive).length,
+    pins: Object.values(doc?.pins || {}).filter(isPinLive).length,
+    sevens: doc?.sevens?.v?.list?.length ?? 0,
+    friends: doc?.friends?.v?.length ?? 0
+  };
 }
 
 function finishFirstSync(result) {

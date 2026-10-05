@@ -292,7 +292,9 @@ section('transform round trip');
     sevensSeeded: true,
     stagedSeven: [{ uri: 'spotify:track:1' }],
     playlistSortSettings: { pl1: { sortBy: 'name', sortOrder: 'asc' } },
-    unaddedCheckPlaylists: ['pl9']
+    unaddedCheckPlaylists: ['pl9'],
+    sortModeSettings: { autoplay: false, advance: true },
+    sortSkips: { pl9: ['spotify:track:a', 'spotify:track:b'] }
   };
 
   const meta = {
@@ -301,11 +303,17 @@ section('transform round trip');
     pins: { pl1: 300 },
     deletedPins: {},
     sevensT: 400, stagedSevenT: 500, unaddedT: 600,
-    sortT: { pl1: 700 }
+    sortT: { pl1: 700 },
+    sortModeT: 800, skipsT: { pl9: 900 }
   };
 
   const doc = storeToDoc(state, meta);
   const back = docToStore(doc);
+
+  check('sort mode settings survive the round trip', back.sortModeSettings.autoplay === false && back.sortModeSettings.advance === true);
+  check('sort skips survive the round trip', back.sortSkips.pl9.join() === 'spotify:track:a,spotify:track:b');
+  check('sort mode clocks come back', docToMetaClocks(doc, {}).sortModeT === 800 && docToMetaClocks(doc, {}).skipsT.pl9 === 900);
+  check('a doc without sort mode gives the defaults', docToStore({ folders: {}, pins: {} }).sortModeSettings.autoplay === true && Object.keys(docToStore({ folders: {}, pins: {} }).sortSkips).length === 0);
 
   check('folders survive the round trip', back.customFolders.length === 2);
   check('folder order is preserved', back.customFolders.map(f => f.name).join() === 'Rock,Jazz');
@@ -480,6 +488,20 @@ section('nested folders: fuzzed docToStore(merge) is order-independent and fully
   check('friends: idempotent', JSON.stringify(mergeSyncDoc(ab, newer).friends) === JSON.stringify(ab.friends));
   check('friends: missing on one side keeps the other', mergeSyncDoc({}, newer).friends.v.length === 2);
   check('friends: absent everywhere normalises to an empty register', JSON.stringify(mergeSyncDoc({}, {}).friends) === JSON.stringify({ v: [], t: 0 }));
+}
+
+// --- sort mode registers ----------------------------------------------------
+
+{
+  const phone = { sortMode: { v: { autoplay: false, advance: false }, t: 5000 }, sortSkips: { pl9: { v: ['spotify:track:a'], t: 5000 }, pl8: { v: ['spotify:track:x'], t: 100 } } };
+  const desktop = { sortMode: { v: { autoplay: true, advance: true }, t: 9000 }, sortSkips: { pl9: { v: ['spotify:track:a', 'spotify:track:b'], t: 9000 } } };
+  const ab = mergeSyncDoc(phone, desktop);
+  const ba = mergeSyncDoc(desktop, phone);
+  check('sort mode: newer settings win', ab.sortMode.v.advance === true && ab.sortMode.t === 9000);
+  check('sort skips: newer list for the same playlist wins', ab.sortSkips.pl9.v.length === 2);
+  check('sort skips: a playlist only one side knows is kept', ab.sortSkips.pl8.v[0] === 'spotify:track:x');
+  check('sort mode: commutative', JSON.stringify(ab.sortMode) === JSON.stringify(ba.sortMode) && JSON.stringify(ab.sortSkips) === JSON.stringify(ba.sortSkips));
+  check('sort mode: absent everywhere normalises to defaults', JSON.stringify(mergeSyncDoc({}, {}).sortMode) === JSON.stringify({ v: { autoplay: true, advance: false }, t: 0 }));
 }
 
 // --- report -----------------------------------------------------------------

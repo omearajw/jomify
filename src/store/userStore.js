@@ -67,6 +67,18 @@ export const useUserStore = create(
       setLibraryGridSize: (size) => set({ libraryGridSize: size }),
       librarySort: 'spotify', // 'spotify' | 'az' | 'za' | 'owner'
       setLibrarySort: (mode) => set({ librarySort: mode }),
+
+      // Sort mode (the card-by-card sorter): its switches and, per playlist, the songs skipped
+      // so far. Synced, so a half-sorted pile is the same pile on the phone and the desktop.
+      sortModeSettings: { autoplay: true, advance: false },
+      setSortModeSettings: (patch) => set((state) => ({ sortModeSettings: { ...state.sortModeSettings, ...patch } })),
+      sortSkips: {},
+      setSortSkips: (playlistId, uris) => set((state) => {
+        const next = { ...state.sortSkips };
+        if (!uris || uris.length === 0) delete next[playlistId];
+        else next[playlistId] = [...uris];
+        return { sortSkips: next };
+      }),
       setActiveFolderId: (folderId) => set((state) => ({
         activeFolderId: folderId,
         manageFolderId: folderId ? state.manageFolderId : null
@@ -581,17 +593,24 @@ export const useUserStore = create(
       requestSearchFocus: () => set({ currentView: 'browse', searchFocusRequested: true, ...(get().currentView === 'browse' ? {} : { viewHistory: pushHistory(get()) }) }),
       clearSearchFocus: () => set({ searchFocusRequested: false }),
 
-      navigateToArtist: (artistId) => set((state) => ({
-        viewHistory: pushHistory(state),
-        currentView: 'artist',
-        currentArtistId: artistId
-      })),
+      // Already on that page: no new frame, or Back would appear to do nothing
+      navigateToArtist: (artistId) => set((state) => {
+        if (!artistId || (state.currentView === 'artist' && state.currentArtistId === artistId)) return {};
+        return {
+          viewHistory: pushHistory(state),
+          currentView: 'artist',
+          currentArtistId: artistId
+        };
+      }),
 
-      navigateToAlbum: (albumId) => set((state) => ({
-        viewHistory: pushHistory(state),
-        currentView: 'album',
-        currentAlbumId: albumId
-      })),
+      navigateToAlbum: (albumId) => set((state) => {
+        if (!albumId || (state.currentView === 'album' && state.currentAlbumId === albumId)) return {};
+        return {
+          viewHistory: pushHistory(state),
+          currentView: 'album',
+          currentAlbumId: albumId
+        };
+      }),
 
       navigateToUser: (userId) => set((state) => {
         if (!userId || (state.currentView === 'user' && state.currentUserId === userId)) return {};
@@ -684,7 +703,17 @@ export const useUserStore = create(
         sevensSeeded: state.sevensSeeded,
         sevensNotifications: state.sevensNotifications,
         unaddedCheckPlaylists: state.unaddedCheckPlaylists,
-        friends: state.friends
+        friends: state.friends,
+        sortModeSettings: state.sortModeSettings,
+        sortSkips: state.sortSkips,
+        // Where you were, so a reload reopens it (Spotify does the same). The history stack is
+        // not kept: the browser's own back stack starts fresh on reload and the two must agree.
+        currentView: state.currentView === 'lyrics' ? 'home' : state.currentView,
+        activePlaylistId: state.activePlaylistId,
+        currentArtistId: state.currentArtistId,
+        currentAlbumId: state.currentAlbumId,
+        currentUserId: state.currentUserId,
+        activeFolderId: state.activeFolderId
       }),
     }
   ))

@@ -152,7 +152,7 @@ export default function MainLayout({ children }) {
       )}
 
       <DevicePicker />
-      {isMobile && <AccountSheet />}
+      <AccountSheet />
       <ContextMenu />
       <ToastHost />
       <SyncConflictDialog />

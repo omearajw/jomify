@@ -10,7 +10,8 @@ import { Search, Play, ChevronLeft, Loader, X } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import MoreButton, { CardMoreButton } from '../../components/MoreButton';
 import { rowButtonProps } from '../../utils/a11y';
-import { isSameTrack, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
+import { toast } from '../../store/toastStore';
 
 const MAX_CACHED_RESULTS_BYTES = 500 * 1024;
 
@@ -252,9 +253,11 @@ export default function Browse() {
     return () => observer.disconnect();
   }, [expandedSection, paginationUrls, loadingMore, loadMoreResults]);
 
-  const handleTrackPlay = (trackUri) => {
-    if (!token) return;
-    playOn((deviceId) => playSingleTrack(token, deviceId, trackUri));
+  const country = useUserStore((s) => s.profile?.country);
+  const handleTrackPlay = (track) => {
+    if (!token || !track?.uri) return;
+    if (isUnplayable(track, country)) { toast("Spotify can't play this song."); return; }
+    playOn((deviceId) => playSingleTrack(token, deviceId, track.uri), { track });
   };
 
   const handleContextPlay = (uri) => {
@@ -315,9 +318,11 @@ export default function Browse() {
                       e.preventDefault();
                       setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track });
                     }}
-                    onClick={() => handleTrackPlay(track.uri)}
-                    {...rowButtonProps(() => handleTrackPlay(track.uri))}
-                    className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
+                    onClick={() => handleTrackPlay(track)}
+                    {...rowButtonProps(() => handleTrackPlay(track))}
+                    aria-disabled={isUnplayable(track, country) || undefined}
+                    title={isUnplayable(track, country) ? 'Not available on Spotify' : undefined}
+                    className={`flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors ${isUnplayable(track, country) ? 'opacity-45' : ''}`}
                   >
                     <div className="flex items-center space-x-4 truncate pr-4">
                       <div className="relative w-12 h-12 bg-neutral-800 rounded flex-shrink-0 flex items-center justify-center">
@@ -628,9 +633,11 @@ export default function Browse() {
                         e.preventDefault();
                         setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track });
                       }}
-                      onClick={() => handleTrackPlay(track.uri)}
-                      {...rowButtonProps(() => handleTrackPlay(track.uri))}
-                      className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
+                      onClick={() => handleTrackPlay(track)}
+                      {...rowButtonProps(() => handleTrackPlay(track))}
+                      aria-disabled={isUnplayable(track, country) || undefined}
+                      title={isUnplayable(track, country) ? 'Not available on Spotify' : undefined}
+                      className={`flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors ${isUnplayable(track, country) ? 'opacity-45' : ''}`}
                     >
                       <div className="flex items-center space-x-4 truncate pr-4">
                         <div className="relative w-10 h-10 bg-neutral-800 rounded flex-shrink-0 flex items-center justify-center">

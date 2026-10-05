@@ -22,7 +22,10 @@ const BACKED_UP_KEYS = [
   'friends',
   'playlistSortSettings',
   'libraryGridSize',
+  'librarySort',
   'savedVolume',
+  'sortModeSettings',
+  'sortSkips',
   // Lived in its own localStorage key once; the store has held it since the v1 migration, and
   // reading the old key here meant backups carried a stale or empty list
   'unaddedCheckPlaylists'

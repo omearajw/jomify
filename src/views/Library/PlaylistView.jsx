@@ -22,7 +22,7 @@ import { collaboratorStyleFor } from '../../utils/collaboratorStyle';
 import { rowButtonProps } from '../../utils/a11y';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
-import { isSameTrack } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable } from '../../utils/spotifyUri';
 
 // Rows rendered at once; more appear as you scroll. A 1000-track playlist used to mount every
 // row (25k DOM nodes) up front.
@@ -594,12 +594,13 @@ export default function PlaylistView() {
 
   const handleTrackSelect = (originalIndex) => {
     if (!token) return;
+    if (playlist && isUnplayable(sortedTracks[originalIndex]?.track, country)) { toast("Spotify can't play this song."); return; }
     // Before the tracks arrive, Play still works: the playlist context starts from the top
     if (!playlist) {
       if (originalIndex === 0 && activePlaylistId) playOn((deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, 0));
       return;
     }
-    playOn((deviceId) => startTrack(deviceId, originalIndex));
+    playOn((deviceId) => startTrack(deviceId, originalIndex), { track: sortedTracks[originalIndex]?.track });
   };
 
   const handleUpdatePlaylist = async ({ name, description, imageFile }) => {
@@ -735,6 +736,7 @@ export default function PlaylistView() {
     return formatDuration(playlist.tracks.items.reduce((sum, item) => sum + (item.track?.duration_ms || 0), 0));
   }, [playlist]);
   const myId = useUserStore((s) => s.profile?.id);
+  const country = useUserStore((s) => s.profile?.country);
   const ownsPlaylist = Boolean(myId && (playlist?.owner?.id === myId || playlist?.collaborative));
   useEffect(() => {
     const el = sentinelRef.current;
@@ -1189,6 +1191,7 @@ export default function PlaylistView() {
           const track = item.track;
 
           const isCurrentTrack = isSameTrack(track, currentPlayingTrack);
+          const unplayable = isUnplayable(track, country);
 
           // Advanced Group Adjacency Logic for the Seamless Glow Effect
           const adderId = item.added_by?.id;
@@ -1262,7 +1265,9 @@ export default function PlaylistView() {
               {...rowButtonProps(() => handleTrackSelect(index))}
               onContextMenu={(e) => handleRightClick(e, track, item)}
               style={collaboratorStyleFor(adderId, isCollaborative, isFirstInGroup, isLastInGroup)}
-              className={`grid ${gridColumns} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${bgHoverClass} ${radiusClass} ${marginClass}`}
+              aria-disabled={unplayable || undefined}
+              title={unplayable ? 'Not available on Spotify' : undefined}
+              className={`grid ${gridColumns} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${bgHoverClass} ${radiusClass} ${marginClass} ${unplayable ? 'opacity-45' : ''}`}
             >
               <div className="text-neutral-400 w-4 h-4 hidden md:flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (

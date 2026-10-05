@@ -37,7 +37,9 @@ function freshMeta() {
     stagedSevenT: 0,
     unaddedT: 0,
     friendsT: 0,
+    sortModeT: 0,
     sortT: {},            // playlistId -> clock
+    skipsT: {},           // playlistId -> clock, for Sort mode's skipped songs
     lastRevision: 0,
     lastSyncedAt: null,
     firstSyncDone: false

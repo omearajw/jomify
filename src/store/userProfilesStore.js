@@ -10,13 +10,17 @@ export const useUserProfilesStore = create((set) => ({
 }));
 
 const inFlight = new Set();
-const failed = new Set(); // ids Spotify refused; don't hammer them on every render
+// ids Spotify refused, with when: not hammered on every render, but tried again after a while
+// (a rate limit or a dropped connection is not a missing user)
+const failed = new Map();
+const RETRY_FAILED_MS = 2 * 60 * 1000;
+const failedRecently = (id) => failed.has(id) && Date.now() - failed.get(id) < RETRY_FAILED_MS;
 
 export async function ensureUserProfiles(token, ids) {
   if (!token) return;
   const known = useUserProfilesStore.getState().profiles;
   const wanted = [...new Set((ids || []).filter(Boolean))]
-    .filter(id => !known[id] && !inFlight.has(id) && !failed.has(id));
+    .filter(id => !known[id] && !inFlight.has(id) && !failedRecently(id));
   if (wanted.length === 0) return;
 
   wanted.forEach(id => inFlight.add(id));
@@ -25,8 +29,8 @@ export async function ensureUserProfiles(token, ids) {
   results.forEach((result, i) => {
     const id = wanted[i];
     inFlight.delete(id);
-    if (result.status === 'fulfilled' && result.value?.id) updates[result.value.id] = result.value;
-    else failed.add(id);
+    if (result.status === 'fulfilled' && result.value?.id) { updates[result.value.id] = result.value; failed.delete(id); }
+    else failed.set(id, Date.now());
   });
   if (Object.keys(updates).length) useUserProfilesStore.getState().setProfiles(updates);
 }

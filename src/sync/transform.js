@@ -64,6 +64,11 @@ export function storeToDoc(state, meta) {
   for (const [playlistId, settings] of Object.entries(state.playlistSortSettings || {})) {
     doc.playlistSortSettings[playlistId] = { v: settings, t: meta.sortT?.[playlistId] ?? 0 };
   }
+  doc.sortMode = { v: state.sortModeSettings || { autoplay: true, advance: false }, t: meta.sortModeT ?? 0 };
+  doc.sortSkips = {};
+  for (const [playlistId, uris] of Object.entries(state.sortSkips || {})) {
+    doc.sortSkips[playlistId] = { v: uris, t: meta.skipsT?.[playlistId] ?? 0 };
+  }
 
   return doc;
 }
@@ -101,6 +106,10 @@ export function docToStore(doc) {
   for (const [playlistId, register] of Object.entries(doc.playlistSortSettings || {})) {
     if (register?.v) playlistSortSettings[playlistId] = register.v;
   }
+  const sortSkips = {};
+  for (const [playlistId, register] of Object.entries(doc.sortSkips || {})) {
+    if (Array.isArray(register?.v) && register.v.length) sortSkips[playlistId] = register.v;
+  }
 
   return {
     customFolders,
@@ -110,7 +119,9 @@ export function docToStore(doc) {
     stagedSeven: doc.stagedSeven?.v ?? [],
     unaddedCheckPlaylists: doc.unaddedCheckPlaylists?.v ?? [],
     friends: Array.isArray(doc.friends?.v) ? doc.friends.v : [],
-    playlistSortSettings
+    playlistSortSettings,
+    sortModeSettings: { autoplay: true, advance: false, ...(doc.sortMode?.v || {}) },
+    sortSkips
   };
 }
 
@@ -136,6 +147,10 @@ export function docToMetaClocks(doc, meta) {
   for (const [id, register] of Object.entries(doc.playlistSortSettings || {})) {
     sortT[id] = register?.t ?? 0;
   }
+  const skipsT = {};
+  for (const [id, register] of Object.entries(doc.sortSkips || {})) {
+    skipsT[id] = register?.t ?? 0;
+  }
 
   return {
     ...meta,
@@ -144,6 +159,8 @@ export function docToMetaClocks(doc, meta) {
     pins,
     deletedPins,
     sortT,
+    skipsT,
+    sortModeT: doc.sortMode?.t ?? 0,
     sevensT: doc.sevens?.t ?? 0,
     stagedSevenT: doc.stagedSeven?.t ?? 0,
     unaddedT: doc.unaddedCheckPlaylists?.t ?? 0,

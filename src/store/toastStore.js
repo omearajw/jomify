@@ -5,12 +5,14 @@ let nextId = 1;
 export const useToastStore = create((set) => ({
   toasts: [],
 
-  show: (message, { tone = 'info', duration = 3500 } = {}) => {
+  // `action` is an optional { label, onClick } button (an Undo, usually); its toast stays up
+  // a little longer so there is time to press it
+  show: (message, { tone = 'info', duration, action = null } = {}) => {
     const id = nextId++;
-    set((state) => ({ toasts: [...state.toasts, { id, message, tone }] }));
+    set((state) => ({ toasts: [...state.toasts, { id, message, tone, action }] }));
     setTimeout(() => {
       set((state) => ({ toasts: state.toasts.filter(t => t.id !== id) }));
-    }, duration);
+    }, duration ?? (action ? 6000 : 3500));
     return id;
   },
 

@@ -30,6 +30,15 @@ export default function ToastHost() {
             {t.tone === 'success' && <Check className="w-4 h-4 text-[var(--brand-mid)] shrink-0" />}
             {t.tone === 'error' && <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />}
             <span className="max-w-[60vw] truncate">{t.message}</span>
+            {t.action && (
+              <button
+                type="button"
+                onClick={() => { t.action.onClick(); dismiss(t.id); }}
+                className="font-bold text-[var(--brand-light)] hover:text-white transition-colors shrink-0"
+              >
+                {t.action.label}
+              </button>
+            )}
             <button type="button" onClick={() => dismiss(t.id)} aria-label="Dismiss" className="text-neutral-500 hover:text-white transition-colors">
               <X className="w-3.5 h-3.5" />
             </button>

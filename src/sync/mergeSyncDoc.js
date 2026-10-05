@@ -43,7 +43,10 @@ export function emptyDoc() {
     stagedSeven: { v: [], t: 0 },
     playlistSortSettings: {},
     unaddedCheckPlaylists: { v: [], t: 0 },
-    friends: { v: [], t: 0 }
+    friends: { v: [], t: 0 },
+    // Sort mode: its two switches, and per playlist the songs skipped so far
+    sortMode: { v: { autoplay: true, advance: false }, t: 0 },
+    sortSkips: {}
   };
 }
 
@@ -213,7 +216,9 @@ export function mergeSyncDoc(aRaw, bRaw) {
     stagedSeven: mergeRegister(a.stagedSeven, b.stagedSeven, []),
     playlistSortSettings: mergeRegisterMap(a.playlistSortSettings, b.playlistSortSettings),
     unaddedCheckPlaylists: mergeRegister(a.unaddedCheckPlaylists, b.unaddedCheckPlaylists, []),
-    friends: mergeRegister(a.friends, b.friends, [])
+    friends: mergeRegister(a.friends, b.friends, []),
+    sortMode: mergeRegister(a.sortMode, b.sortMode, { autoplay: true, advance: false }),
+    sortSkips: mergeRegisterMap(a.sortSkips, b.sortSkips)
   };
 
   // Sorted rather than "first non-empty" so that merge stays commutative even in the
@@ -261,10 +266,10 @@ export function clampFutureTimestamps(doc, serverNow, skewMs = 60000) {
     pin.t = clamp(pin.t);
     if (pin.deletedAt) pin.deletedAt = clamp(pin.deletedAt);
   }
-  for (const register of [doc.sevens, doc.stagedSeven, doc.unaddedCheckPlaylists, doc.friends]) {
+  for (const register of [doc.sevens, doc.stagedSeven, doc.unaddedCheckPlaylists, doc.friends, doc.sortMode]) {
     if (register) register.t = clamp(register.t);
   }
-  for (const register of Object.values(doc.playlistSortSettings || {})) {
+  for (const register of [...Object.values(doc.playlistSortSettings || {}), ...Object.values(doc.sortSkips || {})]) {
     if (register) register.t = clamp(register.t);
   }
 

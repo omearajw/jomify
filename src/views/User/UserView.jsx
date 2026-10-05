@@ -115,7 +115,12 @@ export default function UserView() {
               </button>
               <button
                 type="button"
-                onClick={() => (isFriend ? removeFriend(currentUserId) : addFriend(user))}
+                onClick={() => {
+                  if (!isFriend) { addFriend(user); return; }
+                  const friend = friends.find((f) => f.id === currentUserId);
+                  removeFriend(currentUserId);
+                  toast(`Removed ${friend?.name || user.display_name || currentUserId}`, { action: { label: 'Undo', onClick: () => addFriend(friend || user) } });
+                }}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold border border-white/20 text-white hover:bg-white/10 transition-colors"
               >
                 {isFriend ? <UserMinus className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}

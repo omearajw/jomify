@@ -101,7 +101,7 @@ export default function StatsDrawer({ open }) {
   const playTrack = (index) => {
     const uris = tracks.map((t) => t.uri).filter(Boolean);
     if (!token || !uris.length) return;
-    playOn((deviceId) => playUris(token, deviceId, uris, index));
+    playOn((deviceId) => playUris(token, deviceId, uris, index), { track: tracks[index] });
   };
   const openTrackMenu = (e, track) => {
     e.preventDefault();

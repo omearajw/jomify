@@ -8,6 +8,7 @@ import { clearMeta } from '../sync/meta';
 import ConfirmDialog from './ConfirmDialog';
 import NotificationToggle from './NotificationToggle';
 import DebugLogPanel from './DebugLogPanel';
+import { disableNotifications } from '../pwa/push';
 
 function formatAgo(timestamp) {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -107,19 +108,37 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
   // A deliberate disconnect clears this device's copy of the synced data, but only once that
   // data is demonstrably on the server. The involuntary logout() calls in App.jsx stay soft,
   // because wiping folders over a transient network blip is exactly the bug commit ea508a9 fixed.
-  const handleDisconnect = () => {
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const sevensNotifications = useUserStore((s) => s.sevensNotifications);
+  const handleDisconnect = async () => {
+    setConfirmDisconnect(false);
+    // Otherwise the server keeps pinging a phone that no longer belongs to this account
+    if (sevensNotifications) {
+      const token = useUserStore.getState().token;
+      if (token) await disableNotifications(token).catch((err) => console.warn('Could not switch notifications off before disconnecting:', err));
+    }
     const canHardClear = isSafeToHardLogout();
     if (canHardClear) clearMeta();
     logout({ hard: canHardClear });
     window.location.href = '/';
   };
+  const disconnectDialog = (
+    <ConfirmDialog
+      open={confirmDisconnect}
+      title="Disconnect this account?"
+      message={`Jomify signs out of Spotify on this device${sevensNotifications ? ' and switches off its Sevens notifications' : ''}. ${isSafeToHardLogout() ? 'Your folders, pins and Sevens are backed up to your account and come back when you sign in again.' : "This device's folders and pins haven't finished backing up, so they stay on the device until you sign in again."}`}
+      confirmLabel="Disconnect"
+      onConfirm={handleDisconnect}
+      onCancel={() => setConfirmDisconnect(false)}
+    />
+  );
 
   const restoreDialog = (
     <ConfirmDialog
       open={Boolean(pendingRestore)}
       title="Restore this backup?"
       message={pendingRestore
-        ? `This replaces your current folders and pins with the backup from ${new Date(pendingRestore.exportedAt).toLocaleString()} (${pendingRestore.counts?.folders ?? 0} folders, ${pendingRestore.counts?.pins ?? 0} pins). Folders and pins not in the backup are removed on every device.`
+        ? `This replaces your folders, pins, Sevens, friends, sort settings, check playlists and volume with the backup from ${new Date(pendingRestore.exportedAt).toLocaleString()} (${pendingRestore.counts?.folders ?? 0} folders, ${pendingRestore.counts?.pins ?? 0} pins, ${pendingRestore.counts?.sevens ?? 0} Sevens). Anything not in the backup is removed on every device.`
         : ''}
       confirmLabel="Restore"
       onConfirm={handleConfirmRestore}
@@ -137,18 +156,22 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
         {backupMessage && (
           <p className={backupMessage.isError ? 'text-red-400' : 'text-[var(--brand-start)]'}>{backupMessage.text}</p>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={handleSyncNow} disabled={syncing} className="hover:text-white transition-colors disabled:opacity-60">{syncing ? 'Syncing…' : 'Sync now'}</button>
+          <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
           <button onClick={handleExportBackup} className="hover:text-white transition-colors">Back up</button>
           <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
           <button onClick={() => backupFileInputRef.current?.click()} className="hover:text-white transition-colors">Restore</button>
           <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
-          <button onClick={handleDisconnect} className="hover:text-white transition-colors">Disconnect</button>
-          <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
           <button onClick={() => setShowLog(true)} className="hover:text-white transition-colors">Log</button>
+          <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
+          {/* Notifications and Disconnect live in the full panel, the same one the phone opens */}
+          <button onClick={() => useUserStore.getState().setAccountOpen(true)} className="hover:text-white transition-colors">Account…</button>
         </div>
         <p className="text-neutral-700 truncate" title={tagline}>Build {__BUILD_ID__}{tagline ? ` · ${tagline}` : ''}</p>
         {fileInput}
         {restoreDialog}
+        {disconnectDialog}
         {logPanel}
       </div>
     );
@@ -179,13 +202,14 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
         <button type="button" onClick={() => setShowLog(true)} className={row}>
           <Bug className="w-5 h-5 text-neutral-400" /> Debug log
         </button>
-        <button type="button" onClick={handleDisconnect} className={`${row} text-red-400`}>
+        <button type="button" onClick={() => setConfirmDisconnect(true)} className={`${row} text-red-400`}>
           <LogOut className="w-5 h-5" /> Disconnect account
         </button>
       </div>
       <p className="px-1 text-xs text-neutral-600">Build {__BUILD_ID__}</p>
       {fileInput}
       {restoreDialog}
+      {disconnectDialog}
       {logPanel}
     </div>
   );

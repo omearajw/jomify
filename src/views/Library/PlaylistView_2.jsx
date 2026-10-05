@@ -20,9 +20,10 @@ import { formatTime } from '../../utils/formatTime';
 import { Play, X, LayoutPanelLeft, ArrowRight, Loader2, Disc3 } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import MoreButton from '../../components/MoreButton';
+import UserChip from '../../components/UserChip';
 import { rowButtonProps } from '../../utils/a11y';
 import { getCollaboratorStyle } from '../../utils/collaboratorStyle';
-import { isSameTrack } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable } from '../../utils/spotifyUri';
 
 const PAGE = 100;
 const pageUrl = (playlistId, offset, limit) => `https://api.spotify.com/v1/playlists/${playlistId}/tracks?offset=${offset}&limit=${limit}`;
@@ -152,6 +153,13 @@ export default function PlaylistView_2() {
   const [poolPlaylist, setPoolPlaylist] = useState(null);
   const [poolError, setPoolError] = useState('');
   const [poolAttempt, setPoolAttempt] = useState(0);
+  // Finding one song in a long pool
+  const [poolQuery, setPoolQuery] = useState('');
+  const poolNeedle = poolQuery.trim().toLowerCase();
+  const poolMatches = (track) => !poolNeedle
+    || (track.name || '').toLowerCase().includes(poolNeedle)
+    || (track.artists || []).some((a) => (a.name || '').toLowerCase().includes(poolNeedle))
+    || (track.album?.name || '').toLowerCase().includes(poolNeedle);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
 
@@ -371,7 +379,7 @@ const turnIndicator = useMemo(() => {
     if (!token || !playlist) return;
     const realIndex = playlist.tracks.items.findIndex(item => item.track?.uri === trackUri);
     if (realIndex === -1) return;
-    playOn((deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, realIndex));
+    playOn((deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, realIndex), { track: playlist.tracks.items[realIndex].track });
   };
 
   if (loadError?.id === activePlaylistId && !playlist) return <p className="text-neutral-400 text-lg mt-8 px-8">{loadError.message}</p>;
@@ -619,6 +627,16 @@ const turnIndicator = useMemo(() => {
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
+              {poolPlaylistId && (
+                <input
+                  type="search"
+                  value={poolQuery}
+                  onChange={(e) => setPoolQuery(e.target.value)}
+                  placeholder="Find a song in the pool"
+                  aria-label="Find a song in the pool"
+                  className="bg-black/50 border border-white/10 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-[var(--brand-mid)] w-full placeholder:text-neutral-500"
+                />
+              )}
 
               {/* Why tracks below might be dimmed */}
               {!thisSeven?.partnerId ? (
@@ -656,9 +674,11 @@ const turnIndicator = useMemo(() => {
                 </div>
               ) : !poolPlaylist ? (
                 <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-neutral-500" /></div>
+              ) : poolNeedle && !poolPlaylist.tracks.items.some((i) => i.track && poolMatches(i.track)) ? (
+                <p className="h-full flex items-center justify-center text-neutral-500 text-sm font-medium p-8 text-center">No songs in the pool match "{poolQuery.trim()}".</p>
               ) : (
                 poolPlaylist.tracks.items.map((item, idx) => {
-                  if (!item.track) return null;
+                  if (!item.track || !poolMatches(item.track)) return null;
                   const isDuplicate = mainPlaylistUris.has(item.track.uri);
                   const isStaged = stagedSeven.some(t => t.uri === item.track.uri);
                   const isCurrentTrack = isSameTrack(item.track, currentPlayingTrack);
@@ -684,7 +704,7 @@ const turnIndicator = useMemo(() => {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (!token || !poolPlaylist) return;
-                          playOn((deviceId) => playPlaylistTrack(token, deviceId, poolPlaylistId, idx));
+                          playOn((deviceId) => playPlaylistTrack(token, deviceId, poolPlaylistId, idx), { track: item.track });
                         }}
                       >
                         <img src={artUrl(item.track.album.images, 40)} width="40" height="40" loading="lazy" decoding="async" className="w-full h-full object-cover" alt="" />
@@ -803,7 +823,6 @@ const turnIndicator = useMemo(() => {
         {chunks.map((chunk, chunkIdx) => {
           const collaborator = collaborators[chunk.adderId];
           const displayName = collaborator?.display_name || chunk.adderId || 'Unknown';
-          const profileImage = collaborator?.images?.[0]?.url;
 
           return (
             <div 
@@ -815,16 +834,8 @@ const turnIndicator = useMemo(() => {
             >
               {/* Batch Header (User Profile) */}
               <div className="flex justify-between items-center px-6 py-4 border-b border-white/10 bg-black/30 shrink-0">
-                <div className="flex items-center gap-4">
-                  {profileImage ? (
-                    <img src={profileImage} className="w-10 h-10 rounded-full object-cover shadow-md shrink-0" alt="" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-neutral-700 flex items-center justify-center text-xs font-bold text-white shadow-md shrink-0">
-                      {displayName.charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <h3 className="font-bold text-lg text-white tracking-tight truncate min-w-0">{displayName}</h3>
-                </div>
+                {/* The person's page, as the ordinary playlist view links collaborators */}
+                <UserChip userId={chunk.adderId} fallbackName={displayName} size="md" className="min-w-0" />
                 {chunk.addedAt && (
                   <span className="text-xs font-medium text-neutral-500 tabular-nums shrink-0 ml-3">{formatBatchDate(chunk.addedAt)}</span>
                 )}
@@ -862,9 +873,11 @@ const turnIndicator = useMemo(() => {
                       {...rowButtonProps(() => handleTrackSelect(track.uri))}
                       onContextMenu={(e) => openTrackMenu(e, track)}
                       style={collaboratorStyleFor(chunk.adderId, true, isFirst, isLast, isMobile)}
+                      aria-disabled={isUnplayable(track, profile?.country) || undefined}
+                      title={isUnplayable(track, profile?.country) ? 'Not available on Spotify' : undefined}
                       // Rows keep their natural height; they used to be flex-1 min-h-0 and got
                       // squashed and clipped whenever seven didn't fit the card
-                      className={`min-h-[52px] shrink-0 flex items-center gap-2.5 md:gap-3 px-2 md:px-3 py-1.5 group/track text-sm cursor-pointer hover:bg-white/10 transition-colors ${radiusClass} ${marginClass}`}
+                      className={`min-h-[52px] shrink-0 flex items-center gap-2.5 md:gap-3 px-2 md:px-3 py-1.5 group/track text-sm cursor-pointer hover:bg-white/10 transition-colors ${radiusClass} ${marginClass} ${isUnplayable(track, profile?.country) ? 'opacity-45' : ''}`}
                     >
                       {/* 1. Play / Number Indicator */}
                       <div className="text-neutral-400 w-5 h-5 flex items-center justify-center shrink-0">

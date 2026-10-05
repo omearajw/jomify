@@ -5,12 +5,24 @@ import { playOn } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
 import { SkeletonHeader, SkeletonRows } from '../../components/Skeleton';
 import { playContext, checkTracksLiked, fetchMoreTracks, spotifyFetch, saveAlbumToLibrary, unsaveAlbum } from '../../services/spotify/api';
-import { formatTime } from '../../utils/formatTime';
-import { Plus, Check, Loader2 } from 'lucide-react';
+import { formatTime, formatDuration } from '../../utils/formatTime';
+import { Plus, Check, Loader2, Disc3 } from 'lucide-react';
+
+const ALBUM_KIND = { album: 'Album', single: 'Single', compilation: 'Compilation' };
+
+// Spotify sends the date at the precision it has ("2015", "2015-07" or "2015-07-17")
+const formatReleaseDate = (date, precision) => {
+  if (!date) return '';
+  const [y, m, d] = date.split('-').map(Number);
+  const p = precision || (d ? 'day' : m ? 'month' : 'year');
+  if (p === 'year' || !m) return String(y);
+  const dt = new Date(Date.UTC(y, m - 1, d || 1));
+  return dt.toLocaleDateString(undefined, p === 'month' ? { year: 'numeric', month: 'long', timeZone: 'UTC' } : { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+};
 import LikeButton from '../../components/LikeButton';
 import TrackArtists from '../../components/TrackArtists';
 import { rowButtonProps } from '../../utils/a11y';
-import { isSameTrack } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable } from '../../utils/spotifyUri';
 import { toast } from '../../store/toastStore';
 
 export default function Album() {
@@ -92,10 +104,19 @@ export default function Album() {
 
   // Album context, offset at the clicked row: playback carries on through the album and Spotify
   // shows "playing from <album>"
+  const country = useUserStore((s) => s.profile?.country);
+  // Only once every track is in, so a long compilation never shows half its length
+  const totalLength = !loading && !restError && tracks.length > 0 && tracks.length >= (album?.total_tracks || 0)
+    ? formatDuration(tracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0))
+    : '';
+  const discCount = tracks.reduce((max, t) => Math.max(max, t.disc_number || 1), 1);
   const handleTrackPlay = (trackUri) => {
     if (!token) return;
     const index = Math.max(0, tracks.findIndex(t => t.uri === trackUri));
-    playOn((deviceId) => playContext(token, deviceId, `spotify:album:${currentAlbumId}`, index));
+    if (isUnplayable(tracks[index], country)) { toast("Spotify can't play this song."); return; }
+    // The tapped song shows at once rather than after Spotify's next report
+    const track = tracks[index] ? { ...tracks[index], album: tracks[index].album || album } : null;
+    playOn((deviceId) => playContext(token, deviceId, `spotify:album:${currentAlbumId}`, index), { track });
   };
 
   // --- SAVE / UNSAVE ---
@@ -163,7 +184,7 @@ export default function Album() {
           )}
         </div>
         <div className="min-w-0">
-          <p className="hidden md:block text-sm font-bold text-neutral-400 uppercase tracking-widest mb-2">Album</p>
+          <p className="hidden md:block text-sm font-bold text-neutral-400 uppercase tracking-widest mb-2">{ALBUM_KIND[shown.album_type] || 'Album'}</p>
           <h1 className="text-2xl md:text-6xl font-extrabold text-white tracking-tighter mb-1 md:mb-4 break-words line-clamp-2 md:line-clamp-none">{shown.name}</h1>
           <div className="text-sm md:text-base text-neutral-400 font-medium md:mb-4">
             <p>
@@ -171,7 +192,10 @@ export default function Album() {
               <TrackArtists artists={shown.artists} className="text-white" linkClassName="hover:underline" />
             </p>
             <p className="mt-0.5 md:mt-2">
-              {shown.release_date ? `${shown.release_date.split('-')[0]} • ` : ''}{shown.total_tracks} tracks
+              <span className="md:hidden">{ALBUM_KIND[shown.album_type] || 'Album'} • </span>
+              {shown.release_date ? `${formatReleaseDate(shown.release_date, shown.release_date_precision)} • ` : ''}
+              {shown.total_tracks} {shown.total_tracks === 1 ? 'song' : 'songs'}
+              {totalLength && `, ${totalLength}`}
             </p>
             <button
               type="button"
@@ -210,17 +234,29 @@ export default function Album() {
           <div className="flex flex-col space-y-1">
             {tracks.map((track, index) => {
               const isCurrentTrack = isSameTrack(track, currentPlayingTrack);
+              const unplayable = isUnplayable(track, country);
+              // Multi-disc albums get a heading where each disc starts, numbered per disc
+              const disc = track.disc_number || 1;
+              const startsDisc = discCount > 1 && (index === 0 || (tracks[index - 1].disc_number || 1) !== disc);
+              const number = discCount > 1 ? (track.track_number || index + 1) : index + 1;
 
               return (
+                <div key={track.id} className="contents">
+                {startsDisc && (
+                  <p className="flex items-center gap-2 px-4 pt-4 pb-2 text-xs font-bold uppercase tracking-widest text-neutral-400">
+                    <Disc3 className="w-4 h-4" /> Disc {disc}
+                  </p>
+                )}
                 <div
-                  key={track.id}
                   onClick={() => handleTrackPlay(track.uri)}
                   {...rowButtonProps(() => handleTrackPlay(track.uri))}
                   onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track, sourceAlbumId: currentAlbumId }); }}
-                  className="flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
+                  aria-disabled={unplayable || undefined}
+                  title={unplayable ? 'Not available on Spotify' : undefined}
+                  className={`flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors ${unplayable ? 'opacity-45' : ''}`}
                 >
                   <div className="flex items-center space-x-4 truncate pr-4">
-                    <span className="text-neutral-400 w-8 text-right">{index + 1}</span>
+                    <span className="text-neutral-400 w-8 text-right">{number}</span>
                     <div className="truncate">
                       <p className={`font-medium truncate ${isCurrentTrack ? 'text-brand-gradient' : 'text-white'}`}>
                         {track.name}
@@ -237,6 +273,7 @@ export default function Album() {
                     <span className="hidden md:inline text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
                     <MoreButton onOpen={(e) => setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track, sourceAlbumId: currentAlbumId })} />
                   </div>
+                </div>
                 </div>
               );
             })}

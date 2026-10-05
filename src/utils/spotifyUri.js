@@ -18,6 +18,9 @@ export function userIdFromInput(text) {
 
   const url = raw.match(/^(?:https?:\/\/)?(?:open|play)\.spotify\.com\/(?:intl-[a-z]{2}\/)?user\/([^/?#\s]+)/i);
   if (url) return safeDecode(url[1]);
+  // spotify.link short links redirect to open.spotify.com, but a browser page can't follow a
+  // redirect on another site to read where it went; the caller explains that
+  if (/^(?:https?:\/\/)?spotify\.link\//i.test(raw)) return { shortLink: true };
 
   if (/^[A-Za-z0-9._~%-]+$/.test(raw)) return safeDecode(raw);
   return null;
@@ -74,4 +77,17 @@ export function isSameTrack(a, b) {
   const title = cleanString(a.name);
   const artist = leadArtist(a);
   return title !== '' && artist !== '' && title === cleanString(b.name) && artist === leadArtist(b);
+}
+
+// Whether Spotify can play a song for this listener. Local files never play elsewhere, and a
+// song pulled from the catalogue (or not licensed in the listener's country) has an empty or
+// non-matching available_markets list. Spotify only sends is_playable when asked with a
+// market, so the fields that are always there decide; anything unknown counts as playable.
+export function isUnplayable(track, country) {
+  if (!track) return false;
+  if (track.is_local || track.is_playable === false) return true;
+  const markets = track.available_markets;
+  if (!Array.isArray(markets)) return false;
+  if (markets.length === 0) return true;
+  return Boolean(country) && !markets.includes(country);
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { toast } from '../../store/toastStore';
 import { fetchUserPlaylists, addTracksToPlaylist, unfollowPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../../services/spotify/api';
-import { Heart, Folder, Maximize2, ChevronLeft, ChevronRight, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2, FolderX, FolderInput, FolderOutput, Search, ArrowUpDown, X } from 'lucide-react';
+import { Heart, Folder, Maximize2, ChevronLeft, ChevronRight, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2, FolderX, FolderInput, FolderOutput, Search, ArrowUpDown, X, Settings } from 'lucide-react';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { SkeletonCards } from '../../components/Skeleton';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
@@ -754,6 +754,15 @@ export default function Library() {
                 <Plus className="w-4 h-4 mr-2" /> Playlist
               </button>
               <SizingControls libraryGridSize={libraryGridSize} setLibraryGridSize={setLibraryGridSize} className="hidden sm:flex" />
+              {/* Phones have no sidebar footer: account, sync and the debug log open from here as well as Home */}
+              <button
+                type="button"
+                onClick={() => useUserStore.getState().setAccountOpen(true)}
+                aria-label="Account and sync"
+                className="md:hidden w-10 h-10 flex items-center justify-center rounded-full border border-white/20 text-neutral-300 active:bg-white/10"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
             </div>
           </div>
 

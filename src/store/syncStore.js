@@ -13,7 +13,7 @@ export const useSyncStore = create((set) => ({
   // escalate to a banner once sync has genuinely been broken for a while.
   failingSince: null,
   pendingChanges: false,
-  // { localFolders, remoteFolders } while a first-sync choice is waiting on the user
+  // { local, remote } counts ({ folders, pins, sevens, friends }) while a first-sync choice is waiting on the user
   firstSyncConflict: null,
 
   setFirstSyncConflict: (firstSyncConflict) => set({ firstSyncConflict }),

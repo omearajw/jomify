@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import { playOn } from '../services/spotify/playbackController';
-import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, unsaveAlbum } from '../services/spotify/api';
+import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, unsaveAlbum, saveAlbumToLibrary } from '../services/spotify/api';
 import { ListPlus, Plus, ChevronRight, ChevronDown, ChevronUp, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil, CornerDownRight, User, Disc3 } from 'lucide-react';
 import { idFromUri } from '../utils/spotifyUri';
 import FolderFormDialog from './FolderFormDialog';
@@ -57,14 +57,14 @@ export default function ContextMenu() {
   const {
     contextMenu, setContextMenu, token, triggerQueueRefresh,
     addManuallyQueuedTrack,
-    playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId,
+    playlists, albums, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId,
     removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder, renameFolder, createFolder, moveFolder,
     reorderFolders, reorderPlaylistInFolder,
     pinnedItems, togglePin, movePinnedItem, navigateToArtist, navigateToAlbum, setNowPlayingOpen
   } = useSlice(useUserStore, [
     'contextMenu', 'setContextMenu', 'token', 'triggerQueueRefresh',
     'addManuallyQueuedTrack',
-    'playlists', 'customFolders', 'profile', 'deletePlaylist', 'deleteFolder', 'setCurrentView', 'setActivePlaylistId',
+    'playlists', 'albums', 'customFolders', 'profile', 'deletePlaylist', 'deleteFolder', 'setCurrentView', 'setActivePlaylistId',
     'removeAlbumFromLibrary', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'renameFolder', 'createFolder', 'moveFolder',
     'reorderFolders', 'reorderPlaylistInFolder',
     'pinnedItems', 'togglePin', 'movePinnedItem', 'navigateToArtist', 'navigateToAlbum', 'setNowPlayingOpen'
@@ -379,12 +379,50 @@ export default function ContextMenu() {
       // unsaveAlbum throws on a non-2xx response, so local state is only touched once Spotify
       // has actually removed it. Previously the response was ignored and the album vanished
       // locally even when the request failed, leaving the library diverged until reload.
-      await unsaveAlbum(token, contextMenu.albumId);
-      removeAlbumFromLibrary(contextMenu.albumId);
+      const albumId = contextMenu.albumId;
+      const album = albums.find((a) => a.id === albumId);
+      // Which folders held it, so Undo can put it back where it was
+      const folderIds = customFolders.filter((f) => f.playlistIds.includes(albumId)).map((f) => f.id);
+      await unsaveAlbum(token, albumId);
+      removeAlbumFromLibrary(albumId);
       closeMenu();
+      toast(`Removed ${album?.name || 'album'} from your library`, {
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            try {
+              await saveAlbumToLibrary(token, albumId);
+              if (album) useUserStore.getState().setAlbums([...useUserStore.getState().albums, album]);
+              folderIds.forEach((id) => addPlaylistToFolder(id, albumId));
+            } catch (err) {
+              console.error('Failed to restore album:', err);
+              toast("Couldn't put the album back", { tone: 'error' });
+            }
+          }
+        }
+      });
     } catch (err) {
       console.error('Failed to remove album:', err);
+      toast("Couldn't remove the album", { tone: 'error' });
     }
+  };
+
+  // Taking something out of a folder, or unpinning it, is one tap to undo
+  const removeFromFolderWithUndo = (folderId, itemId, name) => {
+    const folder = customFolders.find((f) => f.id === folderId);
+    removePlaylistFromFolder(folderId, itemId);
+    toast(`Removed ${name || 'it'} from ${folder?.name || 'the folder'}`, {
+      action: { label: 'Undo', onClick: () => addPlaylistToFolder(folderId, itemId) }
+    });
+  };
+  const togglePinWithUndo = () => {
+    const name = contextMenu.track?.name || contextMenu.folderName
+      || playlists.find((p) => p.id === activeId)?.name || albums.find((a) => a.id === activeId)?.name
+      || customFolders.find((f) => f.id === activeId)?.name || 'it';
+    togglePin(activeId, activeType);
+    setContextMenu(null);
+    if (isPinned) toast(`Unpinned ${name}`, { action: { label: 'Undo', onClick: () => togglePin(activeId, activeType) } });
+    else toast(`Pinned ${name} to Home`);
   };
 
   return createPortal(
@@ -409,7 +447,7 @@ export default function ContextMenu() {
       {/* UNIVERSAL PIN TOGGLE */}
       {canPin && (
         <button
-          onClick={() => { togglePin(activeId, activeType); setContextMenu(null); }}
+          onClick={togglePinWithUndo}
           className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors border-b border-white/5"
         >
           {isPinned ? <PinOff className="w-4 h-4 text-neutral-400" /> : <Pin className="w-4 h-4 text-neutral-400" />}
@@ -588,14 +626,9 @@ export default function ContextMenu() {
 
           {contextMenu?.parentFolderId && (
             <button
-              onClick={async () => {
-                try {
-                  removePlaylistFromFolder(contextMenu.parentFolderId, contextMenu.playlistId);
-                } catch (err) {
-                  console.error('Failed to remove from folder', err);
-                } finally {
-                  setContextMenu(null);
-                }
+              onClick={() => {
+                removeFromFolderWithUndo(contextMenu.parentFolderId, contextMenu.playlistId, playlists.find((p) => p.id === contextMenu.playlistId)?.name);
+                setContextMenu(null);
               }}
               className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
             >
@@ -626,14 +659,9 @@ export default function ContextMenu() {
 
           {contextMenu?.parentFolderId && (
             <button
-              onClick={async () => {
-                try {
-                  removePlaylistFromFolder(contextMenu.parentFolderId, contextMenu.albumId);
-                } catch (err) {
-                  console.error('Failed to remove from folder', err);
-                } finally {
-                  setContextMenu(null);
-                }
+              onClick={() => {
+                removeFromFolderWithUndo(contextMenu.parentFolderId, contextMenu.albumId, albums.find((a) => a.id === contextMenu.albumId)?.name);
+                setContextMenu(null);
               }}
               className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
             >

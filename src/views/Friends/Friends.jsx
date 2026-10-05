@@ -38,6 +38,8 @@ export default function Friends() {
   const addById = async (id) => {
     if (!token) return;
     if (id === profile?.id) { toast("That's you", { tone: 'info' }); return; }
+    const already = friends.find((f) => f.id === id);
+    if (already) { toast(`${already.name || id} is already a friend`, { tone: 'info' }); setInput(''); return; }
     setAdding(true);
     try {
       const user = await fetchSpotifyUser(token, id);
@@ -45,16 +47,25 @@ export default function Friends() {
       useUserProfilesStore.getState().setProfiles({ [user.id]: user });
       setInput('');
       toast(`Added ${user.display_name || user.id}`, { tone: 'success' });
-    } catch {
-      toast("Couldn't find that Spotify user", { tone: 'error' });
+    } catch (err) {
+      toast(err?.message === 'RATE_LIMITED' ? 'Spotify is rate-limiting requests; try again in a moment' : "Couldn't find that Spotify user", { tone: 'error' });
     } finally {
       setAdding(false);
     }
   };
 
+  const removeWithUndo = (friend) => {
+    removeFriend(friend.id);
+    toast(`Removed ${friend.name || friend.id}`, { action: { label: 'Undo', onClick: () => addFriend(friend) } });
+  };
+
   const submit = (e) => {
     e.preventDefault();
     const id = userIdFromInput(input);
+    if (id?.shortLink) {
+      toast('Short spotify.link links can\'t be read here. Open it in Spotify and copy the profile link from there.', { tone: 'error', duration: 7000 });
+      return;
+    }
     if (!id) { toast("That doesn't look like a Spotify profile link", { tone: 'error' }); return; }
     addById(id);
   };
@@ -130,7 +141,7 @@ export default function Friends() {
                 >
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); removeFriend(friend.id); }}
+                    onClick={(e) => { e.stopPropagation(); removeWithUndo(friend); }}
                     aria-label={`Remove ${name}`}
                     className="absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity"
                   >

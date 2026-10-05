@@ -38,21 +38,20 @@ const SWIPE_SKIP_PX = 140;
 // few seconds. For this long after the card moves, it does not follow playback anywhere else.
 const HOLD_FOLLOW_MS = 8000;
 
-function loadSettings() {
-  try { return { autoplay: true, advance: false, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; }
-  catch { return { autoplay: true, advance: false }; }
+// Settings and skips live in the store now (and sync between devices). What an earlier build
+// kept in localStorage on this device is read once more, merged in, and the old keys go.
+function readLegacy(key) {
+  try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
 }
-
-function loadSkipped(playlistId) {
-  try { return new Set(JSON.parse(localStorage.getItem(skippedKey(playlistId)) || '[]')); }
-  catch { return new Set(); }
-}
-
-function saveSkipped(playlistId, set) {
-  try {
-    if (set.size === 0) localStorage.removeItem(skippedKey(playlistId));
-    else localStorage.setItem(skippedKey(playlistId), JSON.stringify([...set]));
-  } catch { /* fine */ }
+function adoptLegacy(playlistId) {
+  const store = useUserStore.getState();
+  const settings = readLegacy(SETTINGS_KEY);
+  if (settings && typeof settings === 'object') store.setSortModeSettings(settings);
+  const skipped = readLegacy(skippedKey(playlistId));
+  if (Array.isArray(skipped) && skipped.length) {
+    store.setSortSkips(playlistId, [...new Set([...(store.sortSkips[playlistId] || []), ...skipped])]);
+  }
+  try { localStorage.removeItem(SETTINGS_KEY); localStorage.removeItem(skippedKey(playlistId)); } catch { /* fine */ }
 }
 
 const nowPlayingTrack = () => usePlayerStore.getState().playbackState?.track_window?.current_track || null;
@@ -83,9 +82,14 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
   const queue = items;
   const pileSize = Math.max(total || 0, queue.length);
 
-  // What has been decided about each song: skipped (remembered on this device) or filed into one
-  // or more playlists. A song with neither is still waiting.
-  const [skipped, setSkipped] = useState(() => loadSkipped(sourcePlaylistId));
+  // What has been decided about each song: skipped (remembered in the store, so on every
+  // device) or filed into one or more playlists. A song with neither is still waiting.
+  const [skipped, setSkipped] = useState(() => new Set([
+    ...(useUserStore.getState().sortSkips[sourcePlaylistId] || []),
+    ...(readLegacy(skippedKey(sourcePlaylistId)) || [])
+  ]));
+  const saveSkipped = (playlistId, set) => useUserStore.getState().setSortSkips(playlistId, [...set]);
+  useEffect(() => { adoptLegacy(sourcePlaylistId); }, [sourcePlaylistId]);
   const [placed, setPlaced] = useState({}); // uri -> [playlistId]
   const isDecided = (uri) => skipped.has(uri) || (placed[uri] || []).length > 0;
 
@@ -108,7 +112,7 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
 
   const [busy, setBusy] = useState(false);
   const [lastAction, setLastAction] = useState(null);
-  const [settings, setSettings] = useState(loadSettings);
+  const settings = useUserStore((s) => s.sortModeSettings);
   const [drag, setDrag] = useState(null); // { dx, dy, overId }
   const cardRef = useRef(null);
   const dragState = useRef(null);
@@ -123,13 +127,7 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const updateSettings = (patch) => {
-    setSettings((prev) => {
-      const next = { ...prev, ...patch };
-      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch { /* fine */ }
-      return next;
-    });
-  };
+  const updateSettings = (patch) => useUserStore.getState().setSortModeSettings(patch);
 
   const imageFor = (id) => playlists.find((p) => p.id === id)?.images;
   const suggestions = track ? (suggestionsByTrack.get(track.id) || []) : [];

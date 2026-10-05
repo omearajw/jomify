@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -13,6 +13,7 @@ import LikeButton from '../components/LikeButton';
 import TrackArtists from '../components/TrackArtists';
 import { idFromUri } from '../utils/spotifyUri';
 import { useSlice } from '../store/selectors';
+import { usePlayingFrom, playingFromLabel } from '../hooks/usePlayingFrom';
 
 // Outer component only decides whether the sheet exists; the body mounts fresh each time it
 // opens so its scrub state starts clean (same split as the dialogs).
@@ -24,13 +25,27 @@ export default function NowPlayingSheet() {
   );
 }
 
+// A swipe on the artwork counts past this distance or speed
+const SWIPE_PX = 70;
+const SWIPE_VELOCITY = 500;
+
 function NowPlayingSheetBody() {
-  const { setNowPlayingOpen, setQueueOpen, setDevicePickerOpen, setCurrentView, navigateToAlbum, setContextMenu } = useSlice(useUserStore, ['setNowPlayingOpen', 'setQueueOpen', 'setDevicePickerOpen', 'setCurrentView', 'navigateToAlbum', 'setContextMenu']);
+  const { setNowPlayingOpen, setQueueOpen, setDevicePickerOpen, setCurrentView, navigateToAlbum, navigateToPlaylist, navigateToArtist, setContextMenu } = useSlice(useUserStore, ['setNowPlayingOpen', 'setQueueOpen', 'setDevicePickerOpen', 'setCurrentView', 'navigateToAlbum', 'navigateToPlaylist', 'navigateToArtist', 'setContextMenu']);
+  const playingFrom = usePlayingFrom();
+  const openPlayingFrom = () => {
+    if (!playingFrom) return;
+    close();
+    if (playingFrom.type === 'playlist') navigateToPlaylist(playingFrom.id);
+    else if (playingFrom.type === 'album') navigateToAlbum(playingFrom.id);
+    else if (playingFrom.type === 'artist') navigateToArtist(playingFrom.id);
+    else setCurrentView('liked-songs');
+  };
   const { isShuffled, repeatMode, activeDevice, sdkStatus } = useSlice(usePlayerStore, ['isShuffled', 'repeatMode', 'activeDevice', 'sdkStatus']);
   const { position, duration, paused, track } = useProgress();
   const [scrub, setScrub] = useState(null);
 
   const close = () => setNowPlayingOpen(false);
+  const swiped = useRef(false);
   const shown = scrub ?? position;
   const percent = duration > 0 ? (shown / duration) * 100 : 0;
   const art = track?.album?.images?.[0]?.url;
@@ -73,9 +88,17 @@ function NowPlayingSheetBody() {
         <button type="button" onClick={close} aria-label="Close" className="w-11 h-11 flex items-center justify-center text-neutral-300">
           <ChevronDown className="w-7 h-7" />
         </button>
-        <p className="text-xs font-bold uppercase tracking-widest text-neutral-400 truncate">
-          {activeDevice ? `Playing on ${activeDevice.name}` : 'Not connected'}
-        </p>
+        <div className="min-w-0 text-center">
+          {/* What the music is coming from, as Spotify shows; the device sits beneath it */}
+          {playingFrom ? (
+            <button type="button" onClick={openPlayingFrom} className="block max-w-full text-xs font-bold uppercase tracking-widest text-white truncate">
+              {playingFromLabel(playingFrom)}
+            </button>
+          ) : null}
+          <p className={`text-xs font-bold uppercase tracking-widest text-neutral-400 truncate ${playingFrom ? 'text-[10px] font-semibold' : ''}`}>
+            {activeDevice ? `Playing on ${activeDevice.name}` : 'Not connected'}
+          </p>
+        </div>
         <button type="button" onClick={openMenu} aria-label="More options" className="w-11 h-11 flex items-center justify-center text-neutral-300">
           <Ellipsis className="w-6 h-6" />
         </button>
@@ -83,14 +106,26 @@ function NowPlayingSheetBody() {
 
       <div className="relative flex-1 flex flex-col justify-end px-6 pb-4 gap-6 min-h-0">
         <div className="flex-1 flex items-center justify-center min-h-0 py-4">
-          <button
+          {/* Swipe the art left for the next song, right for the previous; a tap still opens the album */}
+          <motion.button
             type="button"
-            onClick={() => { if (albumId) { close(); navigateToAlbum(albumId); } }}
-            className="w-full max-w-[min(85vw,60dvh)] aspect-square rounded-2xl shadow-2xl overflow-hidden bg-neutral-800"
+            drag={canControl ? 'x' : false}
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.5}
+            onDragStart={() => { swiped.current = true; }}
+            onDragEnd={(_, info) => {
+              if (info.offset.x < -SWIPE_PX || info.velocity.x < -SWIPE_VELOCITY) next();
+              else if (info.offset.x > SWIPE_PX || info.velocity.x > SWIPE_VELOCITY) previous();
+            }}
+            onClick={() => {
+              if (swiped.current) { swiped.current = false; return; }
+              if (albumId) { close(); navigateToAlbum(albumId); }
+            }}
+            className="w-full max-w-[min(85vw,60dvh)] aspect-square rounded-2xl shadow-2xl overflow-hidden bg-neutral-800 touch-pan-y"
             aria-label={albumId ? 'Go to album' : undefined}
           >
-            {art && <img src={art} alt="" className="w-full h-full object-cover" draggable="false" />}
-          </button>
+            {art && <img src={art} alt="" className="w-full h-full object-cover pointer-events-none" draggable="false" />}
+          </motion.button>
         </div>
 
         <div className="flex items-center gap-3">

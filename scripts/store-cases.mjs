@@ -123,6 +123,26 @@ const snapshot = JSON.stringify(s().customFolders);
 s().importFolderTree([{ id: 'folder-sp-ccc', name: 'Imported', playlistIds: ['y2'], parentId: null, order: 1000 }], { mode: 'merge' });
 check('re-importing the same plan changes nothing', JSON.stringify(s().customFolders) === snapshot);
 
+// --- navigation: no frame for the page you are already on ----------------
+useUserStore.setState({ currentView: 'home', viewHistory: [], currentAlbumId: null, currentArtistId: null });
+s().navigateToAlbum('al1');
+s().navigateToAlbum('al1');
+check('reopening the album you are on adds no history frame', s().viewHistory.length === 1 && s().currentView === 'album');
+s().navigateToArtist('a1');
+s().navigateToArtist('a1');
+check('reopening the artist you are on adds no history frame', s().viewHistory.length === 2 && s().currentArtistId === 'a1');
+s().goBack();
+check('Back then returns to the album', s().currentView === 'album' && s().currentAlbumId === 'al1');
+
+// --- Sort mode state ---------------------------------------------------------
+s().setSortSkips('p9', ['spotify:track:a']);
+s().setSortSkips('p9', ['spotify:track:a', 'spotify:track:b']);
+check('skips are kept per playlist', s().sortSkips.p9.length === 2);
+s().setSortSkips('p9', []);
+check('an empty skip list removes the playlist entry', !('p9' in s().sortSkips));
+s().setSortModeSettings({ advance: true });
+check('sort mode settings patch, keeping the rest', s().sortModeSettings.advance === true && s().sortModeSettings.autoplay === true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) { console.log(failures.map(f => `  - ${f}`).join('\n')); process.exit(1); }
 console.log('');

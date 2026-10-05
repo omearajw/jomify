@@ -11,7 +11,8 @@ import { rowButtonProps } from '../../utils/a11y';
 import MoreButton from '../../components/MoreButton';
 import { Skeleton, SkeletonRows } from '../../components/Skeleton';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
-import { isSameTrack } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable } from '../../utils/spotifyUri';
+import { toast } from '../../store/toastStore';
 
 const ROW_PAGE = 150;
 const randomIndex = (count) => Math.floor(Math.random() * count);
@@ -106,8 +107,10 @@ export default function LikedSongsView() {
   const items = (trackData?.items || []).filter((item) => item.track && likedTracks[item.track.id] !== false);
   const removedCount = (trackData?.items.length ?? 0) - items.length;
 
+  const country = useUserStore((s) => s.profile?.country);
   const handleTrackSelect = (index) => {
     if (!token || !trackData) return;
+    if (isUnplayable(items[index]?.track, country)) { toast("Spotify can't play this song."); return; }
 
     const allUris = items
       .map(item => item.track?.uri)
@@ -115,7 +118,7 @@ export default function LikedSongsView() {
 
     if (!allUris.length) return;
     const userId = useUserStore.getState().profile?.id;
-    playOn((deviceId) => playLikedSongsQueue(token, deviceId, allUris, index, userId));
+    playOn((deviceId) => playLikedSongsQueue(token, deviceId, allUris, index, userId), { track: items[index]?.track });
   };
 
   // Shuffle on, then start somewhere random, the same as a playlist's Shuffle button
@@ -212,6 +215,7 @@ export default function LikedSongsView() {
           if (!track) return null;
 
           const isCurrentTrack = isSameTrack(track, currentTrack);
+          const unplayable = isUnplayable(track, country);
 
           return (
             <div
@@ -219,7 +223,9 @@ export default function LikedSongsView() {
               onClick={() => handleTrackSelect(index)}
               {...rowButtonProps(() => handleTrackSelect(index))}
               onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track }); }}
-              className={`grid ${GRID} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px]`}
+              aria-disabled={unplayable || undefined}
+              title={unplayable ? 'Not available on Spotify' : undefined}
+              className={`grid ${GRID} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${unplayable ? 'opacity-45' : ''}`}
             >
               <div className="text-neutral-400 w-4 h-4 hidden md:flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (

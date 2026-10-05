@@ -116,7 +116,8 @@ export default function Artist() {
     if (!token) return;
     const uris = topTracks.slice(0, 10).map(t => t.uri).filter(Boolean);
     const index = Math.max(0, uris.indexOf(trackUri));
-    playOn((deviceId) => playUris(token, deviceId, uris, index));
+    const track = topTracks.find((t) => t.uri === trackUri) || null;
+    playOn((deviceId) => playUris(token, deviceId, uris, index), { track });
   };
 
   // Back navigation is the global button in MainLayout; this view used to render a second one
