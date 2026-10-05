@@ -9,6 +9,16 @@ import { log } from './debugLog';
 
 const BASE = 'https://api.spotify.com/v1';
 
+// Fields Spotify's 2026 changes removed for development-mode apps, and which Jomify shows. The
+// check reports which of them this account still receives.
+const WATCHED_FIELDS = {
+  '/me': ['followers', 'product', 'email', 'country'],
+  '/artists/': ['followers', 'popularity', 'genres'],
+  '/tracks/': ['popularity', 'linked_from', 'available_markets'],
+  '/albums/': ['label', 'popularity', 'copyrights'],
+  '/users/': ['followers']
+};
+
 async function get(path, token) {
   const started = Date.now();
   try {
@@ -16,6 +26,16 @@ async function get(path, token) {
     let note = '';
     if (!response.ok) {
       try { note = (await response.json())?.error?.message || ''; } catch { /* no body */ }
+    } else {
+      // Only the single-object paths: "/me" itself, or "/artists/<id>" with nothing after the id
+      const watched = Object.entries(WATCHED_FIELDS).find(([prefix]) =>
+        prefix.endsWith('/') ? new RegExp(`^${prefix}[^/?]+$`).test(path) : path === prefix);
+      if (watched) {
+        try {
+          const body = await response.json();
+          note = 'fields: ' + watched[1].map((f) => `${f}=${body?.[f] === undefined ? 'gone' : 'present'}`).join(' ');
+        } catch { /* not json */ }
+      }
     }
     return { status: response.status, ms: Date.now() - started, note };
   } catch (err) {
@@ -57,6 +77,7 @@ export async function checkSpotifyEndpoints() {
     ['GET /me/player/devices', '/me/player/devices'],
     ['GET /me/player', '/me/player'],
     ['GET /search', '/search?q=jamiroquai&type=track&limit=1'],
+    ['GET /search with limit=20 (Jomify asks for 20; the limit was cut to 10)', '/search?q=jamiroquai&type=track,album,artist,playlist&limit=20'],
     ids.track && ['GET /me/tracks/contains (deprecated)', `/me/tracks/contains?ids=${ids.track}`],
     ids.track && ['GET /me/library/contains (new)', `/me/library/contains?uris=${u(`spotify:track:${ids.track}`)}`],
     ids.track && ['GET /tracks/{id}', `/tracks/${ids.track}`],
