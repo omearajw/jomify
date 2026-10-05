@@ -12,9 +12,10 @@ export default function ToastHost() {
   const toasts = useToastStore((s) => s.toasts);
   const dismiss = useToastStore((s) => s.dismiss);
 
+  // Above the player bar on desktop, and above the mini player, tabs and the phone's own bottom
+  // inset on a phone, where a fixed 112px used to sit over the mini player
   return (
-    // Sits just above the 96px player bar, out of the way of the main content
-    <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[9000] flex flex-col items-center gap-2 pointer-events-none">
+    <div className="fixed bottom-[calc(7.5rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[9000] flex flex-col items-center gap-2 pointer-events-none">
       <AnimatePresence>
         {toasts.map((t) => (
           <motion.div

@@ -47,3 +47,39 @@ export function pickClosestByDuration(results, durationSec, toleranceSec = 10) {
   }
   return bestDiff <= toleranceSec ? best : results[0];
 }
+
+// One search for both the Lyrics page and Zen mode. They used to search differently: Zen
+// trimmed "feat." and fell back to a second database, the page did neither, so the same song
+// had lyrics in one and not the other. Resolves {synced, plain} and rejects with a message
+// the view can show.
+export async function findLyrics(track, durationSec) {
+  const artist = track?.artists?.[0]?.name || '';
+  const title = String(track?.name || '').split(/[-()]/)[0].replace(/feat\..*/i, '').trim();
+  if (!artist || !title) throw new Error("We couldn't find lyrics for this song.");
+  const query = encodeURIComponent(`${artist} ${title}`);
+
+  let reachedAnything = false;
+  try {
+    const res = await fetch(`https://lrclib.net/api/search?q=${query}`);
+    if (res.ok) {
+      reachedAnything = true;
+      const data = await res.json();
+      const best = pickClosestByDuration(data, durationSec);
+      if (best?.syncedLyrics) return { synced: parseLrc(best.syncedLyrics), plain: [] };
+      if (best?.plainLyrics) return { synced: null, plain: best.plainLyrics.split('\n') };
+    }
+  } catch { /* try the next one */ }
+
+  try {
+    const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`);
+    if (res.ok) {
+      reachedAnything = true;
+      const data = await res.json();
+      if (data?.lyrics) return { synced: null, plain: data.lyrics.replace(/Paroles de la chanson .+\r?\n/i, '').split('\n') };
+    }
+  } catch { /* fall through */ }
+
+  throw new Error(reachedAnything
+    ? "We couldn't find lyrics for this song in the open databases."
+    : 'Could not reach the public lyrics databases.');
+}

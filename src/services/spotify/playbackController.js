@@ -12,6 +12,7 @@ import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { toast } from '../../store/toastStore';
 import {
+  checkTracksLiked,
   fetchPlayerState, fetchDevices, transferPlayback, pausePlayback, resumePlayback,
   skipToNext, skipToPrevious, seekPlayback, setPlaybackVolume, setRepeatMode, toggleShuffleState
 } from './api';
@@ -83,6 +84,19 @@ let refreshInFlight = null;
 let volumeTimer = null;
 let activationInstalled = false;
 
+// Whatever starts playing, on this browser or elsewhere: it leaves "Up Next" if it was queued,
+// and its heart is checked. Both used to happen only in the desktop player bar, so on a phone
+// queued songs piled up and the heart for the playing song sat grey.
+function noteNowPlaying(track) {
+  if (!track) return;
+  const store = useUserStore.getState();
+  store.consumeManuallyQueuedTrack(track);
+  const t = token();
+  if (t && track.id && store.likedTracks?.[track.id] === undefined) {
+    checkTracksLiked(t, [track.id]).then(store.setLikedTracks).catch(() => {});
+  }
+}
+
 // --- Remote state --------------------------------------------------------------------------
 
 function applyRemoteState(state) {
@@ -123,8 +137,7 @@ function applyRemoteState(state) {
   store.setRemoteVolume(device?.volume_percent ?? null);
   const prevUri = store.playbackState?.track_window?.current_track?.uri;
   store.setPlaybackState(toSdkShape(state, store.playbackState));
-  // Same as for this browser's player: a queued song leaves "Up Next" once it plays elsewhere
-  if (state.item && state.item.uri !== prevUri) useUserStore.getState().consumeManuallyQueuedTrack(state.item);
+  if (state.item && state.item.uri !== prevUri) noteNowPlaying(state.item);
 }
 
 export async function refreshRemoteState() {
@@ -418,10 +431,8 @@ function initLocalPlayer() {
       s.setPlaybackState(state);
       syncMediaSession(state);
       setPresence(state.paused ? 'paused' : 'playing');
-      // A song the user queued leaves "Up Next" once it plays. This used to live in the desktop
-      // player bar alone, so on a phone queued songs piled up for good.
       const nowTrack = state.track_window?.current_track;
-      if (nowTrack && nowTrack.uri !== before?.track_window?.current_track?.uri) useUserStore.getState().consumeManuallyQueuedTrack(nowTrack);
+      if (nowTrack && nowTrack.uri !== before?.track_window?.current_track?.uri) noteNowPlaying(nowTrack);
       if (!s.isLocalActive) {
         log('playback', 'playing on', `${THIS_BROWSER} (this device)`);
         s.setIsLocalActive(true);

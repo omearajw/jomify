@@ -231,6 +231,7 @@ export default function Sidebar() {
           await uploadPlaylistCoverImage(token, newPlaylist.id, imageFile);
         } catch (err) {
           console.warn('Playlist created but cover image upload failed:', err);
+          toast(`Created "${name}", but the cover didn't upload`, { tone: 'error', duration: 5000 });
         }
       }
 
@@ -238,6 +239,7 @@ export default function Sidebar() {
       navigateToPlaylist(newPlaylist.id);
     } catch (err) {
       console.error('Sidebar playlist creation failed:', err);
+      toast(`Couldn't create "${name}"`, { tone: 'error' });
     }
   };
 

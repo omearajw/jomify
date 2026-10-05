@@ -27,6 +27,7 @@ export default function LikedSongsView() {
 
   // Set when a page fails to load partway; the header then says how much is actually here
   const [loadError, setLoadError] = useState('');
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     if (token) {
@@ -44,10 +45,15 @@ export default function LikedSongsView() {
         setLikedTracks(updates);
 
         // The rest pages in as you scroll (see the sentinel below)
-      }).catch((err) => { loadedForToken.current = false; console.error(err); });
+      }).catch((err) => {
+        loadedForToken.current = false;
+        console.error(err);
+        // The skeleton used to stay up for good with nothing said
+        setLoadError(err?.message === 'RATE_LIMITED' ? 'Spotify is rate-limiting Jomify right now.' : "Couldn't load your Liked Songs.");
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, reloadNonce]);
 
   // A function declaration rather than a const, so the effect above can reference it without
   // a use-before-declare: declarations hoist, and it only ever runs after mount anyway.
@@ -141,15 +147,13 @@ export default function LikedSongsView() {
           {loadError && (
             <p className="text-red-400 text-xs font-medium mt-2 flex items-center gap-3">
               {loadError}
-              {data.next && (
-                <button
-                  type="button"
-                  onClick={() => { if (!isFetchingMore.current) loadRestOfTracks(data.next); }}
-                  className="underline hover:text-white transition-colors"
-                >
-                  Try again
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => { if (!trackData) setReloadNonce((n) => n + 1); else if (data.next && !isFetchingMore.current) loadRestOfTracks(data.next); }}
+                className="underline hover:text-white transition-colors"
+              >
+                Try again
+              </button>
             </p>
           )}
         </div>
@@ -172,7 +176,10 @@ export default function LikedSongsView() {
 
       {/* Tracklist */}
       <div className="flex flex-col">
-        {!trackData && <SkeletonRows count={8} art={false} />}
+        {!trackData && !loadError && <SkeletonRows count={8} art={false} />}
+        {trackData && data.items.length === 0 && (
+          <p className="py-10 text-center text-sm text-neutral-500">Songs you like will appear here. Tap the heart on any song.</p>
+        )}
         {data.items.slice(0, visibleCount).map((item, index) => {
           const track = item.track;
           if (!track) return null;

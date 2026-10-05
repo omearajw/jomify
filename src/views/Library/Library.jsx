@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { useUserStore } from '../../store/userStore';
+import { toast } from '../../store/toastStore';
 import { fetchUserPlaylists, addTracksToPlaylist, unfollowPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../../services/spotify/api';
 import { Heart, Folder, Maximize2, ChevronLeft, ChevronRight, Plus, Minus, Trash2, MoreVertical, FolderPlus, Minimize2, FolderX, FolderInput, FolderOutput, Search, ArrowUpDown, X } from 'lucide-react';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -480,6 +481,7 @@ export default function Library() {
           await uploadPlaylistCoverImage(token, newPlaylist.id, imageFile);
         } catch (err) {
           console.warn('Playlist created but cover image upload failed:', err);
+          toast(`Created "${name}", but the cover didn't upload`, { tone: 'error', duration: 5000 });
         }
       }
 
@@ -488,6 +490,7 @@ export default function Library() {
       setPlaylistDialogOpen(false);
     } catch (err) {
       console.error('Failed to create playlist:', err);
+      toast(`Couldn't create "${name}"`, { tone: 'error' });
     } finally {
       setIsSubmittingPlaylist(false);
     }

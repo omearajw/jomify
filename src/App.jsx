@@ -55,6 +55,7 @@ function App() {
   ]);
   
   const isAuthenticating = useRef(false);
+  const [loginError, setLoginError] = useState('');
   const isMobile = useIsMobile();
   const hydratedPinnedIds = useRef(new Set());
 
@@ -176,7 +177,11 @@ function App() {
         setToken(access_token, expires_in);
         window.history.replaceState({}, document.title, "/");
       }).catch(err => {
+        // This used to fail without a word, leaving the code in the address bar: a second
+        // attempt then reused a code Spotify had already spent
         console.error("Login failed:", err);
+        setLoginError("Spotify didn't complete the sign-in. Try again.");
+        window.history.replaceState({}, document.title, "/");
         isAuthenticating.current = false; 
       });
     }
@@ -422,6 +427,7 @@ function App() {
           >
             Connect to Spotify
           </button>
+          {loginError && <p className="mt-4 text-sm text-red-400">{loginError}</p>}
         </div>
       </div>
     );

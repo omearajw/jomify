@@ -47,12 +47,13 @@ export function installLongPressContextMenu() {
     if (Math.abs(e.clientX - start.x) > MOVE_TOLERANCE_PX || Math.abs(e.clientY - start.y) > MOVE_TOLERANCE_PX) cancel();
   };
 
-  // A native long-press menu (Android) arrives as its own contextmenu event: let it through
-  // and drop ours so nothing fires twice
+  // The browser's own long-press (Android) arrives as a contextmenu event of its own. If ours
+  // has already fired, swallow it, or the browser's menu and a second Jomify menu both open; if
+  // it beats ours, drop ours and let it through to the app's handler instead.
   const onNativeContextMenu = (e) => {
-    if (fired) { fired = false; return; }
+    if (e.isTrusted === false) return; // our own synthetic event
+    if (fired) { fired = false; e.preventDefault(); e.stopImmediatePropagation(); return; }
     if (timer) cancel();
-    if (e.pointerType === 'touch' || (start === null && e.button === 0)) return;
   };
 
   // Passive: none of the pointer handlers call preventDefault, and a non-passive pointermove on

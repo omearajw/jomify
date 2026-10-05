@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Volume2, Mic2, Maximize2, VolumeX, Shuffle, ListMusic, Repeat, Repeat1, MonitorSpeaker } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { formatTime } from '../utils/formatTime';
-import { checkTracksLiked } from '../services/spotify/api';
 import { useUserStore } from '../store/userStore';
 import LikeButton from '../components/LikeButton';
 import TrackArtists from '../components/TrackArtists';
@@ -36,12 +35,12 @@ function songDragImage(track) {
 export default function PlayerBar() {
   const { playbackState, isShuffled, repeatMode, activeDevice, sdkStatus, isLocalActive, remoteVolume } = useSlice(usePlayerStore, ['playbackState', 'isShuffled', 'repeatMode', 'activeDevice', 'sdkStatus', 'isLocalActive', 'remoteVolume']);
   const {
-    token, setLikedTracks, toggleQueue, consumeManuallyQueuedTrack,
+    toggleQueue,
     toggleZenMode, savedVolume, setSavedVolume, setDevicePickerOpen,
     currentView, setCurrentView, goBack, navigateToAlbum, viewHistory,
     isQueueOpen, isZenMode, setContextMenu
   } = useSlice(useUserStore, [
-    'token', 'setLikedTracks', 'toggleQueue', 'consumeManuallyQueuedTrack',
+    'toggleQueue',
     'toggleZenMode', 'savedVolume', 'setSavedVolume', 'setDevicePickerOpen',
     'currentView', 'setCurrentView', 'goBack', 'navigateToAlbum', 'viewHistory',
     'isQueueOpen', 'isZenMode', 'setContextMenu'
@@ -54,7 +53,6 @@ export default function PlayerBar() {
   const isScrubbing = useRef(false);
 
   const currentTrack = playbackState?.track_window?.current_track;
-  const currentTrackUid = currentTrack?.uid;
   const isPaused = playbackState ? playbackState.paused : true;
   const durationMs = currentTrack ? playbackState.duration : 0;
   // Something to send commands to: this browser's player, or whatever device Spotify says is active
@@ -85,13 +83,6 @@ export default function PlayerBar() {
     return () => clearInterval(interval);
   }, [isPaused, durationMs]);
 
-  useEffect(() => {
-    if (token && currentTrack?.id) {
-      // During a rate-limit cooldown this rejects locally; there's nothing useful to do about it
-      checkTracksLiked(token, [currentTrack.id]).then(setLikedTracks).catch(() => {});
-    }
-  }, [token, currentTrack?.id, setLikedTracks]);
-
   const handleTogglePlay = () => { if (currentTrack) togglePlay(); };
   const handleNext = () => nextTrack();
   const handlePrev = () => previousTrack();
@@ -111,15 +102,6 @@ export default function PlayerBar() {
   };
 
   const handleToggleShuffle = () => { if (canControl) toggleShuffle(); };
-
-  useEffect(() => {
-    if (currentTrack) {
-      consumeManuallyQueuedTrack(currentTrack);
-    }
-  // Keyed on the per-play uid rather than the track object, so a track that repeats is
-  // consumed once per play and a position tick doesn't re-run this
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTrackUid, consumeManuallyQueuedTrack]);
 
   // One place that maps slider value -> audible volume. The controller applies the cubic curve
   // for this browser's player and sends the plain percentage to remote devices.

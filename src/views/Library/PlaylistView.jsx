@@ -33,8 +33,13 @@ const UNDO_MS = 8000;
 // Shown instead of a blank page when Spotify refuses the playlist. Since November 2024 Spotify
 // blocks its own playlists (Discover Weekly, Blend, Daily Mix, Release Radar, Your Top Songs)
 // for apps in development mode, which Jomify is.
-function PlaylistLoadError({ playlistId, name, status, isSpotifyOwned }) {
+function PlaylistLoadError({ playlistId, name, status, reason, isSpotifyOwned, onRetry }) {
   const blocked = isSpotifyOwned && (status === 403 || status === 404);
+  const explanation = reason === 'rate-limited'
+    ? 'Spotify is rate-limiting Jomify right now.'
+    : reason === 'network'
+      ? "Couldn't reach Spotify. Check your connection."
+      : `Couldn't load this playlist (Spotify answered ${status}).`;
   return (
     <div className="mt-8 max-w-xl rounded-3xl border border-white/10 bg-neutral-900/60 p-8 animate-fade-in">
       <p className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">{blocked ? 'Made by Spotify' : 'Playlist'}</p>
@@ -46,7 +51,12 @@ function PlaylistLoadError({ playlistId, name, status, isSpotifyOwned }) {
           granted extended quota, and Jomify hasn't. The playlist still works in Spotify itself.
         </p>
       ) : (
-        <p className="text-neutral-300 text-sm">Couldn't load this playlist (Spotify answered {status}). Try again in a moment.</p>
+        <p className="text-neutral-300 text-sm">{explanation}</p>
+      )}
+      {!blocked && onRetry && (
+        <button type="button" onClick={onRetry} className="mt-4 mr-3 inline-flex items-center rounded-full border border-white/15 px-5 py-2 text-sm font-bold text-white hover:bg-white/5 transition-colors">
+          Try again
+        </button>
       )}
       <a
         href={`https://open.spotify.com/playlist/${encodeURIComponent(playlistId)}`}
@@ -88,6 +98,8 @@ export default function PlaylistView() {
   } : null);
   // Keyed by playlist id so switching playlists needs no reset; { id, status }
   const [loadError, setLoadError] = useState(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const retryLoad = () => { setLoadError(null); setReloadNonce((n) => n + 1); };
   const [visibleCount, setVisibleCount] = useState(ROW_PAGE);
   const sentinelRef = useRef(null);
 
@@ -447,10 +459,16 @@ export default function PlaylistView() {
             loadRestOfTracks(data.tracks.next);
           }
         })
-        .catch((err) => { loadedPlaylistId.current = null; console.error(err); });
+        .catch((err) => {
+          // A dropped connection used to leave the skeleton up for good; it gets the same card
+          // as an HTTP failure, with a way to try again
+          loadedPlaylistId.current = null;
+          console.error(err);
+          setLoadError({ id: requestedId, status: 0, reason: err?.message === 'RATE_LIMITED' ? 'rate-limited' : 'network' });
+        });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, activePlaylistId]); 
+  }, [token, activePlaylistId, reloadNonce]); 
 
   // --- BACKGROUND STREAMING ---
   // A declaration so the load effect above can call it: declarations hoist, and it only runs
@@ -714,7 +732,9 @@ export default function PlaylistView() {
           playlistId={activePlaylistId}
           name={summary?.name}
           status={loadError.status}
+          reason={loadError.reason}
           isSpotifyOwned={summary?.owner?.id === 'spotify'}
+          onRetry={retryLoad}
         />
       );
     }

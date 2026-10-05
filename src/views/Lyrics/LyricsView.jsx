@@ -4,7 +4,7 @@ import { Mic2, AlertCircle, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import TrackArtists from '../../components/TrackArtists';
 import AudioWaveform from '../../components/AudioWaveform';
-import { parseLrc, pickClosestByDuration, LYRIC_LEAD_IN_MS } from '../../lib/lrc';
+import { findLyrics, LYRIC_LEAD_IN_MS } from '../../lib/lrc';
 import { seek } from '../../services/spotify/playbackController';
 import { useSlice } from '../../store/selectors';
 
@@ -101,32 +101,10 @@ export default function LyricsView() {
       setActiveIndex(-1);
 
       try {
-        const artist = currentTrack.artists[0].name;
-        const title = currentTrack.name.split(/[-()]/)[0].trim();
-        const query = encodeURIComponent(`${artist} ${title}`);
-
-        const res = await fetch(`https://lrclib.net/api/search?q=${query}`);
+        const found = await findLyrics(currentTrack, trackDurationSec);
         if (cancelled) return;
-
-        if (!res.ok) throw new Error('Could not connect to the public lyrics database.');
-
-        const data = await res.json();
-        if (cancelled) return;
-
-        if (!data || data.length === 0) {
-           throw new Error("We couldn't find lyrics for this specific track in the open database.");
-        }
-
-        const bestMatch = pickClosestByDuration(data, trackDurationSec);
-
-        if (bestMatch.syncedLyrics) {
-          setSyncedLyrics(parseLrc(bestMatch.syncedLyrics));
-        } else if (bestMatch.plainLyrics) {
-          setPlainLyrics(bestMatch.plainLyrics.split('\n'));
-        } else {
-          throw new Error("No lyrics data available for this match.");
-        }
-
+        if (found.synced) setSyncedLyrics(found.synced);
+        else setPlainLyrics(found.plain);
       } catch (err) {
         if (cancelled) return;
         console.error("Lyrics Engine Error:", err);

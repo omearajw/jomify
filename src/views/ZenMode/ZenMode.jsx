@@ -4,10 +4,10 @@ import { usePlayerStore } from '../../store/playerStore';
 import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import AudioWaveform from '../../components/AudioWaveform';
-import { parseLrc, pickClosestByDuration, LYRIC_LEAD_IN_MS } from '../../lib/lrc';
+import { findLyrics, LYRIC_LEAD_IN_MS } from '../../lib/lrc';
 import { useSlice } from '../../store/selectors';
 import { getBlurredBackdrop } from '../../utils/blurBackdrop';
-import { togglePlay, next as nextTrack, previous as previousTrack, seek } from '../../services/spotify/playbackController';
+import { togglePlay, next as nextTrack, previous as previousTrack, seek, setVolume as setPlaybackVolume } from '../../services/spotify/playbackController';
 
 // Lines this far from the active one get the animated depth-of-field treatment; the rest are
 // plain elements with a static style, so a 200-line song doesn't run 200 spring animations
@@ -15,7 +15,7 @@ const ANIMATED_LINE_RADIUS = 10;
 
 export default function ZenMode() {
   const { isZenMode, toggleZenMode, savedVolume, setSavedVolume } = useSlice(useUserStore, ['isZenMode', 'toggleZenMode', 'savedVolume', 'setSavedVolume']);
-  const { player, playbackState } = useSlice(usePlayerStore, ['player', 'playbackState']);
+  const { player, playbackState, activeDevice, isLocalActive, remoteVolume } = useSlice(usePlayerStore, ['player', 'playbackState', 'activeDevice', 'isLocalActive', 'remoteVolume']);
 
   const [prevVolume, setPrevVolume] = useState(50);
   const [isActive, setIsActive] = useState(true);
@@ -101,40 +101,33 @@ export default function ZenMode() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, [isZenMode, toggleZenMode]);
 
-  // Volume Logic
-  useEffect(() => {
-    if (player && isZenMode) {
-      const exponentialVolume = Math.pow(savedVolume / 100, 3);
-      player.setVolume(exponentialVolume).catch(console.error);
-    }
-  }, [player, isZenMode, savedVolume]);
+  // Volume goes through the controller, the same as the player bar: it reaches whichever
+  // device is playing. Talking to this computer's player directly, as this used to, did nothing
+  // while the music was on a speaker.
+  const isRemote = Boolean(activeDevice) && !isLocalActive;
+  const volumeValue = isRemote && remoteVolume !== null ? remoteVolume : savedVolume;
+  const volumeSupported = !isRemote || activeDevice?.supportsVolume !== false;
 
-  const handleVolumeChange = (e) => {
-    const uiValue = parseInt(e.target.value, 10);
-    setSavedVolume(uiValue); 
-
-    if (uiValue > 0) setPrevVolume(uiValue);
-
-    if (player) {
-      const exponentialVolume = Math.pow(uiValue / 100, 3);
-      player.setVolume(exponentialVolume).catch(console.error);
-    }
+  const applyVolume = (value) => {
+    const clamped = Math.max(0, Math.min(100, value));
+    if (clamped > 0) setPrevVolume(clamped);
+    if (!isRemote) setSavedVolume(clamped);
+    setPlaybackVolume(clamped);
   };
-
+  const handleVolumeChange = (e) => applyVolume(parseInt(e.target.value, 10));
   const toggleMute = () => {
-    if (!player) return;
-    
-    if (savedVolume > 0) {
-      setPrevVolume(savedVolume);
-      setSavedVolume(0);
-      player.setVolume(0).catch(console.error);
-    } else {
-      const restoredVolume = prevVolume > 0 ? prevVolume : 50;
-      setSavedVolume(restoredVolume);
-      const exponentialVolume = Math.pow(restoredVolume / 100, 3);
-      player.setVolume(exponentialVolume).catch(console.error);
-    }
+    if (!volumeSupported) return;
+    if (volumeValue > 0) applyVolume(0);
+    else applyVolume(prevVolume > 0 ? prevVolume : 50);
   };
+
+  // Escape leaves Zen even when the browser refused fullscreen, in which case there is no
+  // fullscreenchange to react to
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && !document.fullscreenElement) toggleZenMode(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [toggleZenMode]);
 
   // --- LYRICS CLOCK ENGINE ---
   // Recalibrates from the live player position whenever the track changes,
@@ -233,54 +226,10 @@ export default function ZenMode() {
       setLyricsLoading(true);
 
       try {
-        const artist = currentTrack.artists[0].name;
-        const rawTitle = currentTrack.name.split(/[-()]/)[0].trim();
-        const title = rawTitle.replace(/feat\..*/i, '').trim();
-        const query = encodeURIComponent(`${artist} ${title}`);
-        
-        let foundLyrics = false;
-
-        // ATTEMPT 1: LrcLib (Synced Database)
-        try {
-          const lrcRes = await fetch(`https://lrclib.net/api/search?q=${query}`);
-          if (lrcRes.ok) {
-            const data = await lrcRes.json();
-            if (isMounted && data && data.length > 0) {
-              const bestMatch = pickClosestByDuration(data, trackDurationSec);
-              if (bestMatch.syncedLyrics) {
-                setSyncedLyrics(parseLrc(bestMatch.syncedLyrics));
-                foundLyrics = true;
-              } else if (bestMatch.plainLyrics) {
-                setPlainLyrics(bestMatch.plainLyrics.split('\n'));
-                foundLyrics = true;
-              }
-            }
-          }
-        } catch (err) {
-          console.warn("LrcLib fetch blocked or failed. Cascading to fallback...", err);
-        }
-
-        // ATTEMPT 2: Lyrics.ovh (Fallback Database)
-        if (!foundLyrics) {
-          try {
-            const ovhRes = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`);
-            if (ovhRes.ok) {
-              const data = await ovhRes.json();
-              if (data && data.lyrics && isMounted) {
-                const cleanLyrics = data.lyrics.replace(/Paroles de la chanson .+\r?\n/i, '');
-                setPlainLyrics(cleanLyrics.split('\n'));
-                foundLyrics = true;
-              }
-            }
-          } catch (err) {
-             console.warn("Lyrics.ovh fetch failed.", err);
-          }
-        }
-
-        if (!foundLyrics && isMounted) {
-           throw new Error("We couldn't find lyrics for this specific track in any open database.");
-        }
-
+        const found = await findLyrics(currentTrack, trackDurationSec);
+        if (!isMounted) return;
+        if (found.synced) setSyncedLyrics(found.synced);
+        else setPlainLyrics(found.plain);
       } catch (err) {
         console.error("Lyrics Engine Error:", err);
         if (isMounted) setLyricsError(err.message || "Failed to load lyrics.");
@@ -532,6 +481,8 @@ export default function ZenMode() {
 
       <button 
         onClick={toggleZenMode}
+        aria-label="Leave Zen mode"
+        title="Leave Zen mode (Esc)"
         className={`absolute top-8 right-8 z-20 w-12 h-12 flex items-center justify-center bg-white/5 border border-white/10 text-white/60 hover:text-white rounded-full backdrop-blur-xl hover:bg-white/10 hover:scale-105 active:scale-95 transition-all duration-700 shadow-2xl ${isActive ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
       >
         <Minimize2 className="w-5 h-5" />
@@ -623,6 +574,7 @@ export default function ZenMode() {
       >
         <button
           onClick={previousTrack}
+          aria-label="Previous"
           className="text-white/40 hover:text-white hover:scale-110 active:scale-95 transition-all duration-300"
         >
           <SkipBack className="w-6 h-6 fill-current" />
@@ -630,6 +582,7 @@ export default function ZenMode() {
         
         <button
           onClick={togglePlay}
+          aria-label={playbackState?.paused ? 'Play' : 'Pause'}
           className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl shadow-black/50"
         >
           {isPaused ? (
@@ -641,6 +594,7 @@ export default function ZenMode() {
 
         <button
           onClick={nextTrack}
+          aria-label="Next"
           className="text-white/40 hover:text-white hover:scale-110 active:scale-95 transition-all duration-300"
         >
           <SkipForward className="w-6 h-6 fill-current" />
@@ -651,6 +605,8 @@ export default function ZenMode() {
       <div className={`absolute bottom-8 right-8 z-30 flex items-center space-x-3 bg-neutral-950/40 border border-white/5 hover:border-white/10 hover:bg-neutral-900/60 px-4 py-3 rounded-xl transition-all duration-500 group ${isActive ? 'opacity-30 hover:opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
         <button 
           onClick={() => setShowLyrics(!showLyrics)} 
+          aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+          aria-pressed={showLyrics}
           className={`transition-colors ${showLyrics ? 'text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]' : 'text-white/60 hover:text-white'}`}
         >
           <Mic2 className="w-4 h-4" />
@@ -658,8 +614,8 @@ export default function ZenMode() {
 
         <div className="w-px h-4 bg-white/10 mx-1" />
 
-        <button onClick={toggleMute} className="text-white/60 hover:text-white transition-colors">
-          {savedVolume === 0 ? (
+        <button onClick={toggleMute} disabled={!volumeSupported} aria-label={volumeValue === 0 ? 'Unmute' : 'Mute'} className="text-white/60 hover:text-white transition-colors disabled:opacity-40">
+          {volumeValue === 0 ? (
             <VolumeX className="w-4 h-4 text-red-400" />
           ) : (
             <Volume2 className="w-4 h-4" />
@@ -669,8 +625,10 @@ export default function ZenMode() {
           type="range"
           min="0"
           max="100"
-          value={savedVolume}
+          value={volumeValue}
           onChange={handleVolumeChange}
+          disabled={!volumeSupported}
+          aria-label="Volume"
           className="w-0 group-hover:w-20 accent-white h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer transition-all duration-500 ease-out origin-right"
         />
       </div>
