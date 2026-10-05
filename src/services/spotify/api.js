@@ -2,6 +2,7 @@ import { useUserStore } from '../../store/userStore';
 import { ensureFreshToken, isTokenStale } from './session';
 import { timeoutSignal, REQUEST_TIMEOUT_MS } from './http';
 import { log } from '../debugLog';
+import { toSpotifyDescription } from '../../utils/strings';
 
 // "GET /v1/me/player" for the log: the path names the endpoint, and the query string adds nothing
 const describeRequest = (url, options) => {
@@ -271,7 +272,8 @@ export async function createPlaylist(token, userId, { name, description = '', pu
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ name, description, public: isPublic, collaborative })
+    // An empty description is left out rather than sent: Spotify answers an empty one with a 400
+    body: JSON.stringify({ name, public: isPublic, collaborative, ...(toSpotifyDescription(description) ? { description: toSpotifyDescription(description) } : {}) })
   });
 
   if (!response.ok) throw new Error("Failed to create playlist");
@@ -281,7 +283,9 @@ export async function createPlaylist(token, userId, { name, description = '', pu
 export async function updatePlaylist(token, playlistId, { name, description = undefined, public: isPublic = undefined, collaborative = undefined } = {}) {
   const payload = {};
   if (name !== undefined) payload.name = name;
-  if (description !== undefined) payload.description = description;
+  // Spotify refuses an empty description ("Attribute description is empty"), so clearing one
+  // sends a single space, which shows as nothing
+  if (description !== undefined) payload.description = toSpotifyDescription(description) || ' ';
   if (isPublic !== undefined) payload.public = isPublic;
   if (collaborative !== undefined) payload.collaborative = collaborative;
 
@@ -295,7 +299,7 @@ export async function updatePlaylist(token, playlistId, { name, description = un
   });
 
   if (!response.ok) throw new Error("Failed to update playlist");
-  return { name, description, public: isPublic, collaborative };
+  return { name, description: payload.description?.trim(), public: isPublic, collaborative };
 }
 
 export async function fetchUserAlbums(token) {

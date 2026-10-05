@@ -3,6 +3,7 @@
 
 import { toSdkShape, nextUid, resolveDeviceId, REPEAT_MODES, describePlatform, playerNameFor, localDeviceLabel, deviceTypeLabel, sliderGain, startupGain } from '../src/services/spotify/playbackAdapter.js';
 import { isSameTrack } from '../src/utils/spotifyUri.js';
+import { fromSpotifyText, toSpotifyDescription } from '../src/utils/strings.js';
 
 let pass = 0;
 let fail = 0;
@@ -167,6 +168,18 @@ check('an unknown length never matches on title', !isSameTrack(rec('a', 'Song', 
 check('a title with nothing comparable never matches', !isSameTrack(rec('a', '東京', 'Band', 200000), rec('b', '大阪', 'Band', 200000)));
 check('nothing playing', !isSameTrack(original, null) && !isSameTrack(null, original));
 check('symmetric', isSameTrack(rec('new', 'Virtual Insanity', 'Jamiroquai', 230000), original));
+
+section('text from Spotify, and descriptions going back');
+check('an apostrophe', fromSpotifyText('It&#x27;s late') === "It's late");
+check('ampersand, quotes, slash and angle brackets', fromSpotifyText('R&amp;B &quot;mix&quot; &#x2F; &lt;3') === 'R&B "mix" / <3');
+check('decimal and named forms', fromSpotifyText('Don&#39;t &apos;stop&apos;') === "Don't 'stop'");
+check('encoded twice, by an earlier save', fromSpotifyText('It&amp;#x27;s') === "It's");
+check('emoji and accents pass through', fromSpotifyText('Café ☕ &#x1F525;') === 'Café ☕ 🔥');
+check("Spotify's own links reduce to their text", fromSpotifyText('With <a href="spotify:artist:1">Spoon</a> and more') === 'With Spoon and more');
+check('nothing in, nothing out', fromSpotifyText(null) === '' && fromSpotifyText('') === '');
+check('a stray ampersand is left alone', fromSpotifyText('Tom & Jerry') === 'Tom & Jerry');
+check('line breaks become spaces when saving', toSpotifyDescription('Late night\n\ndrives  \r\n home') === 'Late night drives home');
+check('apostrophes are sent as they are', toSpotifyDescription("It's late") === "It's late");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) { console.log(failures.map(f => `  - ${f}`).join('\n')); process.exit(1); }

@@ -9,6 +9,7 @@ import { useUnaddedSuggestions, noteTrackSorted } from './useUnaddedSuggestions'
 import SortMode from './SortMode';
 import { SkeletonHeader, SkeletonRows } from '../../components/Skeleton';
 import { toast } from '../../store/toastStore';
+import { fromSpotifyText } from '../../utils/strings';
 import { formatTime } from '../../utils/formatTime';
 import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink, Undo2, Pencil, Layers } from 'lucide-react';
 import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
@@ -540,7 +541,11 @@ export default function PlaylistView() {
     setIsUpdatingPlaylist(true);
 
     try {
-      const updated = await updatePlaylist(token, activePlaylistId, { name, description });
+      // The description goes only when it changed. It used to go every time, so renaming a
+      // playlist with no description sent an empty one, which Spotify refuses with a 400.
+      const changes = { name };
+      if (description !== fromSpotifyText(view.description)) changes.description = description;
+      const updated = await updatePlaylist(token, activePlaylistId, changes);
       
       if (imageFile) {
         try {
@@ -553,12 +558,14 @@ export default function PlaylistView() {
         }
       }
       
-      setPlaylist((prev) => prev ? { ...prev, name: updated.name, description: updated.description } : prev);
-      setPlaylists(playlists.map((p) => p.id === activePlaylistId ? { ...p, name: updated.name, description: updated.description } : p));
+      const nextDescription = updated.description ?? view.description;
+      setPlaylist((prev) => prev ? { ...prev, name: updated.name, description: nextDescription } : prev);
+      setPlaylists(playlists.map((p) => p.id === activePlaylistId ? { ...p, name: updated.name, description: nextDescription } : p));
       
       setEditDialogOpen(false);
     } catch (err) {
       console.error('Failed to update playlist:', err);
+      toast("Couldn't save the changes to this playlist", { tone: 'error' });
     } finally {
       setIsUpdatingPlaylist(false);
     }
@@ -738,11 +745,11 @@ export default function PlaylistView() {
             </p>
             <h1 className="text-2xl md:text-5xl lg:text-7xl font-extrabold text-white tracking-tighter mb-1 md:mb-4 break-words line-clamp-2 md:line-clamp-none">{view.name}</h1>
             <p className="text-neutral-400 text-sm font-medium">
-              {view.description && <span className="mr-2 hidden md:inline">{view.description} •</span>}
+              {fromSpotifyText(view.description) && <span className="mr-2 hidden md:inline">{fromSpotifyText(view.description)} •</span>}
               {isCollaborative && <span className="md:hidden">Collaborative • </span>}
               {view.owner.display_name} • {playlist || view.tracks.total > 0 ? view.tracks.total : '…'} songs
             </p>
-            {view.description && <p className="md:hidden text-neutral-500 text-xs mt-1 line-clamp-1">{view.description}</p>}
+            {fromSpotifyText(view.description) && <p className="md:hidden text-neutral-500 text-xs mt-1 line-clamp-1">{fromSpotifyText(view.description)}</p>}
           </div>
         </div>
         <div className="hidden md:flex flex-wrap items-center gap-3">
@@ -1006,7 +1013,7 @@ export default function PlaylistView() {
           title="Edit playlist"
           submitLabel="Save changes"
           initialName={view.name}
-          initialDescription={view.description || ''}
+          initialDescription={fromSpotifyText(view.description)}
           initialImageUrl={view.images?.[0]?.url || ''}
           onSubmit={handleUpdatePlaylist}
           onCancel={() => setEditDialogOpen(false)}
