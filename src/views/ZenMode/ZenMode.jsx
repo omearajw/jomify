@@ -1,13 +1,14 @@
 import { useEffect, useState, useRef } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, AlertCircle } from 'lucide-react';
+import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, AlertCircle, Projector } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import AudioWaveform from '../../components/AudioWaveform';
 import { findLyrics, LYRIC_LEAD_IN_MS } from '../../lib/lrc';
 import { useSlice } from '../../store/selectors';
 import { getBlurredBackdrop } from '../../utils/blurBackdrop';
 import { togglePlay, next as nextTrack, previous as previousTrack, seek, setVolume as setPlaybackVolume } from '../../services/spotify/playbackController';
+import Projection from './Projection';
 
 // Lines this far from the active one get the animated depth-of-field treatment; the rest are
 // plain elements with a static style, so a 200-line song doesn't run 200 spring animations
@@ -24,6 +25,17 @@ export default function ZenMode() {
   const [backdropReady, setBackdropReady] = useState(false);
   // { art, url } so a stale blur for the previous track is never shown: derived below by art url
   const [backdrop, setBackdrop] = useState(null);
+
+  // Projection mapping onto a wall: hidden behind a small button and the P key
+  const [projecting, setProjecting] = useState(false);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (e.key.toLowerCase() === 'p' && !e.metaKey && !e.ctrlKey && !e.altKey) setProjecting((v) => !v);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   // --- LYRICS STATE ---
   const [showLyrics, setShowLyrics] = useState(false);
@@ -388,6 +400,10 @@ export default function ZenMode() {
 
   if (!isZenMode) return null;
 
+  // The projector takes the whole screen; Zen's own scene stays mounted beneath so coming back
+  // is instant and the lyrics clock keeps its place
+  if (projecting) return <Projection onClose={() => setProjecting(false)} />;
+
   return (
     <div className={`fixed inset-0 z-[100] bg-black overflow-hidden flex items-center justify-center font-sans select-none transition-colors duration-700 ${isActive ? '' : 'cursor-none'}`}>
       
@@ -610,6 +626,14 @@ export default function ZenMode() {
           className={`transition-colors ${showLyrics ? 'text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]' : 'text-white/60 hover:text-white'}`}
         >
           <Mic2 className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => setProjecting(true)}
+          aria-label="Projector"
+          title="Projector: map the music onto a wall (P)"
+          className="text-white/60 hover:text-white transition-colors"
+        >
+          <Projector className="w-4 h-4" />
         </button>
 
         <div className="w-px h-4 bg-white/10 mx-1" />
