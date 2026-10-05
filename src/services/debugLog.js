@@ -118,6 +118,13 @@ export function installDebugLog() {
   window.addEventListener('pageshow', (e) => { if (e.persisted) log('page', 'restored from memory'); });
   window.addEventListener('online', () => log('network', 'online'));
   window.addEventListener('offline', () => log('network', 'offline'));
+  // Headphones or a Bluetooth speaker coming and going pauses music on most phones, which in the
+  // log would otherwise look like a pause from nowhere
+  navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+    navigator.mediaDevices.enumerateDevices()
+      .then((devices) => log('audio', 'audio devices changed', `${devices.filter((d) => d.kind === 'audiooutput').length} outputs, ${devices.filter((d) => d.kind === 'audioinput').length} inputs`))
+      .catch(() => log('audio', 'audio devices changed'));
+  });
   // A weak signal never fires offline, but it does change the connection
   connection?.addEventListener?.('change', () => {
     log('network', 'connection changed', `${connection.type || '?'} ${connection.effectiveType || '?'}, ${connection.downlink ?? '?'}Mbps, ${connection.rtt ?? '?'}ms`);

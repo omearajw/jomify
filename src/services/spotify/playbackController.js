@@ -53,6 +53,8 @@ const REMOTE_REFRESH_DELAY_MS = 350;
 const VOLUME_DEBOUNCE_MS = 250;
 
 const PLATFORM = describePlatform();
+// How long to give Spotify to start the next song itself before Jomify starts it
+const STALLED_START_GRACE_MS = 1500;
 // When someone last asked Jomify to play, pause or skip, from the app or the lock screen
 let lastIntentAt = 0;
 const INTENT_WINDOW_MS = 4000;
@@ -228,7 +230,10 @@ let backgroundNotes = null;
 function noteBackgroundState() {
   const s = player();
   if (!s.isLocalActive || !s.player?.getCurrentState) return;
-  s.player.getCurrentState()
+  // A player that has stopped responding never settles this, which used to leave the notes
+  // silently missing; give it a deadline so the log says so
+  const deadline = new Promise((_, reject) => setTimeout(() => reject(new Error('no answer within 5s')), 5000));
+  Promise.race([s.player.getCurrentState(), deadline])
     .then((st) => {
       if (!st) { log('background', 'player has no playback'); return; }
       const t = st.track_window?.current_track;
@@ -377,7 +382,22 @@ function initLocalPlayer() {
       if (state) {
         const track = state.track_window?.current_track;
         if (track?.uri !== before?.track_window?.current_track?.uri) {
-          log('playback', 'now playing', `${track?.name || '?'} by ${track?.artists?.map((a) => a.name).join(', ') || '?'}`);
+          log('playback', 'now playing', `${track?.name || '?'} by ${track?.artists?.map((a) => a.name).join(', ') || '?'}${state.paused ? ', arrived paused' : ''}`);
+          // A song that finished by itself should be followed by the next one playing, but Spotify
+          // sometimes loads the next one paused at the start and leaves it there: twice in one
+          // evening's log, with nobody touching anything. Start it, unless someone in Jomify asked
+          // for a pause or the music was already paused.
+          const stalledStart = state.paused && (state.position || 0) < 3000 && before && !before.paused
+            && Date.now() - lastIntentAt > INTENT_WINDOW_MS;
+          if (stalledStart) {
+            const uri = track?.uri;
+            setTimeout(() => {
+              const now = player().playbackState;
+              if (!now?.paused || now.track_window?.current_track?.uri !== uri) return;
+              log('playback', 'next song was left paused after the last one finished; starting it', track?.name || '?');
+              sdkPlayer.resume().catch((err) => log('playback', 'could not start the next song', err?.message || err));
+            }, STALLED_START_GRACE_MS);
+          }
         } else if (Boolean(state.paused) !== Boolean(before?.paused)) {
           // Something outside Jomify (Android, another app taking the audio) pausing the music
           // looks exactly like any other pause unless it is marked
