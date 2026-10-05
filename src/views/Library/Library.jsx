@@ -180,6 +180,16 @@ function FolderCard({ folder, ctx }) {
       <button onClick={(e) => ctx.toggleFolderExpand(e, folder.id)} className="absolute top-4 right-4 z-100 w-8 h-8 bg-black/40 hover:bg-black/80 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors" title="Expand Inline">
         <Maximize2 className="w-4 h-4 text-white transition-transform duration-300" />
       </button>
+      {/* The same menu as right-click and long-press, visible on touch screens and on hover */}
+      <button
+        type="button"
+        onClick={(e) => ctx.handleFolderContextMenu(e, folder)}
+        onPointerDown={(e) => e.stopPropagation()}
+        aria-label={`Options for ${folder.name}`}
+        className="absolute top-4 right-14 z-100 w-8 h-8 bg-black/40 hover:bg-black/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 backdrop-blur-sm transition-opacity"
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
       <div className="aspect-square w-full mb-4 rounded-md shadow-md shrink-0 pointer-events-none">
         <FolderStack folder={folder} folders={customFolders} items={itemsById} />
       </div>

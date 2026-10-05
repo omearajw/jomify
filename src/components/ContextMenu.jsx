@@ -60,14 +60,14 @@ export default function ContextMenu() {
     playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId,
     removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder, renameFolder, createFolder, moveFolder,
     reorderFolders, reorderPlaylistInFolder,
-    pinnedItems, togglePin, navigateToArtist, navigateToAlbum, setNowPlayingOpen
+    pinnedItems, togglePin, movePinnedItem, navigateToArtist, navigateToAlbum, setNowPlayingOpen
   } = useSlice(useUserStore, [
     'contextMenu', 'setContextMenu', 'token', 'triggerQueueRefresh',
     'addManuallyQueuedTrack',
     'playlists', 'customFolders', 'profile', 'deletePlaylist', 'deleteFolder', 'setCurrentView', 'setActivePlaylistId',
     'removeAlbumFromLibrary', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'renameFolder', 'createFolder', 'moveFolder',
     'reorderFolders', 'reorderPlaylistInFolder',
-    'pinnedItems', 'togglePin', 'navigateToArtist', 'navigateToAlbum', 'setNowPlayingOpen'
+    'pinnedItems', 'togglePin', 'movePinnedItem', 'navigateToArtist', 'navigateToAlbum', 'setNowPlayingOpen'
   ]);
 
   const menuRef = useRef(null);
@@ -247,6 +247,17 @@ export default function ContextMenu() {
   // One-step reordering for touch screens, where the sidebar's drag-and-drop can't be used.
   // Neighbour ids drive the same store actions a drop would.
   const moveRows = (() => {
+    // A pin on Home: earlier or later among the pins
+    if (typeof contextMenu?.pinnedIndex === 'number') {
+      const i = contextMenu.pinnedIndex;
+      return {
+        canUp: i > 0,
+        canDown: i < pinnedItems.length - 1,
+        labels: ['Move earlier', 'Move later'],
+        up: () => { movePinnedItem(i, -1); closeMenu(); },
+        down: () => { movePinnedItem(i, 1); closeMenu(); }
+      };
+    }
     // A track in one of your own playlists (custom order): the playlist view supplies the move
     if (contextMenu?.reorder) {
       const r = contextMenu.reorder;
@@ -400,7 +411,7 @@ export default function ContextMenu() {
             className="flex-1 px-4 py-3 text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-center space-x-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <ChevronUp className="w-4 h-4 text-neutral-400" />
-            <span>Move up</span>
+            <span>{moveRows.labels?.[0] || 'Move up'}</span>
           </button>
           <button
             type="button"
@@ -409,7 +420,7 @@ export default function ContextMenu() {
             className="flex-1 px-4 py-3 text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-center space-x-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed border-l border-white/5"
           >
             <ChevronDown className="w-4 h-4 text-neutral-400" />
-            <span>Move down</span>
+            <span>{moveRows.labels?.[1] || 'Move down'}</span>
           </button>
         </div>
       )}

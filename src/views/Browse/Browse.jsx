@@ -8,6 +8,7 @@ import { formatTime } from '../../utils/formatTime';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { Search, Play, ChevronLeft, Loader, X } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
+import MoreButton, { CardMoreButton } from '../../components/MoreButton';
 import { rowButtonProps } from '../../utils/a11y';
 import { isSameTrack, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
 
@@ -360,6 +361,7 @@ export default function Browse() {
                     <div className="flex items-center space-x-4">
                       <LikeButton trackId={track.id} />
                       <span className="hidden md:inline text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
+                      <MoreButton onOpen={(e) => setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track })} />
                     </div>
                   </div>
                 );
@@ -413,6 +415,7 @@ export default function Browse() {
                         <div className="w-full h-full bg-neutral-800 flex items-center justify-center">💿</div>
                       )}
                       <HoverPlay label={`Play ${playlist.name}`} onPlay={() => handleContextPlay(playlist.uri || `spotify:playlist:${playlist.id}`)} />
+                      <CardMoreButton label={`Options for ${playlist.name}`} onOpen={(e) => setContextMenu({ type: 'playlist', x: e.pageX, y: e.pageY, playlistId: playlist.id, playlistSource: 'browse' })} />
                     </div>
                     <p className="text-white font-semibold truncate mb-1">{playlist.name}</p>
                     <p className="text-neutral-400 text-xs truncate">{playlist.owner?.display_name || playlist.owner?.id}</p>
@@ -505,6 +508,7 @@ export default function Browse() {
                   <div className="relative aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
                     {album.images?.[0]?.url && <img src={artUrl(album.images, 300)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
                     <HoverPlay label={`Play ${album.name}`} onPlay={() => handleContextPlay(album.uri || `spotify:album:${album.id}`)} />
+                    <CardMoreButton label={`Options for ${album.name}`} onOpen={(e) => setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id })} />
                   </div>
                   <p className="text-white text-sm font-bold truncate w-full">{album.name}</p>
                   <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{albumMeta(album)}</p>
@@ -670,6 +674,7 @@ export default function Browse() {
                       <div className="flex items-center space-x-4">
                         <LikeButton trackId={track.id} />
                         <span className="hidden md:inline text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
+                        <MoreButton onOpen={(e) => setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track })} />
                       </div>
                     </div>
                   );
@@ -727,6 +732,7 @@ export default function Browse() {
                         >
                           <Play className="w-4 h-4 fill-current ml-0.5" />
                         </button>
+                        <MoreButton label={`Options for ${playlist.name}`} onOpen={(e) => setContextMenu({ type: 'playlist', x: e.pageX, y: e.pageY, playlistId: playlist.id, playlistSource: 'browse' })} />
                       </div>
                     );
                   })}
@@ -794,6 +800,7 @@ export default function Browse() {
                     <div className="relative aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
                       {album.images?.[0]?.url && <img src={artUrl(album.images, 300)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
                       <HoverPlay label={`Play ${album.name}`} onPlay={() => handleContextPlay(album.uri || `spotify:album:${album.id}`)} />
+                      <CardMoreButton label={`Options for ${album.name}`} onOpen={(e) => setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id })} />
                     </div>
                     <p className="text-white text-sm font-bold truncate w-full">{album.name}</p>
                     <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{albumMeta(album)}</p>

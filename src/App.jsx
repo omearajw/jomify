@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { redirectToAuthCodeFlow, getAccessToken } from './services/spotify/auth';
 import { ensureFreshToken } from './services/spotify/session';
-import { fetchUserProfile, fetchUserPlaylists, fetchUserAlbums, spotifyFetch } from './services/spotify/api';
+import { fetchUserProfile, fetchUserPlaylists, fetchUserAlbums, spotifyFetch, playContext } from './services/spotify/api';
 import { useUserStore } from './store/userStore';
 import { useSlice } from './store/selectors';
 import { artUrl } from './utils/images';
@@ -11,7 +11,7 @@ import { PUSH_STATE, completeEnableNotifications, syncPushStatus } from './pwa/p
 import { toast } from './store/toastStore';
 import Library from './views/Library/Library';
 import PlaylistView from './views/Library/PlaylistView';
-import { startPlaybackController } from './services/spotify/playbackController';
+import { startPlaybackController, playOn } from './services/spotify/playbackController';
 import { installHistorySync, syncSheetWithHistory } from './pwa/historySync';
 import { isMobileViewport, useIsMobile } from './hooks/useMediaQuery';
 import Artist from './views/Artist/Artist';
@@ -30,7 +30,9 @@ const UserView = lazy(() => import('./views/User/UserView'));
 
 const ViewFallback = () => <p className="text-neutral-400 animate-pulse text-lg mt-8">Loading…</p>;
 import { childrenOf } from './utils/library';
-import { BarChart3, ChevronDown, ChevronUp, Settings } from 'lucide-react';
+import { BarChart3, ChevronDown, ChevronUp, Settings, Play } from 'lucide-react';
+import { CardMoreButton } from './components/MoreButton';
+import { rowButtonProps } from './utils/a11y';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // The Sevens these used to be hardcoded as. They are migrated into the configurable
@@ -44,20 +46,30 @@ function App() {
     currentView, setCurrentView,
     pinnedItems, playlists, albums, customFolders,
     activePlaylistId, navigateToAlbum, navigateToPlaylist, setContextMenu, setActiveFolderId,
-    sevens, seedLegacySevens, friends, navigateToUser
+    sevens, seedLegacySevens, friends, navigateToUser, togglePin, reorderPinnedItems
   } = useSlice(useUserStore, [
     'token', 'refreshToken', 'tokenExpiresAt', 'logout', 'profile',
     'setToken', 'setRefreshToken', 'setProfile', 'setPlaylists',
     'currentView', 'setCurrentView',
     'pinnedItems', 'playlists', 'albums', 'customFolders',
     'activePlaylistId', 'navigateToAlbum', 'navigateToPlaylist', 'setContextMenu', 'setActiveFolderId',
-    'sevens', 'seedLegacySevens', 'friends', 'navigateToUser'
+    'sevens', 'seedLegacySevens', 'friends', 'navigateToUser', 'togglePin', 'reorderPinnedItems'
   ]);
   
   const isAuthenticating = useRef(false);
   const [loginError, setLoginError] = useState('');
   const isMobile = useIsMobile();
   const hydratedPinnedIds = useRef(new Set());
+  // Pins Spotify answered nothing for, so Home can say so instead of showing a gap
+  const [failedPins, setFailedPins] = useState(() => new Set());
+  const [pinRetry, setPinRetry] = useState(0);
+  const retryPins = () => {
+    failedPins.forEach((id) => hydratedPinnedIds.current.delete(id));
+    setFailedPins(new Set());
+    setPinRetry((n) => n + 1);
+  };
+  // Desktop drag to reorder the pins; the index being dragged
+  const pinDrag = useRef(null);
 
   // --- STATS & SEVENS STATE ---
   const [showStats, setShowStats] = useState(false);
@@ -325,10 +337,13 @@ function App() {
         const filtered = current.filter(a => !newIds.has(a.id));
         useUserStore.getState().setAlbums([...filtered, ...newAlbums]);
       }
+      const got = new Set([...newPlaylists.map((p) => p.id), ...newAlbums.map((a) => a.id)]);
+      const failed = [...missingPlaylists, ...missingAlbums].filter((id) => !got.has(id));
+      if (failed.length) setFailedPins((prev) => new Set([...prev, ...failed]));
     };
 
     hydrate();
-  }, [token, pinnedItems, setPlaylists]);
+  }, [token, pinnedItems, setPlaylists, pinRetry]);
 
   // --- SEVENS TURN CHECKER (HIGH-SPEED OFFSET METHOD) ---
   // Only active Sevens are polled. A finished Seven is still cross-referenced for duplicate
@@ -631,7 +646,7 @@ function App() {
                   {pinnedItems.length === 0 ? (
                     <div className="w-full border-2 border-dashed border-white/10 rounded-2xl p-12 flex flex-col items-center justify-center text-neutral-500 bg-neutral-900/20 backdrop-blur-sm">
                       <span className="text-4xl mb-4">📌</span>
-                      <p className="font-medium text-lg text-white text-center">Right-click (or long-press) playlists and albums to pin them to your home page.</p>
+                      <p className="font-medium text-lg text-white text-center">Right-click (or long-press) a playlist, album or folder and choose "Pin to Home".</p>
                     </div>
                   ) : (
                     <motion.div layout={!isMobile} className="flex flex-wrap justify-center items-center gap-8 md:gap-14 py-0 px-4">
@@ -660,6 +675,17 @@ function App() {
                             folderIconSizeClass = "text-[80px]";
                           }
                           
+                          if (failedPins.has(pinned.id) && pinned.type !== 'folder') {
+                            return (
+                              <div key={`${pinned.type}-${pinned.id}`} className={`${cardSizeClass} rounded-[2rem] border border-dashed border-white/10 bg-neutral-900/40 flex flex-col items-center justify-center text-center gap-2`}>
+                                <p className="text-sm text-neutral-400">Couldn't load this {pinned.type}.</p>
+                                <div className="flex gap-3 text-xs font-bold">
+                                  <button type="button" onClick={retryPins} className="text-white underline underline-offset-2">Try again</button>
+                                  <button type="button" onClick={() => togglePin(pinned.id, pinned.type)} className="text-neutral-400 hover:text-white">Unpin</button>
+                                </div>
+                              </div>
+                            );
+                          }
                           if (pinned.type === 'playlist') {
                             item = playlists.find(p => p.id === pinned.id);
                             if (!item) return null;
@@ -688,6 +714,20 @@ function App() {
                           }
 
                           const yOffset = count > 2 ? (i % 2 === 0 ? -15 : 15) : 0; 
+                          const openPinMenu = (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setContextMenu({
+                              type: pinned.type,
+                              playlistId: pinned.type === 'playlist' ? pinned.id : null,
+                              albumId: pinned.type === 'album' ? pinned.id : null,
+                              folderId: pinned.type === 'folder' ? pinned.id : null,
+                              // Lets the menu offer "move earlier / later" among the pins
+                              pinnedIndex: i,
+                              x: e.pageX,
+                              y: e.pageY
+                            });
+                          };
 
                           return (
                             <motion.div
@@ -702,23 +742,29 @@ function App() {
                               }}
                               whileHover={{ scale: 1.03, y: yOffset - 5 }}
                               onClick={onClick} 
-                              onContextMenu={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setContextMenu({
-                                  type: pinned.type,
-                                  playlistId: pinned.type === 'playlist' ? pinned.id : null,
-                                  albumId: pinned.type === 'album' ? pinned.id : null,
-                                  folderId: pinned.type === 'folder' ? pinned.id : null,
-                                  x: e.pageX,
-                                  y: e.pageY
-                                });
-                              }}
+                              {...rowButtonProps(onClick)}
+                              onContextMenu={openPinMenu}
+                              draggable={!isMobile}
+                              onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); pinDrag.current = i; }}
+                              onDragOver={(e) => { if (pinDrag.current !== null) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } }}
+                              onDrop={(e) => { e.preventDefault(); if (pinDrag.current !== null && pinDrag.current !== i) reorderPinnedItems(pinDrag.current, i); pinDrag.current = null; }}
+                              onDragEnd={() => { pinDrag.current = null; }}
                               className={`${cardSizeClass} rounded-[2rem] bg-neutral-900/60 md:bg-white/[0.02] border border-white/[0.05] hover:border-white/20 hover:bg-white/[0.04] md:backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.3)] hover:shadow-[0_16px_48px_rgba(0,0,0,0.5)] cursor-pointer group flex flex-col relative transition-colors`}
                             >
                               <div className="relative aspect-square w-full mb-5 rounded-2xl overflow-hidden bg-black/40 flex items-center justify-center shadow-inner border border-white/5">
                                 {imageNode}
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-50 pointer-events-none" />
+                                <CardMoreButton label={`Options for ${title}`} onOpen={openPinMenu} />
+                                {pinned.type !== 'folder' && (
+                                  <button
+                                    type="button"
+                                    aria-label={`Play ${title}`}
+                                    onClick={(e) => { e.stopPropagation(); playOn((deviceId) => playContext(token, deviceId, `spotify:${pinned.type}:${pinned.id}`)); }}
+                                    className="hidden md:flex absolute bottom-3 right-3 w-12 h-12 rounded-full bg-brand-gradient text-white items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 focus-visible:opacity-100 hover:scale-105 transition-all"
+                                  >
+                                    <Play className="w-5 h-5 fill-current ml-0.5" />
+                                  </button>
+                                )}
                               </div>
                               <div className="flex-1 flex flex-col justify-center items-center">
                                 <h3 className={`text-white text-center px-2 ${titleSizeClass} line-clamp-2 leading-tight break-words`}>

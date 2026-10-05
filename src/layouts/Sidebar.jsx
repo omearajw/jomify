@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Home, Library, Search, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus, FolderPlus, Users, UserPlus } from 'lucide-react';
+import { Home, Library, Search, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus, FolderPlus, Users, UserPlus, Heart } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { addTracksToPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../services/spotify/api';
 import PlaylistFormDialog from '../components/PlaylistFormDialog';
@@ -132,12 +132,12 @@ function FolderRow({ folder, depth, ctx }) {
 
 export default function Sidebar() {
   const {
-    token, profile, currentView, setCurrentView, playlists, albums, navigateToAlbum,
+    token, profile, currentView, viewHistory, setCurrentView, playlists, albums, navigateToAlbum,
     navigateToPlaylist, customFolders, createFolder, activeFolderId, setActiveFolderId, requestFolderManage,
     draggedItem, setDraggedItem, reorderFolders, moveFolder,
     addPlaylistToFolder, removePlaylistFromFolder, reorderPlaylistInFolder, setContextMenu, setPlaylists, deleteFolder
   } = useSlice(useUserStore, [
-    'token', 'profile', 'currentView', 'setCurrentView', 'playlists', 'albums', 'navigateToAlbum',
+    'token', 'profile', 'currentView', 'viewHistory', 'setCurrentView', 'playlists', 'albums', 'navigateToAlbum',
     'navigateToPlaylist', 'customFolders', 'createFolder', 'activeFolderId', 'setActiveFolderId', 'requestFolderManage',
     'draggedItem', 'setDraggedItem', 'reorderFolders', 'moveFolder',
     'addPlaylistToFolder', 'removePlaylistFromFolder', 'reorderPlaylistInFolder', 'setContextMenu', 'setPlaylists', 'deleteFolder'
@@ -390,6 +390,15 @@ export default function Sidebar() {
     { id: 'sevens', label: 'Sevens', icon: Users },
     { id: 'friends', label: 'Friends', icon: UserPlus },
   ];
+  // Which entry is lit. Pages that aren't entries themselves (a playlist, an album, a person)
+  // light the section they belong to; an artist lights wherever you came from.
+  const SECTION_OF = { playlist: 'library', album: 'library', 'liked-songs': 'library', user: 'friends' };
+  const isNav = (view) => navItems.some((n) => n.id === view);
+  const activeSection = isNav(currentView)
+    ? currentView
+    : SECTION_OF[currentView]
+      || [...viewHistory].reverse().map((f) => (isNav(f.view) ? f.view : SECTION_OF[f.view]))?.find(Boolean)
+      || 'library';
 
   return (
     <aside className="hidden md:flex w-64 xl:w-72 bg-black/40 backdrop-blur-md border-r border-white/5 flex-col px-3 py-4 space-y-3 select-none overflow-hidden h-full relative z-10">
@@ -398,12 +407,13 @@ export default function Sidebar() {
       <nav className="flex flex-col space-y-0.5 font-semibold shrink-0">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = currentView === item.id;
+          const isActive = activeSection === item.id;
           return (
             <button
               key={item.id}
               // Navigate first so the history frame captures the folder you were in, then leave it
               onClick={() => { setCurrentView(item.id); setIsolatedFolderId(null); }}
+              aria-current={isActive ? 'page' : undefined}
               className={`flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors text-left ${isActive ? 'text-white font-bold bg-white/5' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}
             >
               <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-[var(--brand-mid)]' : ''}`} />
@@ -412,6 +422,19 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Pinned above the folders, as Spotify keeps it at the top of Your Library */}
+      <button
+        type="button"
+        onClick={() => { setCurrentView('liked-songs'); setIsolatedFolderId(null); }}
+        aria-current={currentView === 'liked-songs' ? 'page' : undefined}
+        className={`flex items-center gap-3 rounded-lg px-2 py-1.5 shrink-0 transition-colors text-left font-semibold ${currentView === 'liked-songs' ? 'text-white bg-white/5' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}
+      >
+        <span className="w-8 h-8 rounded-md bg-gradient-to-br from-indigo-700 to-blue-500 flex items-center justify-center shrink-0 shadow">
+          <Heart className="w-4 h-4 fill-white text-white" />
+        </span>
+        <span className="truncate">Liked Songs</span>
+      </button>
 
       <div 
         className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-1 custom-scrollbar text-sm font-medium"

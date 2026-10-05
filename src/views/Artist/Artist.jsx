@@ -3,7 +3,7 @@ import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
 import { playOn } from '../../services/spotify/playbackController';
-import MoreButton from '../../components/MoreButton';
+import MoreButton, { CardMoreButton } from '../../components/MoreButton';
 import { playUris, checkTracksLiked, spotifyFetch } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { Play } from 'lucide-react';
@@ -226,13 +226,15 @@ export default function Artist() {
               <div 
                 key={album.id}
                 onClick={() => navigateToAlbum(album.id)}
+                {...rowButtonProps(() => navigateToAlbum(album.id))}
                 onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id }); }}
                 className="bg-neutral-800/30 p-4 rounded-xl cursor-pointer hover:bg-neutral-800/60 transition-colors group"
               >
-                <div className="aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
+                <div className="relative aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
                   {album.images?.[0]?.url && (
                     <img src={artUrl(album.images, 300)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   )}
+                  <CardMoreButton label={`Options for ${album.name}`} onOpen={(e) => setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id })} />
                 </div>
                 <p className="text-white text-sm font-bold truncate w-full">{album.name}</p>
                 <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{album.release_date?.split('-')[0]}</p>

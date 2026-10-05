@@ -10,7 +10,7 @@ import SortMode from './SortMode';
 import { SkeletonHeader, SkeletonRows } from '../../components/Skeleton';
 import { toast } from '../../store/toastStore';
 import { fromSpotifyText } from '../../utils/strings';
-import { formatTime } from '../../utils/formatTime';
+import { formatTime, formatDuration } from '../../utils/formatTime';
 import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink, Undo2, Pencil, Layers } from 'lucide-react';
 import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
 import UserChip from '../../components/UserChip';
@@ -679,6 +679,8 @@ export default function PlaylistView() {
         const dateA = new Date(a.added_at || 0).getTime();
         const dateB = new Date(b.added_at || 0).getTime();
         comparison = dateA - dateB;
+      } else if (sortBy === 'duration') {
+        comparison = (trackA.duration_ms || 0) - (trackB.duration_ms || 0);
       }
 
       return sortOrder === 'asc' ? comparison : -comparison;
@@ -688,6 +690,11 @@ export default function PlaylistView() {
   // Reveal the next page of rows when the sentinel below the list scrolls near the viewport
   const totalRows = sortedTracks.length;
   const nextPageUrl = playlist?.tracks?.next || null;
+  // Only once every page is in; a partial total would read as the whole playlist's
+  const totalLength = useMemo(() => {
+    if (!playlist || playlist.tracks?.next || !playlist.tracks?.items?.length) return '';
+    return formatDuration(playlist.tracks.items.reduce((sum, item) => sum + (item.track?.duration_ms || 0), 0));
+  }, [playlist]);
   const myId = useUserStore((s) => s.profile?.id);
   const ownsPlaylist = Boolean(myId && (playlist?.owner?.id === myId || playlist?.collaborative));
   useEffect(() => {
@@ -779,7 +786,10 @@ export default function PlaylistView() {
             <p className="text-neutral-400 text-sm font-medium">
               {fromSpotifyText(view.description) && <span className="mr-2 hidden md:inline">{fromSpotifyText(view.description)} •</span>}
               {isCollaborative && <span className="md:hidden">Collaborative • </span>}
-              {view.owner.display_name} • {playlist || view.tracks.total > 0 ? view.tracks.total : '…'} songs
+              {view.owner.display_name}
+              {view.followers?.total > 0 && ` • ${view.followers.total.toLocaleString()} ${view.followers.total === 1 ? 'save' : 'saves'}`}
+              {' • '}{playlist || view.tracks.total > 0 ? view.tracks.total.toLocaleString() : '…'} songs
+              {totalLength && `, ${totalLength}`}
             </p>
             {fromSpotifyText(view.description) && <p className="md:hidden text-neutral-500 text-xs mt-1 line-clamp-1">{fromSpotifyText(view.description)}</p>}
           </div>
@@ -947,7 +957,7 @@ export default function PlaylistView() {
             onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
             aria-haspopup="menu"
             aria-expanded={sortDropdownOpen}
-            aria-label={`Sort by ${sortBy.replace('_', ' ')}, ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
+            aria-label={sortBy === 'custom' ? 'Sort by custom order' : `Sort by ${sortBy.replace('_', ' ')}, ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
             className={`w-11 h-11 rounded-full border flex items-center justify-center transition-colors ${sortBy !== 'custom' ? 'border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/15 text-white' : 'border-white/10 bg-neutral-900 text-neutral-300'}`}
           >
             <ArrowUpDown className="w-5 h-5" />
@@ -985,7 +995,7 @@ export default function PlaylistView() {
             className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors"
           >
             <ArrowUpDown className="w-4 h-4 text-neutral-400" />
-            <span>Sort by: <strong className="text-white capitalize">{sortBy.replace('_', ' ')}</strong> ({sortOrder.toUpperCase()})</span>
+            <span>Sort by: <strong className="text-white capitalize">{sortBy.replace('_', ' ')}</strong>{sortBy !== 'custom' && ` (${sortOrder.toUpperCase()})`}</span>
           </button>
 
         </div>
@@ -998,6 +1008,7 @@ export default function PlaylistView() {
             { id: 'artist', label: 'Alphabetical (Artist)' },
             { id: 'album', label: 'Alphabetical (Album)' },
             { id: 'date_added', label: 'Date Added' },
+            { id: 'duration', label: 'Duration' },
           ].map((option) => (
             <button
               key={option.id}
@@ -1012,17 +1023,21 @@ export default function PlaylistView() {
             </button>
           ))}
 
-          <div className="my-1 border-t border-neutral-800" />
-
-          <button
-            onClick={() => updateSortSettings(sortBy, sortOrder === 'asc' ? 'desc' : 'asc')}
-            className="flex items-center justify-between px-3 py-2 rounded-xl text-sm text-neutral-300 hover:bg-neutral-800 transition-colors"
-          >
-            <span>Direction</span>
-            <span className="flex items-center gap-1 text-xs font-bold uppercase text-[var(--brand-mid)]">
-              {sortOrder === 'asc' ? <><ArrowUp className="w-3.5 h-3.5" /> Ascending</> : <><ArrowDown className="w-3.5 h-3.5" /> Descending</>}
-            </span>
-          </button>
+          {/* Direction means nothing in custom order, where the toggle used to change its label and nothing else */}
+          {sortBy !== 'custom' && (
+            <>
+              <div className="my-1 border-t border-neutral-800" />
+              <button
+                onClick={() => updateSortSettings(sortBy, sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="flex items-center justify-between px-3 py-2 rounded-xl text-sm text-neutral-300 hover:bg-neutral-800 transition-colors"
+              >
+                <span>Direction</span>
+                <span className="flex items-center gap-1 text-xs font-bold uppercase text-[var(--brand-mid)]">
+                  {sortOrder === 'asc' ? <><ArrowUp className="w-3.5 h-3.5" /> Ascending</> : <><ArrowDown className="w-3.5 h-3.5" /> Descending</>}
+                </span>
+              </button>
+            </>
+          )}
         </div>
       )}
       </div>

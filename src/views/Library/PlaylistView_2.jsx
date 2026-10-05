@@ -19,6 +19,8 @@ import { fetchPlaylistDetails, fetchMoreTracks, addTracksToPlaylist, playPlaylis
 import { formatTime } from '../../utils/formatTime';
 import { Play, X, LayoutPanelLeft, ArrowRight, Loader2, Disc3 } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
+import MoreButton from '../../components/MoreButton';
+import { rowButtonProps } from '../../utils/a11y';
 import { getCollaboratorStyle } from '../../utils/collaboratorStyle';
 import { isSameTrack } from '../../utils/spotifyUri';
 
@@ -100,12 +102,17 @@ export default function PlaylistView_2() {
   const {
     token, activePlaylistId, playlists, profile,
     stagedSeven: allStaged, addStagedTrack, removeStagedTrack, clearStagedTracks, setStagedSeven,
-    navigateToArtist, navigateToAlbum, sevens, updateSeven
+    navigateToArtist, navigateToAlbum, sevens, updateSeven, setContextMenu
   } = useSlice(useUserStore, [
     'token', 'activePlaylistId', 'playlists', 'profile',
     'stagedSeven', 'addStagedTrack', 'removeStagedTrack', 'clearStagedTracks', 'setStagedSeven',
-    'navigateToArtist', 'navigateToAlbum', 'sevens', 'updateSeven'
+    'navigateToArtist', 'navigateToAlbum', 'sevens', 'updateSeven', 'setContextMenu'
   ]);
+  // The ordinary song menu (queue, playlists, artist, album) on every row of a Seven
+  const openTrackMenu = (e, track) => {
+    e.preventDefault();
+    setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track });
+  };
   // This Seven's draft. Entries from before drafts were per Seven carry no tag and count as this
   // Seven's, so nothing already staged is lost.
   const stagedSeven = allStaged.filter(t => (t.forPlaylistId ?? activePlaylistId) === activePlaylistId);
@@ -844,6 +851,8 @@ const turnIndicator = useMemo(() => {
                     <div 
                       key={track.id + idx}
                       onClick={() => handleTrackSelect(track.uri)}
+                      {...rowButtonProps(() => handleTrackSelect(track.uri))}
+                      onContextMenu={(e) => openTrackMenu(e, track)}
                       style={collaboratorStyleFor(chunk.adderId, true, isFirst, isLast, isMobile)}
                       // Rows keep their natural height; they used to be flex-1 min-h-0 and got
                       // squashed and clipped whenever seven didn't fit the card
@@ -922,6 +931,7 @@ const turnIndicator = useMemo(() => {
                       <span className="hidden md:flex items-center justify-end text-neutral-500 text-xs font-medium pr-1 h-full w-10 shrink-0">
                         {formatTime(track.duration_ms)}
                       </span>
+                      <MoreButton onOpen={(e) => openTrackMenu(e, track)} />
                     </div>
                   );
                 })}

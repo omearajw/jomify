@@ -86,6 +86,16 @@ export const useUserStore = create(
           return { pinnedItems: [...state.pinnedItems, { id, type }] };
         }
       }),
+      // Pins keep their array order on Home (and in sync, where it becomes `order`)
+      reorderPinnedItems: (from, to) => set((state) => {
+        const count = state.pinnedItems.length;
+        if (from === to || from < 0 || from >= count || to < 0 || to >= count) return {};
+        const pins = [...state.pinnedItems];
+        const [moved] = pins.splice(from, 1);
+        pins.splice(to, 0, moved);
+        return { pinnedItems: pins };
+      }),
+      movePinnedItem: (index, delta) => get().reorderPinnedItems(index, index + delta),
 
       // --- THE SEVENS ENGINE ---
       // Each entry: { playlistId, partnerId, partnerName, partnerLocked, active, poolPlaylistId }
