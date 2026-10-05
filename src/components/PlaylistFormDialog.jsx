@@ -112,7 +112,7 @@ function PlaylistFormDialogBody({
                   setImageFile(file);
                 }}
               />
-              <p className="text-xs text-neutral-500">Choose a JPEG or PNG image to set as the playlist cover.</p>
+              <p className="text-xs text-neutral-500">Any image works; it's made square and sent to Spotify as a JPEG.</p>
             </div>
           </div>
 

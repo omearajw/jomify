@@ -97,11 +97,21 @@ export async function disableNotifications(token) {
   useUserStore.getState().setSevensNotifications(false);
 }
 
-// On start-up: the switch should reflect reality, not what it last said
-export async function syncPushStatus() {
+// On start-up: the switch should reflect reality, not what it last said. Resolves a reason
+// when it turns the switch off, so the caller can tell the user.
+export async function syncPushStatus(token) {
   const { sevensNotifications, setSevensNotifications } = useUserStore.getState();
-  if (!sevensNotifications) return;
-  if (!isPushSupported() || Notification.permission !== 'granted') { setSevensNotifications(false); return; }
+  if (!sevensNotifications) return null;
+  if (!isPushSupported() || Notification.permission !== 'granted') { setSevensNotifications(false); return 'permission'; }
   const subscription = await getPushSubscription().catch(() => null);
-  if (!subscription) setSevensNotifications(false);
+  if (!subscription) { setSevensNotifications(false); return 'subscription'; }
+  // The server drops a Spotify grant that Spotify has revoked; the switch used to stay on
+  // regardless, with notifications quietly stopped
+  if (token) {
+    try {
+      const status = await api('/api/push/status', token);
+      if (status && status.hasGrant === false) { setSevensNotifications(false); return 'grant'; }
+    } catch { /* the server being unreachable is not a reason to turn it off */ }
+  }
+  return null;
 }

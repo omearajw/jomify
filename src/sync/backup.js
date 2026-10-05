@@ -22,24 +22,16 @@ const BACKED_UP_KEYS = [
   'friends',
   'playlistSortSettings',
   'libraryGridSize',
-  'savedVolume'
+  'savedVolume',
+  // Lived in its own localStorage key once; the store has held it since the v1 migration, and
+  // reading the old key here meant backups carried a stale or empty list
+  'unaddedCheckPlaylists'
 ];
-
-// Still living in its own localStorage key rather than the store
-const LEGACY_UNADDED_KEY = 'jomify_unadded_check_playlists';
 
 export function buildBackup() {
   const state = useUserStore.getState();
   const data = {};
   BACKED_UP_KEYS.forEach((key) => { data[key] = state[key]; });
-
-  let unaddedCheckPlaylists = [];
-  try {
-    const raw = localStorage.getItem(LEGACY_UNADDED_KEY);
-    if (raw) unaddedCheckPlaylists = JSON.parse(raw);
-  } catch {
-    // A corrupt legacy key must not stop the rest of the backup
-  }
 
   return {
     app: 'jomify',
@@ -51,7 +43,7 @@ export function buildBackup() {
       pins: state.pinnedItems?.length ?? 0,
       sevens: state.sevens?.length ?? 0
     },
-    data: { ...data, unaddedCheckPlaylists }
+    data
   };
 }
 
@@ -174,14 +166,5 @@ export function applyBackup(parsed) {
   }
 
   useUserStore.setState(patch);
-
-  if (Array.isArray(data.unaddedCheckPlaylists)) {
-    try {
-      localStorage.setItem(LEGACY_UNADDED_KEY, JSON.stringify(data.unaddedCheckPlaylists));
-    } catch {
-      // Non-fatal: the rest of the restore already succeeded
-    }
-  }
-
   return patch;
 }

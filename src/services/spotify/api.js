@@ -335,38 +335,55 @@ export async function fetchUserAlbums(token) {
     }));
 }
 
-async function blobToBase64(blob) {
-  const arrayBuffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
-  let binary = "";
-  const chunkSize = 0x8000;
+// Spotify takes a cover only as JPEG, at most 256 KB once base64-encoded. Any image the user
+// picks is redrawn as a square JPEG here, shrinking until it fits; sending a PNG labelled as
+// JPEG, as this used to, was refused without a word.
+const COVER_MAX_BASE64 = 256 * 1024;
+const COVER_SIZES = [640, 512, 400, 320, 256];
 
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+async function toCoverJpeg(imageFile) {
+  const url = URL.createObjectURL(imageFile);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("That file isn't an image Jomify can read"));
+      el.src = url;
+    });
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    const sx = (img.naturalWidth - side) / 2;
+    const sy = (img.naturalHeight - side) / 2;
+    for (const size of COVER_SIZES) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      canvas.getContext('2d').drawImage(img, sx, sy, side, side, 0, 0, size, size);
+      for (const quality of [0.9, 0.8, 0.7]) {
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+        if (base64.length <= COVER_MAX_BASE64) return base64;
+      }
+    }
+    throw new Error('That image is too detailed to fit Spotify\'s 256 KB cover limit');
+  } finally {
+    URL.revokeObjectURL(url);
   }
-
-  return btoa(binary);
 }
 
 export async function uploadPlaylistCoverImage(token, playlistId, imageFile) {
   if (!imageFile) return;
-  
-  // 1. Get the base64 string
-  let base64Image = await blobToBase64(imageFile);
-  
-  // 2. CRITICAL FIX: Strip the "data:image/...;base64," prefix from the string
-  base64Image = base64Image.replace(/^data:image\/(jpeg|png|jpg|webp);base64,/, '');
+  const base64Image = await toCoverJpeg(imageFile);
 
   const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}/images`, {
     method: "PUT",
     headers: {
       "Authorization": `Bearer ${token}`,
-      "Content-Type": "image/jpeg" // CRITICAL FIX: Hardcode this, do not use imageFile.type
+      "Content-Type": "image/jpeg"
     },
-    body: base64Image // Send the raw, prefix-less string
+    body: base64Image
   });
 
-  if (response.status !== 202) throw new Error("Failed to upload playlist cover image");
+  if (!response.ok) throw new Error(`Spotify refused the cover (${response.status})`);
 }
 
 // NEW: A dedicated function to grab the next chunks

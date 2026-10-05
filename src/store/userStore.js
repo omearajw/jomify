@@ -293,18 +293,31 @@ export const useUserStore = create(
         }));
       },
 
-      addStagedTrack: (track) => set((state) => {
-        if (state.stagedSeven.length >= 7) return state;
-        return { stagedSeven: [...state.stagedSeven, track] };
+      // Each staged track is tagged with the Seven it is for, so every Seven has its own draft
+      // of seven. One shared list, as this was, meant songs staged for one Seven showed up in,
+      // and published from, whichever was open. The list itself stays one synced register; an
+      // entry without a tag (staged before tagging existed) belongs to whichever Seven is open.
+      addStagedTrack: (track, forPlaylistId) => set((state) => {
+        const mine = state.stagedSeven.filter(t => (t.forPlaylistId ?? forPlaylistId) === forPlaylistId);
+        if (mine.length >= 7) return state;
+        return { stagedSeven: [...state.stagedSeven, { ...track, forPlaylistId }] };
       }),
-      
-      removeStagedTrack: (uri) => set((state) => ({
-        stagedSeven: state.stagedSeven.filter(t => t.uri !== uri)
+
+      removeStagedTrack: (uri, forPlaylistId) => set((state) => ({
+        stagedSeven: state.stagedSeven.filter(t => !(t.uri === uri && (t.forPlaylistId ?? forPlaylistId) === forPlaylistId))
       })),
 
-      clearStagedTracks: () => set({ stagedSeven: [] }),
+      clearStagedTracks: (forPlaylistId) => set((state) => ({
+        stagedSeven: state.stagedSeven.filter(t => (t.forPlaylistId ?? forPlaylistId) !== forPlaylistId)
+      })),
 
-      setStagedSeven: (tracks) => set({ stagedSeven: tracks }),
+      // Replaces this Seven's draft, leaving the other Sevens' drafts alone
+      setStagedSeven: (tracks, forPlaylistId) => set((state) => ({
+        stagedSeven: [
+          ...state.stagedSeven.filter(t => (t.forPlaylistId ?? forPlaylistId) !== forPlaylistId),
+          ...tracks.map(t => ({ ...t, forPlaylistId }))
+        ]
+      })),
       
       addPlaylistToFolder: (folderId, playlistId) => set((state) => ({
         customFolders: state.customFolders.map(f => {

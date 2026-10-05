@@ -133,7 +133,9 @@ function App() {
       try { openTarget(new URL(event.data.url, location.origin).searchParams.get('open')); } catch { /* ignore */ }
     };
     navigator.serviceWorker?.addEventListener('message', onMessage);
-    syncPushStatus();
+    syncPushStatus(token).then((reason) => {
+      if (reason === 'grant') toast("Sevens notifications stopped: Spotify ended Jomify's access. Turn them on again to restore it.", { tone: 'error', duration: 8000 });
+    });
     return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
   }, [token, navigateToPlaylist]);
 

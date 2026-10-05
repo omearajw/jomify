@@ -174,7 +174,7 @@ export default function SevensSettings() {
               ) : partner ? (
                 <span className="truncate">with <span className="text-white font-medium">{partner}</span></span>
               ) : (
-                <span className="text-amber-400/80">No partner yet — duplicate checking is off</span>
+                <span className="text-amber-400/80">No partner yet — songs already sent to them on other Sevens can't be flagged</span>
               )}
             </div>
           </div>

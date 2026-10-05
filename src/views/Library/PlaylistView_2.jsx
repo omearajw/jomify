@@ -99,13 +99,16 @@ function BatchSkeleton() {
 export default function PlaylistView_2() {
   const {
     token, activePlaylistId, playlists, profile,
-    stagedSeven, addStagedTrack, removeStagedTrack, clearStagedTracks, setStagedSeven,
+    stagedSeven: allStaged, addStagedTrack, removeStagedTrack, clearStagedTracks, setStagedSeven,
     navigateToArtist, navigateToAlbum, sevens, updateSeven
   } = useSlice(useUserStore, [
     'token', 'activePlaylistId', 'playlists', 'profile',
     'stagedSeven', 'addStagedTrack', 'removeStagedTrack', 'clearStagedTracks', 'setStagedSeven',
     'navigateToArtist', 'navigateToAlbum', 'sevens', 'updateSeven'
   ]);
+  // This Seven's draft. Entries from before drafts were per Seven carry no tag and count as this
+  // Seven's, so nothing already staged is lost.
+  const stagedSeven = allStaged.filter(t => (t.forPlaylistId ?? activePlaylistId) === activePlaylistId);
   
   const { currentPlayingTrack, isCurrentTrackPaused } = usePlaybackSummary();
   const isShuffled = usePlayerStore((s) => s.isShuffled);
@@ -136,6 +139,8 @@ export default function PlaylistView_2() {
   // Which of the three panes a narrow screen shows; wide screens show all three side by side
   const [workspacePane, setWorkspacePane] = useState('staging');
   const [poolPlaylist, setPoolPlaylist] = useState(null);
+  const [poolError, setPoolError] = useState('');
+  const [poolAttempt, setPoolAttempt] = useState(0);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
 
@@ -147,6 +152,8 @@ export default function PlaylistView_2() {
   );
   const poolPlaylistId = thisSeven?.poolPlaylistId || '';
   const setPoolPlaylistId = (id) => {
+    setPoolError('');
+    setPoolPlaylist(null);
     if (activePlaylistId) updateSeven(activePlaylistId, { poolPlaylistId: id });
   };
 
@@ -192,11 +199,16 @@ export default function PlaylistView_2() {
   useEffect(() => {
     if (token && poolPlaylistId && isWorkspaceOpen) {
       let cancelled = false;
-      loadPool(token, poolPlaylistId, setPoolPlaylist, () => cancelled).catch(console.error);
+      // A pool that failed to load used to leave the spinner for good
+      loadPool(token, poolPlaylistId, setPoolPlaylist, () => cancelled).catch((err) => {
+        if (cancelled) return;
+        console.error('Pool playlist failed to load:', err);
+        setPoolError(err?.message === 'RATE_LIMITED' ? 'Spotify is rate-limiting Jomify right now.' : "Couldn't load that playlist.");
+      });
       return () => { cancelled = true; };
     }
     return undefined;
-  }, [token, poolPlaylistId, isWorkspaceOpen]);
+  }, [token, poolPlaylistId, isWorkspaceOpen, poolAttempt]);
 
   // --- COLLABORATOR HYDRATION ---
   useEffect(() => {
@@ -225,18 +237,21 @@ export default function PlaylistView_2() {
     Promise.all(
       partnerSevens.map(async (seven) => ({
         name: knownPlaylists.find(p => p.id === seven.playlistId)?.name || 'another Seven',
-        meta: await fetchSevenTrackMeta(token, seven.playlistId).catch(() => [])
+        meta: await fetchSevenTrackMeta(token, seven.playlistId).catch(() => null)
       }))
     )
       .then((results) => {
         if (cancelled) return;
         const matches = {};
+        let checked = 0;
         results.forEach(({ name, meta }) => {
+          if (!meta) return; // this Seven could not be read, so it was not checked
+          checked += 1;
           meta.forEach(({ uri }) => {
             if (uri && !matches[uri]) matches[uri] = { playlistName: name };
           });
         });
-        setCrossSevenHistory({ partnerId, matches });
+        setCrossSevenHistory({ partnerId, matches, checked, failed: results.length - checked });
       })
       .catch((err) => {
         console.error('Cross-Seven duplicate check failed:', err);
@@ -294,17 +309,19 @@ const turnIndicator = useMemo(() => {
     const lastAdderId = lastTrack?.added_by?.id;
     
     const yourUsername = profile?.display_name || profile?.id || 'You';
-    
-    // Scan the playlist to find the ID of the person who ISN'T you
-    const otherId = playlist.tracks.items.find(item => item.added_by?.id && item.added_by.id !== profile?.id)?.added_by?.id;
-    
-    const otherCollaborator = otherId ? collaborators[otherId] : null;
-    const otherUsername = otherCollaborator?.display_name || otherCollaborator?.id || otherId || 'Collaborator';
+
+    // The partner chosen in settings comes first; failing that, whoever else has added a song.
+    // Naming the first other adder regardless meant this disagreed with the Home banner on a
+    // Seven with more than two contributors.
+    const otherId = thisSeven?.partnerId
+      || playlist.tracks.items.find(item => item.added_by?.id && item.added_by.id !== profile?.id)?.added_by?.id;
+    const otherUsername = (otherId === thisSeven?.partnerId && partnerDisplayName)
+      || collaborators[otherId]?.display_name || otherId || 'Collaborator';
 
     // If you went last, it's their turn. If they went last, it's yours.
     if (lastAdderId === profile?.id) return `Next up: ${otherUsername}`;
     return `Next up: ${yourUsername}`;
-  }, [playlist, profile, collaborators]);
+  }, [playlist, profile, collaborators, thisSeven?.partnerId, partnerDisplayName]);
 
   const mainPlaylistUris = useMemo(() => {
     if (!playlist?.tracks?.items) return new Set();
@@ -327,7 +344,7 @@ const turnIndicator = useMemo(() => {
       // Reload every page, not just the first 100, so the view doesn't lose older batches
       loadedSevenId.current = activePlaylistId;
       await loadSeven(token, activePlaylistId, setPlaylist);
-      clearStagedTracks();
+      clearStagedTracks(activePlaylistId);
       setIsWorkspaceOpen(false);
     } catch (err) {
       console.error("Failed to publish 7", err);
@@ -475,7 +492,7 @@ const turnIndicator = useMemo(() => {
                   const newStaged = [...stagedSeven];
                   const [movedItem] = newStaged.splice(from, 1);
                   newStaged.splice(to, 0, movedItem);
-                  setStagedSeven(newStaged);
+                  setStagedSeven(newStaged, activePlaylistId);
                 };
                 const isDraggingThis = draggedIdx === idx;
                 const isDragOver = dragOverIdx === idx;
@@ -512,7 +529,7 @@ const turnIndicator = useMemo(() => {
                       const [movedItem] = newStaged.splice(draggedIdx, 1);
                       newStaged.splice(targetIdx, 0, movedItem);
                       
-                      setStagedSeven(newStaged);
+                      setStagedSeven(newStaged, activePlaylistId);
                       setDraggedIdx(null);
                     }}
                     className={`${track ? 'h-14 lg:h-auto lg:flex-1 lg:max-h-[72px] animate-fade-in' : 'h-9 lg:h-auto lg:flex-1 lg:max-h-[72px]'} min-h-0 flex items-center gap-3 lg:gap-4 px-3 py-1 lg:py-1.5 rounded-2xl border transition-[colors,opacity,transform] duration-150 ${
@@ -553,7 +570,7 @@ const turnIndicator = useMemo(() => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            removeStagedTrack(track.uri);
+                            removeStagedTrack(track.uri, activePlaylistId);
                           }}
                           className="p-1.5 rounded-full hover:bg-red-500/20 text-white/50 hover:text-red-500 transition-colors z-10 cursor-pointer shrink-0"
                         >
@@ -597,9 +614,18 @@ const turnIndicator = useMemo(() => {
                 <p className="text-[11px] font-medium text-neutral-500 flex items-center gap-1.5">
                   <Loader2 className="w-3 h-3 animate-spin" /> Checking what you've already sent {partnerDisplayName}…
                 </p>
-              ) : partnerSevens.length > 0 ? (
+              ) : null}
+              {/* "USED" is judged against what has loaded; until the older batches are in, a
+                  song from early in the Seven could still pass */}
+              {playlist?.tracks?.loadedFrom > 0 && (
+                <p className="text-[11px] font-medium text-amber-300/90 leading-snug">
+                  Still loading the older batches, so "USED" may miss songs from early in this Seven for a moment.
+                </p>
+              )}
+              {!thisSeven?.partnerId || isCheckingHistory ? null : partnerSevens.length > 0 ? (
                 <p className="text-[11px] font-medium text-neutral-500 leading-snug">
-                  Cross-checked against {partnerSevens.length} other Seven{partnerSevens.length === 1 ? '' : 's'} with {partnerDisplayName}.
+                  Cross-checked against {crossSevenHistory.checked ?? partnerSevens.length} other Seven{(crossSevenHistory.checked ?? partnerSevens.length) === 1 ? '' : 's'} with {partnerDisplayName}.
+                  {crossSevenHistory.failed ? <span className="text-amber-300"> {crossSevenHistory.failed} couldn't be read.</span> : null}
                 </p>
               ) : null}
             </div>
@@ -607,6 +633,11 @@ const turnIndicator = useMemo(() => {
               {!poolPlaylistId ? (
                 <div className="h-full flex items-center justify-center text-neutral-500 text-sm font-medium p-8 text-center">
                   Select your potential songs playlist above to start drafting.
+                </div>
+              ) : poolError && !poolPlaylist ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3 text-neutral-400 text-sm font-medium p-8 text-center">
+                  {poolError}
+                  <button type="button" onClick={() => { setPoolError(''); setPoolAttempt((n) => n + 1); }} className="rounded-full border border-white/15 px-4 py-1.5 text-xs font-semibold text-white hover:bg-white/5">Try again</button>
                 </div>
               ) : !poolPlaylist ? (
                 <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-neutral-500" /></div>
@@ -629,7 +660,7 @@ const turnIndicator = useMemo(() => {
                     <div 
                       key={`${item.track.id}-${idx}`} 
                       onClick={() => {
-                        if (!isDuplicate && !isStaged) addStagedTrack(item.track);
+                        if (!isDuplicate && !isStaged) addStagedTrack(item.track, activePlaylistId);
                       }}
                       className={`flex items-center gap-3 p-1.5 rounded-xl transition-colors group/poolrow ${stateClasses}`}
                     >
