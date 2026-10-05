@@ -238,6 +238,68 @@ function checkNetworkAfterPause() {
     .catch((err) => log('background', 'network check after the pause: failed', `${err?.name || err} after ${Date.now() - started}ms, ${net}`));
 }
 
+// A pause nobody in Jomify asked for, while the music was playing, is not a choice anyone made
+// here: Android handing the audio to another app, or Spotify's own app waking ("Spotify is
+// trying to play…"), both arrive as a plain pause. After a short grace, if the music is still
+// sitting paused on the same song with no word from the user, start it again. If it is paused
+// again within a minute, something outside is deliberately pausing it and the music is left
+// alone; so is a fourth pause within an hour. Every step is logged so the log says what happened.
+const UNASKED_RESUME_GRACE_MS = 6000;
+const UNASKED_RESUME_FIGHT_MS = 60000;
+const UNASKED_RESUME_MAX_PER_HOUR = 3;
+let unaskedResumes = [];
+let unaskedResumeTimer = null;
+let unaskedResumeGaveUpAt = 0;
+let watchdogResumeAt = 0;
+function resumeAfterUnaskedPause(sdkPlayer, pausedState) {
+  clearTimeout(unaskedResumeTimer);
+  const uri = pausedState.track_window?.current_track?.uri;
+  const song = pausedState.track_window?.current_track?.name || '?';
+  const at = `${Math.round((pausedState.position || 0) / 1000)}s`;
+  unaskedResumes = unaskedResumes.filter((t) => Date.now() - t < 3600000);
+  if (Date.now() - unaskedResumeGaveUpAt < 3600000) { log('playback', 'leaving it paused', 'gave up resuming earlier this hour'); return; }
+  const last = unaskedResumes[unaskedResumes.length - 1];
+  if (last && Date.now() - last < UNASKED_RESUME_FIGHT_MS) {
+    unaskedResumeGaveUpAt = Date.now();
+    log('playback', 'paused again within a minute of resuming; something outside Jomify keeps pausing it, leaving it alone for an hour', `${song} at ${at}`);
+    return;
+  }
+  if (unaskedResumes.length >= UNASKED_RESUME_MAX_PER_HOUR) {
+    unaskedResumeGaveUpAt = Date.now();
+    log('playback', 'paused from outside Jomify three times this hour; leaving it alone', `${song} at ${at}`);
+    return;
+  }
+  unaskedResumeTimer = setTimeout(async () => {
+    const s = player();
+    const now = s.playbackState;
+    if (!s.isLocalActive) { log('playback', 'not resuming: this browser is no longer the device playing'); return; }
+    if (!now?.paused || now.track_window?.current_track?.uri !== uri) return; // moved on by itself
+    if (Date.now() - lastIntentAt < UNASKED_RESUME_GRACE_MS + INTENT_WINDOW_MS) { log('playback', 'not resuming: someone in Jomify acted since the pause'); return; }
+    const conn = navigator.connection;
+    const net = `${navigator.onLine ? 'online' : 'offline'}${conn ? `, ${conn.type || '?'} ${conn.effectiveType || '?'}` : ''}`;
+    // What Spotify's servers make of it: a pause they commanded (another client) reads as
+    // is_playing false on our device; one Android forced on the browser may read differently
+    const t = token();
+    if (t) {
+      await fetchPlayerState(t)
+        .then((remote) => log('playback', 'Spotify says', remote ? `${remote.is_playing ? 'playing' : 'paused'} on ${remote.device?.name || '?'} (${remote.device?.id === s.deviceId ? 'this browser' : 'another device'})` : 'nothing is playing anywhere'))
+        .catch((err) => log('playback', 'Spotify could not be asked', err?.message || err));
+    }
+    unaskedResumes.push(Date.now());
+    watchdogResumeAt = Date.now();
+    log('playback', `resuming after a pause nobody asked for (${unaskedResumes.length} this hour)`, `${song} at ${at}, ${net}, ${document.hidden ? 'in the background' : 'in the foreground'}`);
+    try {
+      await sdkPlayer.resume();
+      setTimeout(() => {
+        const st = player().playbackState;
+        log('playback', st?.paused ? 'the resume did not take: still paused' : 'the resume took', `${song} at ${Math.round((st?.position || 0) / 1000)}s`);
+      }, 2500);
+    } catch (err) {
+      log('playback', 'the resume failed', err?.message || err);
+    }
+  }, UNASKED_RESUME_GRACE_MS);
+}
+
 // While the app is in the background, note every minute what this browser's player says it is
 // doing. A page Chrome freezes or kills simply stops writing notes, so the gap says when, and a
 // player that has stopped by itself says so while the page is still alive.
@@ -417,9 +479,12 @@ function initLocalPlayer() {
         } else if (Boolean(state.paused) !== Boolean(before?.paused)) {
           // Something outside Jomify (Android, another app taking the audio) pausing the music
           // looks exactly like any other pause unless it is marked
-          const unasked = Date.now() - lastIntentAt > INTENT_WINDOW_MS;
-          log('playback', state.paused ? 'paused' : 'resumed', `at ${Math.round((state.position || 0) / 1000)}s of ${Math.round((state.duration || 0) / 1000)}s${unasked ? ', nobody in Jomify asked for it' : ''}`);
+          const byWatchdog = !state.paused && Date.now() - watchdogResumeAt < UNASKED_RESUME_GRACE_MS;
+          const unasked = !byWatchdog && Date.now() - lastIntentAt > INTENT_WINDOW_MS;
+          log('playback', state.paused ? 'paused' : 'resumed', `at ${Math.round((state.position || 0) / 1000)}s of ${Math.round((state.duration || 0) / 1000)}s${byWatchdog ? ', by Jomify after the unasked pause' : unasked ? ', nobody in Jomify asked for it' : ''}${document.hidden ? ', in the background' : ''}`);
           if (unasked && state.paused && document.hidden) checkNetworkAfterPause();
+          if (unasked && state.paused) resumeAfterUnaskedPause(sdkPlayer, state);
+          if (!state.paused) clearTimeout(unaskedResumeTimer);
         }
       }
       if (!state) {
