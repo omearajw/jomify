@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Copy, Share2, Trash2, Check } from 'lucide-react';
+import { X, Copy, Share2, Trash2, Check, Radar } from 'lucide-react';
 import { getEntries, subscribe, clearLog, formatEntry, formatLog } from '../services/debugLog';
+import { checkSpotifyEndpoints } from '../services/endpointCheck';
 
 const PAGE = 300;
 
@@ -46,6 +47,7 @@ export default function DebugLogPanel({ onClose }) {
   const [filter, setFilter] = useState('');
   const [copied, setCopied] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => subscribe(() => rerender((n) => n + 1)), []);
   useEffect(() => {
@@ -96,6 +98,15 @@ export default function DebugLogPanel({ onClose }) {
             <Share2 className="w-4 h-4" /> Share
           </button>
         )}
+        <button
+          type="button"
+          disabled={checking}
+          onClick={() => { setChecking(true); setFilter('api check'); checkSpotifyEndpoints().finally(() => setChecking(false)); }}
+          className={`${button} disabled:opacity-60`}
+          title="Asks Spotify, read-only, whether each endpoint Jomify uses still answers"
+        >
+          <Radar className={`w-4 h-4 ${checking ? 'animate-pulse' : ''}`} /> {checking ? 'Checking…' : 'Check Spotify'}
+        </button>
         <button type="button" onClick={handleClear} className={`${button} ${confirmClear ? 'border-red-400 text-red-300' : ''}`}>
           <Trash2 className="w-4 h-4" /> {confirmClear ? 'Tap again to clear' : 'Clear'}
         </button>
