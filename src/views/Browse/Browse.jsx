@@ -8,7 +8,7 @@ import { formatTime } from '../../utils/formatTime';
 import { Search, Play, ChevronLeft, Loader } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import { rowButtonProps } from '../../utils/a11y';
-import { isSameTrack } from '../../utils/spotifyUri';
+import { isSameTrack, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
 
 const MAX_CACHED_RESULTS_BYTES = 500 * 1024;
 
@@ -234,7 +234,8 @@ export default function Browse() {
                     draggable="true"
                     onDragStart={(e) => {
                       e.stopPropagation();
-                      e.dataTransfer.effectAllowed = 'all'; // FIX: Allows the drop zone to dictate the action
+                      e.dataTransfer.effectAllowed = 'all'; // the drop target decides
+                      e.dataTransfer.setData(TRACK_DRAG_TYPE, track.uri);
                       e.dataTransfer.setData('text/plain', track.uri);
                       setTimeout(() => setDraggedItem({ type: 'track', uri: track.uri }), 0);
                     }}
@@ -417,7 +418,7 @@ export default function Browse() {
                     {album.images?.[0]?.url && <img src={artUrl(album.images, 300)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
                   </div>
                   <p className="text-white text-sm font-bold truncate w-full">{album.name}</p>
-                  <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{album.artists[0].name}</p>
+                  <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{album.artists?.[0]?.name || ''}</p>
                 </div>
               ))}
               {/* Infinite scroll sentinel */}
@@ -502,7 +503,10 @@ export default function Browse() {
                       draggable="true"
                       onDragStart={(e) => {
                         e.stopPropagation();
-                        e.dataTransfer.effectAllowed = 'copy';
+                        // 'copy' here while the sidebar answered 'move' meant the browser
+                        // refused the drop; the target decides now, as in the full list
+                        e.dataTransfer.effectAllowed = 'all';
+                        e.dataTransfer.setData(TRACK_DRAG_TYPE, track.uri);
                         e.dataTransfer.setData('text/plain', track.uri);
                         setTimeout(() => setDraggedItem({ type: 'track', uri: track.uri }), 0);
                       }}
@@ -657,7 +661,7 @@ export default function Browse() {
                       {album.images?.[0]?.url && <img src={artUrl(album.images, 300)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
                     </div>
                     <p className="text-white text-sm font-bold truncate w-full">{album.name}</p>
-                    <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{album.artists[0].name}</p>
+                    <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{album.artists?.[0]?.name || ''}</p>
                   </div>
                 ))}
               </div>

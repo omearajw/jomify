@@ -11,6 +11,7 @@ import LikeButton from '../../components/LikeButton';
 import TrackArtists from '../../components/TrackArtists';
 import { rowButtonProps } from '../../utils/a11y';
 import { isSameTrack } from '../../utils/spotifyUri';
+import { toast } from '../../store/toastStore';
 
 export default function Album() {
   const { token, setLikedTracks, currentAlbumId, setContextMenu, albums, setAlbums, removeAlbumFromLibrary } = useSlice(useUserStore, ['token', 'setLikedTracks', 'currentAlbumId', 'setContextMenu', 'albums', 'setAlbums', 'removeAlbumFromLibrary']);
@@ -22,8 +23,11 @@ export default function Album() {
   const summary = albums.find((a) => a.id === currentAlbumId) || null;
   const shown = album || (loading ? summary : null);
   const [error, setError] = useState('');
+  // Set when a later page of tracks fails: what loaded stays up, with a way to fetch the rest
+  const [restError, setRestError] = useState('');
 
 
+  const [reloadNonce, setReloadNonce] = useState(0);
   useEffect(() => {
     if (!token || !currentAlbumId) return;
     let cancelled = false;
@@ -46,16 +50,26 @@ export default function Album() {
         setAlbum(albumData);
 
         // The album object carries the first 50 tracks; long compilations and deluxe editions
-        // have more, and used to be silently truncated.
+        // have more, and used to be silently truncated. A later page failing used to replace the
+        // whole album, header included, with an error; now what arrived stays up.
         const allTracks = [...(albumData.tracks?.items || [])];
+        setTracks(allTracks);
+        setRestError('');
         let nextUrl = albumData.tracks?.next;
         while (nextUrl) {
-          const page = await fetchMoreTracks(token, nextUrl);
+          let page;
+          try { page = await fetchMoreTracks(token, nextUrl); }
+          catch (err) {
+            if (cancelled) return;
+            console.error('Album tracks stopped loading partway:', err);
+            setRestError(err?.message === 'RATE_LIMITED' ? 'Spotify rate-limited the rest of the tracks.' : "Couldn't load the rest of the tracks.");
+            break;
+          }
           allTracks.push(...(page.items || []));
           nextUrl = page.next;
         }
         if (cancelled) return;
-        setTracks(allTracks);
+        setTracks([...allTracks]);
 
         // Check liked status
         const ids = allTracks.map(track => track.id).filter(Boolean);
@@ -74,7 +88,7 @@ export default function Album() {
 
     fetchAlbumData();
     return () => { cancelled = true; };
-  }, [token, currentAlbumId, setLikedTracks]);
+  }, [token, currentAlbumId, setLikedTracks, reloadNonce]);
 
   // Album context, offset at the clicked row: playback carries on through the album and Spotify
   // shows "playing from <album>"
@@ -88,28 +102,33 @@ export default function Album() {
   // The helper existed in api.js from the start but nothing ever called it; there was no way to
   // save an album from its own page.
   const [saving, setSaving] = useState(false);
-  const isSaved = Boolean(album) && (albums || []).some(a => a.id === album.id);
+  // Judged from whatever is on screen, so a saved album reads as saved while its full record
+  // is still loading, and the button works in that time too
+  const isSaved = Boolean(shown) && (albums || []).some(a => a.id === shown.id);
 
   const handleToggleSave = async () => {
-    if (!token || !album || saving) return;
+    if (!token || !shown || saving) return;
     setSaving(true);
     try {
       if (isSaved) {
-        await unsaveAlbum(token, album.id);
-        removeAlbumFromLibrary(album.id);
+        await unsaveAlbum(token, shown.id);
+        removeAlbumFromLibrary(shown.id);
+        toast(`Removed "${shown.name}" from your library`, { tone: 'info' });
       } else {
-        await saveAlbumToLibrary(token, album.id);
+        await saveAlbumToLibrary(token, shown.id);
         setAlbums([...(albums || []), {
-          id: album.id,
-          name: album.name,
-          images: album.images,
-          artists: album.artists,
+          id: shown.id,
+          name: shown.name,
+          images: shown.images,
+          artists: shown.artists,
           type: 'album',
-          total_tracks: album.total_tracks
+          total_tracks: shown.total_tracks
         }]);
+        toast(`Saved "${shown.name}" to your library`, { tone: 'success' });
       }
     } catch (err) {
       console.error('Failed to update saved album:', err);
+      toast(isSaved ? "Couldn't remove it from your library" : "Couldn't save it to your library", { tone: 'error' });
     } finally {
       setSaving(false);
     }
@@ -182,6 +201,12 @@ export default function Album() {
       {tracks.length > 0 && (
         <div>
           <h2 className="text-xl md:text-2xl font-bold text-white mb-3 md:mb-6">Tracks</h2>
+          {restError && (
+            <p className="text-red-400 text-xs font-medium mb-3 flex items-center gap-3">
+              {restError}
+              <button type="button" onClick={() => setReloadNonce((n) => n + 1)} className="underline hover:text-white transition-colors">Try again</button>
+            </p>
+          )}
           <div className="flex flex-col space-y-1">
             {tracks.map((track, index) => {
               const isCurrentTrack = isSameTrack(track, currentPlayingTrack);

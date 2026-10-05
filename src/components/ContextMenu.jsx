@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
-import { resolvePlaybackDeviceId, handlePlaybackError } from '../services/spotify/playbackController';
+import { playOn } from '../services/spotify/playbackController';
 import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, unsaveAlbum } from '../services/spotify/api';
 import { ListPlus, Plus, ChevronRight, ChevronDown, ChevronUp, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil, CornerDownRight, User, Disc3 } from 'lucide-react';
 import { idFromUri } from '../utils/spotifyUri';
@@ -291,22 +291,17 @@ export default function ContextMenu() {
   const handleAddToQueue = async () => {
     const track = contextMenu.track;
     if (!token || !track) return;
-    const deviceId = resolvePlaybackDeviceId();
-    if (!deviceId) return;
-
-    try {
+    closeMenu();
+    // Finding a device, waiting for this browser's player and asking where to play are the same
+    // as for a play. With no device this used to open the picker and then forget the song.
+    await playOn(async (deviceId) => {
       await addToQueue(token, deviceId, track.uri);
-      // Only record the optimistic entry once Spotify has accepted it. It's persisted, so a
-      // failed add used to leave a phantom in the queue panel that survived restarts.
+      // Only record the entry once Spotify has accepted it. It's persisted, so a failed add used
+      // to leave a phantom in the queue panel that survived restarts.
       addManuallyQueuedTrack(track);
-
       setTimeout(() => triggerQueueRefresh(), 750);
-      closeMenu();
       toast(`Queued "${track.name}"`, { tone: 'success' });
-    } catch (err) {
-      handlePlaybackError(err);
-      if (err?.code !== 'NO_ACTIVE_DEVICE') toast("Couldn't add to the queue", { tone: 'error' });
-    }
+    }, { track, quiet: true }).catch(() => toast("Couldn't add to the queue", { tone: 'error' }));
   };
 
   const handleAddToPlaylist = async (playlistId) => {

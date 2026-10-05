@@ -124,9 +124,12 @@ export default function Artist() {
         <div className="min-w-0">
           <p className="hidden md:block text-sm font-bold text-neutral-400 uppercase tracking-widest mb-2">Artist</p>
           <h1 className="text-2xl md:text-6xl font-extrabold text-white tracking-tighter mb-1 md:mb-4 break-words line-clamp-2 md:line-clamp-none">{artist.name}</h1>
-          <p className="text-sm md:text-base text-neutral-400 font-medium mb-2 md:mb-4">
-            {artist.followers?.total?.toLocaleString()} followers
-          </p>
+          {/* Spotify no longer sends follower counts to apps like Jomify; shown only if present */}
+          {artist.followers?.total != null && (
+            <p className="text-sm md:text-base text-neutral-400 font-medium mb-2 md:mb-4">
+              {artist.followers.total.toLocaleString()} followers
+            </p>
+          )}
           {artist.genres?.length > 0 && (
             <div className="flex gap-2 flex-wrap">
               {artist.genres.slice(0, 5).map((genre) => (

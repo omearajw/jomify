@@ -400,7 +400,9 @@ export async function searchSpotify(token, query) {
   if (!query) return null;
   
   const encodedQuery = encodeURIComponent(query);
-  const url = "https://" + "api.spotify.com/v1/search?q=" + encodedQuery + "&type=track,album,artist,playlist&limit=20";
+  // Spotify cut the most an app like Jomify may ask for from 50 to 10 in 2026; 20 now risks a
+  // refusal. The "See more" lists page on from here anyway.
+  const url = "https://" + "api.spotify.com/v1/search?q=" + encodedQuery + "&type=track,album,artist,playlist&limit=10";
 
   const response = await spotifyFetch(url, {
     method: "GET",

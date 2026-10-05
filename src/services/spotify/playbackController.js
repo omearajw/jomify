@@ -121,7 +121,10 @@ function applyRemoteState(state) {
   if (isLocal) return; // the SDK's own events are richer and instant; don't fight them
 
   store.setRemoteVolume(device?.volume_percent ?? null);
+  const prevUri = store.playbackState?.track_window?.current_track?.uri;
   store.setPlaybackState(toSdkShape(state, store.playbackState));
+  // Same as for this browser's player: a queued song leaves "Up Next" once it plays elsewhere
+  if (state.item && state.item.uri !== prevUri) useUserStore.getState().consumeManuallyQueuedTrack(state.item);
 }
 
 export async function refreshRemoteState() {
@@ -415,6 +418,10 @@ function initLocalPlayer() {
       s.setPlaybackState(state);
       syncMediaSession(state);
       setPresence(state.paused ? 'paused' : 'playing');
+      // A song the user queued leaves "Up Next" once it plays. This used to live in the desktop
+      // player bar alone, so on a phone queued songs piled up for good.
+      const nowTrack = state.track_window?.current_track;
+      if (nowTrack && nowTrack.uri !== before?.track_window?.current_track?.uri) useUserStore.getState().consumeManuallyQueuedTrack(nowTrack);
       if (!s.isLocalActive) {
         log('playback', 'playing on', `${THIS_BROWSER} (this device)`);
         s.setIsLocalActive(true);
@@ -731,13 +738,16 @@ function parkPlay(play) {
   useUserStore.getState().setDevicePickerOpen(true);
 }
 
-export async function playOn(play, { track } = {}) {
+// `quiet` is for requests that need a device but do not change what is playing, such as adding
+// to the queue: they get the same device search, wait and parking, without the song being shown
+// as playing or Spotify being asked to confirm a change
+export async function playOn(play, { track, quiet = false } = {}) {
   activateLocalPlayer(); // synchronously, while still inside the tap
   if (!token()) return;
 
   // Name the song straight away. Finding a device can take a round trip, and a tap that shows
   // nothing for half a second reads as a button that did not work.
-  showTrackOptimistically(track);
+  if (!quiet) showTrackOptimistically(track);
 
   let target = pickDevice();
   if (!target) {
@@ -758,10 +768,10 @@ export async function playOn(play, { track } = {}) {
   try {
     await play(target);
     rememberDevice(target);
-    confirmPlayback();
+    if (!quiet) confirmPlayback();
   } catch (err) {
     // Whatever was shown optimistically was a guess; let Spotify correct it
-    refreshSoon();
+    if (!quiet) refreshSoon();
     if (err?.code !== 'NO_ACTIVE_DEVICE') { handlePlaybackError(err); return; }
 
     // Whatever we aimed at has gone away. Forget it, look again, and only ask if there is a
@@ -774,7 +784,7 @@ export async function playOn(play, { track } = {}) {
       try {
         await play(retry);
         rememberDevice(retry);
-        confirmPlayback();
+        if (!quiet) confirmPlayback();
         return;
       } catch { /* fall through to the picker */ }
     }

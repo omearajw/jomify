@@ -465,9 +465,16 @@ function App() {
                     <p className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-1">Profile</p>
                     <h1 className="text-3xl md:text-7xl font-extrabold text-white tracking-tighter mb-4 break-words">{profile.display_name}</h1>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                      <p className="text-neutral-400 font-medium">
-                        {profile.followers?.total} Followers • {profile.product} tier
-                      </p>
+                      {/* Both fields are ones Spotify removed for apps like Jomify in 2026; each
+                          shows only while the account still receives it */}
+                      {(profile.followers?.total != null || profile.product) && (
+                        <p className="text-neutral-400 font-medium">
+                          {[
+                            profile.followers?.total != null ? `${profile.followers.total.toLocaleString()} Followers` : null,
+                            profile.product ? `${profile.product} tier` : null
+                          ].filter(Boolean).join(' • ')}
+                        </p>
+                      )}
                       <span className="hidden md:block w-1.5 h-1.5 bg-neutral-600 rounded-full"></span>
                       <button
                         onClick={toggleAndLoadStats}

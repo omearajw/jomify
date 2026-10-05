@@ -342,9 +342,10 @@ export const useUserStore = create(
           ...f,
           playlistIds: f.playlistIds.filter(id => id !== albumId)
         })),
-        pinnedItems: state.pinnedItems.filter(p => p.id !== albumId),
-        currentAlbumId: state.currentAlbumId === albumId ? null : state.currentAlbumId,
-        viewHistory: state.viewHistory.filter(h => !(h.view === 'album' && h.albumId === albumId))
+        // The album itself still exists in the catalogue, so the page you are on and the
+        // history stay as they are. Clearing them here made a track tapped afterwards play
+        // "album null" and took the page out of Back.
+        pinnedItems: state.pinnedItems.filter(p => p.id !== albumId)
       })),
 
       // Places `dragId` before or after `dropId` among the drop target's SIBLINGS. A drop onto a
