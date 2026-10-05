@@ -568,6 +568,14 @@ export const useUserStore = create(
         };
       }),
 
+      // Home's turn banner asks for the workspace; the Seven page opens it on arrival and clears this
+      workspaceRequest: null,
+      requestWorkspace: (playlistId) => set({ workspaceRequest: playlistId }),
+      clearWorkspaceRequest: () => set({ workspaceRequest: null }),
+      // Bumped after a drop lands, so Home rechecks whose turn it is without a relaunch
+      sevensCheckNonce: 0,
+      bumpSevensCheck: () => set((state) => ({ sevensCheckNonce: state.sevensCheckNonce + 1 })),
+
       // Ctrl/Cmd+K: the Search page clears this once it has focused its box
       searchFocusRequested: false,
       requestSearchFocus: () => set({ currentView: 'browse', searchFocusRequested: true, ...(get().currentView === 'browse' ? {} : { viewHistory: pushHistory(get()) }) }),

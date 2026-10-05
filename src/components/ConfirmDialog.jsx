@@ -2,7 +2,10 @@ import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
-export default function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', onConfirm, onCancel }) {
+// `children` go between the message and the buttons, for a dialog that has something to show
+// (what a bulk change will do). `tone` 'neutral' keeps the confirm button white for changes
+// that aren't destructive.
+export default function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', onConfirm, onCancel, children, tone = 'danger' }) {
   // Escape cancels. Every dialog in the app is destructive-or-important, so the keyboard way
   // out is the safe one.
   useEffect(() => {
@@ -30,12 +33,14 @@ export default function ConfirmDialog({ open, title, message, confirmLabel = 'Co
           </button>
         </div>
 
+        {children && <div className="px-6 pt-5 max-h-[50vh] overflow-y-auto custom-scrollbar">{children}</div>}
+
         <div className="flex gap-3 p-6">
           {/* Cancel takes focus by default: Enter on a destructive dialog should not destroy */}
           <button type="button" autoFocus onClick={onCancel} className="flex-1 rounded-full border border-white/10 px-4 py-3 text-sm font-semibold text-neutral-300 hover:bg-white/5 transition-colors">
             {cancelLabel}
           </button>
-          <button type="button" onClick={onConfirm} className="flex-1 rounded-full bg-red-500 px-4 py-3 text-sm font-semibold text-white hover:bg-red-400 transition-colors">
+          <button type="button" onClick={onConfirm} className={`flex-1 rounded-full px-4 py-3 text-sm font-semibold transition-colors ${tone === 'danger' ? 'bg-red-500 text-white hover:bg-red-400' : 'bg-white text-black hover:bg-neutral-200'}`}>
             {confirmLabel}
           </button>
         </div>

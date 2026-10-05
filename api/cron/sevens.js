@@ -63,7 +63,8 @@ async function checkUser(userId, now) {
   try {
     tokens = await refreshGrant(decrypt(grantBlob));
   } catch (err) {
-    // A revoked grant can't recover on its own; drop it so the user is asked to re-enable
+    // A revoked grant can't recover on its own; drop it. The app's next /api/push/status check
+    // sees it gone, switches notifications off and tells the user to enable them again.
     if (err.status === 400 || err.status === 401) await r.del(PUSH_KEYS.grant(userId));
     return { userId, skipped: `refresh failed (${err.status || err.message})` };
   }

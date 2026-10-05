@@ -12,7 +12,7 @@ const MAX_ENTRIES = 10;
 // Kept for the session, so coming back to Home shows the list at once instead of skeletons;
 // refreshed quietly behind it once it is this old
 const FRESH_MS = 60 * 1000;
-let cache = null; // { token, entries, at }
+let cache = null; // { userId, entries, at }
 
 // Spotify's recently-played feed lists tracks with the context they were played from. One card
 // per context, most recent first: the playlist, album or artist you were in, not the song.
@@ -63,15 +63,16 @@ async function buildEntries(token) {
 
 export default function JumpBackIn() {
   const { token, navigateToPlaylist, navigateToAlbum, navigateToArtist } = useSlice(useUserStore, ['token', 'navigateToPlaylist', 'navigateToAlbum', 'navigateToArtist']);
-  const [entries, setEntries] = useState(() => (cache && cache.token === token ? cache.entries : null));
+  const userId = useUserStore((s) => s.profile?.id || '');
+  const [entries, setEntries] = useState(() => (cache && cache.userId === userId ? cache.entries : null));
 
   useEffect(() => {
     if (!token) return undefined;
-    if (cache && cache.token === token && Date.now() - cache.at < FRESH_MS) return undefined;
+    if (cache && cache.userId === userId && Date.now() - cache.at < FRESH_MS) return undefined;
     let cancelled = false;
     buildEntries(token)
       .then((list) => {
-        cache = { token, entries: list, at: Date.now() };
+        cache = { userId, entries: list, at: Date.now() };
         if (!cancelled) setEntries(list);
       })
       .catch((err) => {
@@ -81,7 +82,7 @@ export default function JumpBackIn() {
         if (!cancelled) setEntries((prev) => prev || []);
       });
     return () => { cancelled = true; };
-  }, [token]);
+  }, [token, userId]);
 
   // Still asking Spotify: hold the space with placeholders so the page doesn't reflow
   if (entries === null) {

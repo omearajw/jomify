@@ -142,7 +142,11 @@ export default function PlaylistView_2() {
   const stillLoading = !playlist || playlist.tracks.loadedFrom > 0;
 
   // Workspace States
-  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
+  // Opens straight into the workspace when Home's turn banner asked for it
+  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(() => useUserStore.getState().workspaceRequest === activePlaylistId);
+  useEffect(() => {
+    if (useUserStore.getState().workspaceRequest) useUserStore.getState().clearWorkspaceRequest();
+  }, [activePlaylistId]);
   // Which of the three panes a narrow screen shows; wide screens show all three side by side
   const [workspacePane, setWorkspacePane] = useState('staging');
   const [poolPlaylist, setPoolPlaylist] = useState(null);
@@ -353,6 +357,8 @@ const turnIndicator = useMemo(() => {
       await loadSeven(token, activePlaylistId, setPlaylist);
       clearStagedTracks(activePlaylistId);
       setIsWorkspaceOpen(false);
+      // Home's "your turn" banner rechecks instead of waiting for the next launch
+      useUserStore.getState().bumpSevensCheck();
     } catch (err) {
       console.error("Failed to publish 7", err);
       setPublishError("Couldn't publish -- Spotify rejected the request. Your seven tracks are still staged.");
@@ -381,7 +387,9 @@ const turnIndicator = useMemo(() => {
   // ==========================================
   // VIEW: 3-PANE WORKSPACE
   // ==========================================
-  if (isWorkspaceOpen) {
+  // Home's banner can ask for the workspace before the Seven has loaded; the page view's
+  // skeleton covers that gap
+  if (isWorkspaceOpen && playlist) {
     const reversedMainItems = [...playlist.tracks.items].reverse();
 
     return (

@@ -319,6 +319,7 @@ export default function PlayerBar() {
             else setCurrentView('home');
           }}
           aria-label={currentView === 'lyrics' ? 'Close lyrics' : 'Show lyrics'}
+          title={currentView === 'lyrics' ? 'Close lyrics' : 'Lyrics'}
           aria-pressed={currentView === 'lyrics'}
           className={`transition-colors ${currentView === 'lyrics' ? 'text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]' : 'hover:text-white'}`}
         >
@@ -356,6 +357,7 @@ export default function PlayerBar() {
         <button
           onClick={toggleZenMode}
           aria-label={isZenMode ? 'Exit Zen Mode' : 'Enter Zen Mode'}
+          title={isZenMode ? 'Exit Zen mode' : 'Zen mode'}
           aria-pressed={isZenMode}
           className="text-neutral-400 hover:text-white transition-colors"
         >

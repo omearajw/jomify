@@ -4,9 +4,9 @@ import { ensureFreshToken } from './services/spotify/session';
 import { fetchUserProfile, fetchUserPlaylists, fetchUserAlbums, spotifyFetch, playContext } from './services/spotify/api';
 import { useUserStore } from './store/userStore';
 import { useSlice } from './store/selectors';
-import { artUrl } from './utils/images';
 import MainLayout from './layouts/MainLayout';
 import JumpBackIn from './components/JumpBackIn';
+import StatsDrawer from './components/StatsDrawer';
 import { PUSH_STATE, completeEnableNotifications, syncPushStatus } from './pwa/push';
 import { toast } from './store/toastStore';
 import Library from './views/Library/Library';
@@ -39,6 +39,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 // `sevens` store on first run and are never read again afterwards.
 const LEGACY_SEVEN_PLAYLIST_IDS = ['5kJPA0nczW9zoQs7jcQ5ok', '2KmKTCZFO9wofPRwqJ3y5F'];
 
+// Coming back to the app after this long rechecks whose turn it is in each Seven
+const SEVENS_RECHECK_MS = 5 * 60 * 1000;
+
 function App() {
   const {
     token, refreshToken, tokenExpiresAt, logout, profile,
@@ -46,14 +49,16 @@ function App() {
     currentView, setCurrentView,
     pinnedItems, playlists, albums, customFolders,
     activePlaylistId, navigateToAlbum, navigateToPlaylist, setContextMenu, setActiveFolderId,
-    sevens, seedLegacySevens, friends, navigateToUser, togglePin, reorderPinnedItems
+    sevens, seedLegacySevens, friends, navigateToUser, togglePin, reorderPinnedItems,
+    sevensCheckNonce, requestWorkspace
   } = useSlice(useUserStore, [
     'token', 'refreshToken', 'tokenExpiresAt', 'logout', 'profile',
     'setToken', 'setRefreshToken', 'setProfile', 'setPlaylists',
     'currentView', 'setCurrentView',
     'pinnedItems', 'playlists', 'albums', 'customFolders',
     'activePlaylistId', 'navigateToAlbum', 'navigateToPlaylist', 'setContextMenu', 'setActiveFolderId',
-    'sevens', 'seedLegacySevens', 'friends', 'navigateToUser', 'togglePin', 'reorderPinnedItems'
+    'sevens', 'seedLegacySevens', 'friends', 'navigateToUser', 'togglePin', 'reorderPinnedItems',
+    'sevensCheckNonce', 'requestWorkspace'
   ]);
   
   const isAuthenticating = useRef(false);
@@ -73,7 +78,6 @@ function App() {
 
   // --- STATS & SEVENS STATE ---
   const [showStats, setShowStats] = useState(false);
-  const [statsData, setStatsData] = useState({ tracks: [], artists: [], loading: false });
   const [sevenTurns, setSevenTurns] = useState([]);
 
   // --- CROSS-DEVICE SYNC ---
@@ -382,6 +386,7 @@ function App() {
           } else if (data.tracks && data.tracks.total === 0) {
             // Empty playlist - ready for the first drop
             data.partnerName = seven.partnerName || null;
+            data.empty = true;
             turns.push(data);
           }
         } catch (e) {
@@ -392,43 +397,20 @@ function App() {
     };
 
     checkSevens();
-  }, [token, profile, sevens]);
+    // Coming back to the app after a while rechecks too, since the partner may have dropped
+    let lastCheck = Date.now();
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastCheck < SEVENS_RECHECK_MS) return;
+      lastCheck = Date.now();
+      checkSevens();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [token, profile, sevens, sevensCheckNonce]);
 
   // A Seven marked finished after its turn was fetched must stop nagging without a refetch
   const activeSevenTurns = sevenTurns.filter(turn => sevens.some(s => s.playlistId === turn.id && s.active));
 
-  // --- FETCH STATS ON DEMAND ---
-  const toggleAndLoadStats = async () => {
-    if (showStats) {
-      setShowStats(false);
-      return;
-    }
-    
-    setShowStats(true);
-    
-    if (statsData.tracks.length > 0) return;
-
-    setStatsData(prev => ({ ...prev, loading: true }));
-    try {
-      const headers = { Authorization: `Bearer ${token}` };
-      const [tracksRes, artistsRes] = await Promise.all([
-        spotifyFetch('https://api.spotify.com/v1/me/top/tracks?time_range=short_term&limit=5', { headers }),
-        spotifyFetch('https://api.spotify.com/v1/me/top/artists?time_range=short_term&limit=5', { headers })
-      ]);
-      
-      const tracks = await tracksRes.json();
-      const artists = await artistsRes.json();
-
-      setStatsData({
-        tracks: tracks.items || [],
-        artists: artists.items || [],
-        loading: false
-      });
-    } catch (e) {
-      console.error("Failed to fetch top stats", e);
-      setStatsData(prev => ({ ...prev, loading: false }));
-    }
-  };
   
   if (!token) {
     return (
@@ -500,7 +482,8 @@ function App() {
                       )}
                       <span className="hidden md:block w-1.5 h-1.5 bg-neutral-600 rounded-full"></span>
                       <button
-                        onClick={toggleAndLoadStats}
+                        onClick={() => setShowStats((v) => !v)}
+                        aria-expanded={showStats}
                         className="flex items-center px-3 py-1.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:text-[#f91362] text-sm font-bold text-white transition-all group"
                       >
                         <BarChart3 className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform text-[var(--brand-mid)]" />
@@ -512,69 +495,7 @@ function App() {
                 </div>
 
                 {/* 2. The Expandable Stats Drawer */}
-                <AnimatePresence initial={false}>
-                  {showStats && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.4, ease: [0.04, 0.62, 0.23, 0.98] }}
-                      className="w-full overflow-hidden"
-                    >
-                      <div className="pb-12 pt-2"> 
-                        <div className="p-8 rounded-3xl bg-neutral-900/60 backdrop-blur-xl border border-white/10 shadow-2xl flex flex-col md:flex-row gap-8">
-                          
-                          {/* Top Tracks Column */}
-                          <div className="flex-1">
-                            <h3 className="text-xl font-bold text-white mb-6 flex items-center border-b border-white/10 pb-4">
-                              Top Tracks <span className="text-xs text-neutral-400 ml-3 font-medium uppercase tracking-wider">(Last 4 Weeks)</span>
-                            </h3>
-                            {statsData.loading ? (
-                              <p className="text-neutral-500 animate-pulse font-medium">Crunching your audio data...</p>
-                            ) : (
-                              <div className="space-y-4">
-                                {statsData.tracks.map((track, idx) => (
-                                  <div key={track.id} className="flex items-center space-x-4 group cursor-default">
-                                    <span className="text-xl font-extrabold text-neutral-700 w-6 group-hover:text-brand-gradient transition-colors">{idx + 1}</span>
-                                    <img src={artUrl(track.album.images, 48)} alt="" width="48" height="48" loading="lazy" decoding="async" className="w-12 h-12 rounded-md shadow-md group-hover:scale-105 transition-transform" />
-                                    <div className="truncate flex-1">
-                                      <p className="text-white font-bold text-sm truncate">{track.name}</p>
-                                      <p className="text-neutral-400 text-xs truncate">{track.artists.map(a => a.name).join(', ')}</p>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Top Artists Column */}
-                          <div className="flex-1">
-                            <h3 className="text-xl font-bold text-white mb-6 flex items-center border-b border-white/10 pb-4">
-                              Top Artists <span className="text-xs text-neutral-400 ml-3 font-medium uppercase tracking-wider">(Last 4 Weeks)</span>
-                            </h3>
-                            {statsData.loading ? (
-                              <p className="text-neutral-500 animate-pulse font-medium">Crunching your audio data...</p>
-                            ) : (
-                              <div className="space-y-4">
-                                {statsData.artists.map((artist, idx) => (
-                                  <div key={artist.id} className="flex items-center space-x-4 group cursor-default">
-                                    <span className="text-xl font-extrabold text-neutral-700 w-6 group-hover:text-brand-gradient transition-colors">{idx + 1}</span>
-                                    <img src={artist.images[0]?.url} className="w-12 h-12 rounded-full shadow-md group-hover:scale-105 transition-transform object-cover" />
-                                    <div className="truncate flex-1">
-                                      <p className="text-white font-bold text-sm truncate">{artist.name}</p>
-                                      <p className="text-neutral-400 text-xs capitalize truncate">{artist.genres.slice(0,2).join(', ') || 'Artist'}</p>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                <StatsDrawer open={showStats} />
 
                 {/* 3. Sevens Turn Alerts */}
                 {activeSevenTurns.length > 0 && (
@@ -582,7 +503,8 @@ function App() {
                     {activeSevenTurns.map(playlist => (
                       <div 
                         key={playlist.id}
-                        onClick={() => { navigateToPlaylist(playlist.id); }}
+                        onClick={() => { requestWorkspace(playlist.id); navigateToPlaylist(playlist.id); }}
+                        {...rowButtonProps(() => { requestWorkspace(playlist.id); navigateToPlaylist(playlist.id); })}
                         className="w-full bg-brand-gradient/10 border border-[var(--brand-mid)]/30 rounded-2xl p-4 flex items-center justify-between shadow-[0_0_30px_rgba(249,19,98,0.15)] cursor-pointer hover:bg-brand-gradient/20 transition-all group"
                       >
                         <div className="flex items-center gap-5">
@@ -594,7 +516,10 @@ function App() {
                           <div>
                             <h3 className="text-white font-bold text-lg md:text-xl">It's your turn in {playlist.name}!</h3>
                             <p className="text-[var(--brand-light)] font-medium text-xs md:text-sm">
-                              {playlist.partnerName ? `${playlist.partnerName} just finished their drop.` : 'Your collaborator just finished their drop.'} Click to open the workspace.
+                              {playlist.empty
+                                ? "Nothing in it yet, so you're up first."
+                                : playlist.partnerName ? `${playlist.partnerName} just finished their drop.` : 'Your collaborator just finished their drop.'}
+                              {' '}{isMobile ? 'Tap' : 'Click'} to open the workspace.
                             </p>
                           </div>
                         </div>

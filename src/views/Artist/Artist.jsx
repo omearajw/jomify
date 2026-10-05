@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
@@ -31,6 +31,7 @@ export default function Artist() {
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
   const retry = () => { setError(''); setAttempt((n) => n + 1); };
+  const shownId = useRef(null);
 
 
   useEffect(() => {
@@ -39,11 +40,16 @@ export default function Artist() {
 
     const fetchArtistData = async () => {
       try {
-        setLoading({ artist: true, tracks: true, albums: true });
         setError('');
-        setArtist(null);
-        setTopTracks([]);
-        setAlbums([]);
+        // A different artist starts from skeletons; a token renewal on the same page keeps
+        // what is already shown while it refetches
+        if (shownId.current !== currentArtistId) {
+          setLoading({ artist: true, tracks: true, albums: true });
+          setArtist(null);
+          setTopTracks([]);
+          setAlbums([]);
+        }
+        shownId.current = currentArtistId;
         const headers = { Authorization: `Bearer ${token}` };
 
         // Artist details. An error payload is truthy, so without this check a 404 rendered a

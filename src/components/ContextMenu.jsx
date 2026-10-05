@@ -101,8 +101,20 @@ export default function ContextMenu() {
     const handleClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) closeMenu();
     };
+    // Arrow keys walk the entries, Home/End jump, Enter and Space activate (they are buttons)
     const handleKey = (e) => {
-      if (e.key === 'Escape') closeMenu();
+      if (e.key === 'Escape') { closeMenu(); return; }
+      const el = menuRef.current;
+      if (!el || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+      const items = [...el.querySelectorAll('button:not([disabled])')].filter((b) => b.offsetParent !== null);
+      if (items.length === 0) return;
+      e.preventDefault();
+      const current = items.indexOf(document.activeElement);
+      const next = e.key === 'Home' ? 0
+        : e.key === 'End' ? items.length - 1
+        : e.key === 'ArrowDown' ? (current + 1) % items.length
+        : (current - 1 + items.length) % items.length;
+      items[next].focus();
     };
     document.addEventListener('click', handleClickOutside);
     document.addEventListener('keydown', handleKey);
@@ -136,6 +148,8 @@ export default function ContextMenu() {
 
     el.style.left = `${left}px`;
     el.style.top = `${top}px`;
+    // Focus lands on the menu itself, so the first arrow press reaches the first entry
+    if (!el.contains(document.activeElement)) el.focus({ preventScroll: true });
   }, [contextMenu, isMobile]);
 
   const confirmDeletePlaylist = async () => {
@@ -380,9 +394,10 @@ export default function ContextMenu() {
     <div
       ref={menuRef}
       role="menu"
+      tabIndex={-1}
       className={isMobile
         ? 'fixed z-[9999] inset-x-0 bottom-0 w-full max-h-[80dvh] overflow-y-auto bg-neutral-900 border-t border-neutral-700 rounded-t-2xl shadow-2xl pt-2 pb-[env(safe-area-inset-bottom)] select-none'
-        : 'fixed z-[9999] w-56 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-1 overflow-visible'}
+        : 'fixed z-[9999] w-56 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-1 overflow-visible focus:outline-none'}
     >
       {isMobile && <div className="mx-auto mb-1 h-1 w-10 rounded-full bg-white/20" aria-hidden="true" />}
       {isMobile && (contextMenu.track?.name || contextMenu.folderName || (contextMenu.playlistId && playlists.find(p => p.id === contextMenu.playlistId)?.name)) && (

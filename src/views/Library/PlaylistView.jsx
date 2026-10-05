@@ -16,6 +16,7 @@ import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfil
 import UserChip from '../../components/UserChip';
 import LikeButton from '../../components/LikeButton';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { cleanString } from '../../utils/strings';
 import { collaboratorStyleFor } from '../../utils/collaboratorStyle';
 import { rowButtonProps } from '../../utils/a11y';
@@ -151,7 +152,10 @@ export default function PlaylistView() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatusText, setSyncStatusText] = useState('');
   const [configModalOpen, setConfigModalOpen] = useState(false);
-  const [userPlaylists, setUserPlaylists] = useState([]);
+  // null until the list arrives, so the picker can show it is loading rather than empty
+  const [userPlaylists, setUserPlaylists] = useState(null);
+  const [pickerError, setPickerError] = useState('');
+  const [pickerQuery, setPickerQuery] = useState('');
   // This list used to live in its own localStorage key, which made it the one piece of real user
   // config that cross-device sync would have missed. It now rides along in the store like
   // everything else.
@@ -265,12 +269,21 @@ export default function PlaylistView() {
   }, []);
 
   useEffect(() => {
-    if (configModalOpen && token) {
-      fetchUserPlaylists(token).then((data) => {
-        setUserPlaylists(data.items || []);
-      }).catch(console.error);
-    }
+    if (!configModalOpen || !token) return undefined;
+    let cancelled = false;
+    // Start from the library's own list so the picker is never blank; the fetch fills in the rest
+    fetchUserPlaylists(token).then((data) => {
+      if (!cancelled) setUserPlaylists(data.items || []);
+    }).catch((err) => {
+      console.error(err);
+      if (!cancelled) setPickerError("Couldn't load your playlists. Showing what the library already has.");
+    });
+    const onKey = (e) => { if (e.key === 'Escape') setConfigModalOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => { cancelled = true; document.removeEventListener('keydown', onKey); };
   }, [configModalOpen, token]);
+  const pickerNeedle = pickerQuery.trim().toLowerCase();
+  const pickerList = (userPlaylists || playlists).filter((p) => p && (!pickerNeedle || (p.name || '').toLowerCase().includes(pickerNeedle)));
 
   const togglePlaylistSelection = (id) => {
     setUnaddedCheckPlaylists(prev =>
@@ -301,6 +314,8 @@ export default function PlaylistView() {
     return items;
   };
 
+  // Step 1: work out what the check would change, and show it before anything is touched
+  const [unaddedPlan, setUnaddedPlan] = useState(null);
   const runUnaddedSongsSync = async () => {
     if (!token || !playlist || isSyncing) return;
     setIsSyncing(true);
@@ -341,10 +356,50 @@ export default function PlaylistView() {
         const isPresentInPlaylists = playlistTrackIds.has(tr.id) || playlistTrackIds.has(artistKey);
 
         if (!isLiked || isPresentInPlaylists) {
-          tracksToRemove.push({ uri: tr.uri });
+          tracksToRemove.push({ uri: tr.uri, name: tr.name, artist: tr.artists?.[0]?.name || '', reason: !isLiked ? 'unliked' : 'sorted' });
         }
       }
 
+      const newUnaddedUris = [];
+      for (const item of allLikedSongs) {
+        const tr = item.track;
+        if (!tr || !tr.id) continue;
+        const cleanedName = cleanString(tr.name);
+        const artistKey = `${cleanedName}_${tr.artists?.[0]?.name ? cleanString(tr.artists[0].name) : ''}`;
+
+        const isPresentInPlaylists = playlistTrackIds.has(tr.id) || playlistTrackIds.has(artistKey);
+        const isAlreadyInUnadded = currentUnaddedTrackIds.has(tr.id);
+
+        if (!isPresentInPlaylists && !isAlreadyInUnadded) {
+          newUnaddedUris.push({ uri: `spotify:track:${tr.id}`, name: tr.name, artist: tr.artists?.[0]?.name || '' });
+        }
+      }
+
+      setIsSyncing(false);
+      setSyncStatusText('');
+      if (tracksToRemove.length === 0 && newUnaddedUris.length === 0) {
+        toast('Already up to date: nothing to add or remove.');
+        return;
+      }
+      setUnaddedPlan({ remove: tracksToRemove, add: newUnaddedUris });
+    } catch (err) {
+      console.error('Error planning the unadded check:', err);
+      setSyncStatusText(err?.message || 'Check failed. Nothing was changed.');
+      setTimeout(() => {
+        setIsSyncing(false);
+        setSyncStatusText('');
+      }, 6000);
+    }
+  };
+
+  // Step 2: the changes the dialog showed, and only those
+  const applyUnaddedPlan = async () => {
+    const plan = unaddedPlan;
+    setUnaddedPlan(null);
+    if (!plan || !token || !playlist) return;
+    setIsSyncing(true);
+    try {
+      const tracksToRemove = plan.remove.map(({ uri }) => ({ uri }));
       if (tracksToRemove.length > 0) {
         setSyncStatusText(`Removing ${tracksToRemove.length} sorted/unliked tracks...`);
         for (let i = 0; i < tracksToRemove.length; i += 100) {
@@ -363,23 +418,7 @@ export default function PlaylistView() {
         }
       }
 
-      setSyncStatusText('Finding new unadded liked songs...');
-
-      const newUnaddedUris = [];
-      for (const item of allLikedSongs) {
-        const tr = item.track;
-        if (!tr || !tr.id) continue;
-        const cleanedName = cleanString(tr.name);
-        const artistKey = `${cleanedName}_${tr.artists?.[0]?.name ? cleanString(tr.artists[0].name) : ''}`;
-
-        const isPresentInPlaylists = playlistTrackIds.has(tr.id) || playlistTrackIds.has(artistKey);
-        const isAlreadyInUnadded = currentUnaddedTrackIds.has(tr.id);
-
-        if (!isPresentInPlaylists && !isAlreadyInUnadded) {
-          newUnaddedUris.push(`spotify:track:${tr.id}`);
-        }
-      }
-
+      const newUnaddedUris = plan.add.map(({ uri }) => uri);
       if (newUnaddedUris.length > 0) {
         setSyncStatusText(`Adding ${newUnaddedUris.length} new unadded songs...`);
         for (let i = 0; i < newUnaddedUris.length; i += 100) {
@@ -871,8 +910,24 @@ export default function PlaylistView() {
             <p className="text-sm text-neutral-400 py-3">
               Choose which playlists Jomify should verify your liked songs against when running the Unadded Check.
             </p>
+            <input
+              type="search"
+              value={pickerQuery}
+              onChange={(e) => setPickerQuery(e.target.value)}
+              placeholder="Filter playlists"
+              aria-label="Filter playlists"
+              autoFocus
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-full px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[#f91362] mb-2"
+            />
+            {pickerError && <p className="text-xs text-amber-300 mb-2">{pickerError}</p>}
+            {!userPlaylists && !pickerError && (
+              <p className="text-xs text-neutral-500 mb-2 flex items-center gap-2"><RefreshCw className="w-3 h-3 animate-spin" /> Loading the full list…</p>
+            )}
             <div className="flex-1 overflow-y-auto space-y-2 pr-2 my-2">
-              {userPlaylists.map((p) => {
+              {pickerList.length === 0 && (
+                <p className="py-8 text-center text-sm text-neutral-500">{pickerQuery ? 'No playlists match.' : 'No playlists yet.'}</p>
+              )}
+              {pickerList.map((p) => {
                 const isSelected = selectedCheckPlaylistIds.includes(p.id);
                 return (
                   <div
@@ -1055,6 +1110,49 @@ export default function PlaylistView() {
 
       {/* Tracklist */}
       <div className="flex flex-col">
+        <ConfirmDialog
+          open={Boolean(unaddedPlan)}
+          tone="neutral"
+          title="Apply these changes?"
+          message={unaddedPlan ? [
+            unaddedPlan.remove.length ? `Remove ${unaddedPlan.remove.length} song${unaddedPlan.remove.length === 1 ? '' : 's'}` : null,
+            unaddedPlan.add.length ? `add ${unaddedPlan.add.length} liked song${unaddedPlan.add.length === 1 ? '' : 's'} not in any check playlist` : null
+          ].filter(Boolean).join(', ') + '.' : ''}
+          confirmLabel="Apply"
+          cancelLabel="Keep as is"
+          onConfirm={applyUnaddedPlan}
+          onCancel={() => setUnaddedPlan(null)}
+        >
+          {unaddedPlan && (
+            <div className="space-y-4 text-sm">
+              {unaddedPlan.remove.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-red-400 mb-2">Removing</p>
+                  <ul className="space-y-1">
+                    {unaddedPlan.remove.map((t) => (
+                      <li key={t.uri} className="flex justify-between gap-3 text-neutral-300">
+                        <span className="truncate"><span className="text-white">{t.name}</span>{t.artist && <span className="text-neutral-500"> · {t.artist}</span>}</span>
+                        <span className="shrink-0 text-xs text-neutral-500">{t.reason === 'unliked' ? 'unliked' : 'now in a playlist'}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {unaddedPlan.add.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[var(--brand-light)] mb-2">Adding</p>
+                  <ul className="space-y-1">
+                    {unaddedPlan.add.map((t) => (
+                      <li key={t.uri} className="truncate text-neutral-300">
+                        <span className="text-white">{t.name}</span>{t.artist && <span className="text-neutral-500"> · {t.artist}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </ConfirmDialog>
         <PlaylistFormDialog
           open={editDialogOpen}
           title="Edit playlist"

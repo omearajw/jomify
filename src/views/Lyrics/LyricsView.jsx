@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { usePlayerStore } from '../../store/playerStore';
-import { Mic2, AlertCircle, Sparkles } from 'lucide-react';
+import { useUserStore } from '../../store/userStore';
+import { Mic2, AlertCircle, Sparkles, X, Maximize2, Minimize2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import TrackArtists from '../../components/TrackArtists';
 import AudioWaveform from '../../components/AudioWaveform';
@@ -10,7 +11,28 @@ import { useSlice } from '../../store/selectors';
 
 export default function LyricsView() {
   const { playbackState, player, isLocalActive, positionAt } = useSlice(usePlayerStore, ['playbackState', 'player', 'isLocalActive', 'positionAt']);
+  const goBack = useUserStore((s) => s.goBack);
   const currentTrack = playbackState?.track_window?.current_track;
+
+  // Full screen on this page alone, without Zen mode; Escape leaves full screen as usual
+  const containerRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(document.fullscreenElement === containerRef.current && Boolean(containerRef.current));
+    document.addEventListener('fullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    };
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    else containerRef.current?.requestFullscreen?.().catch(() => {});
+  };
+  const close = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    goBack();
+  };
 
   const [plainLyrics, setPlainLyrics] = useState([]);
   const [syncedLyrics, setSyncedLyrics] = useState(null);
@@ -228,17 +250,15 @@ export default function LyricsView() {
             transition={{ duration: 0.7, staggerChildren: 0.05 }}
             className="columns-1 md:columns-2 lg:columns-3 gap-12 text-left"
           >
-            {plainLyrics.map((line, i) => {
-              const isHighlight = i % 7 === 0;
-              return (
-                <p 
-                  key={i} 
-                  className={`break-inside-avoid mb-6 transition-all duration-500 hover:text-white ${isHighlight ? 'text-3xl font-extrabold text-white tracking-tighter border-l-4 border-[var(--brand-mid)] pl-4 py-1 drop-shadow-md' : 'text-xl font-medium text-neutral-400 hover:scale-[1.02] origin-left'}`}
-                >
-                  {line || '♪'}
-                </p>
-              );
-            })}
+            {/* Every line the same weight: a highlight on every seventh used to read as a chorus marker */}
+            {plainLyrics.map((line, i) => (
+              <p
+                key={i}
+                className="break-inside-avoid mb-6 text-xl font-semibold text-neutral-200 leading-relaxed transition-colors hover:text-white"
+              >
+                {line || '♪'}
+              </p>
+            ))}
           </motion.div>
         )}
       </div>
@@ -246,7 +266,7 @@ export default function LyricsView() {
   };
 
   return (
-    <div className="relative flex-1 h-full w-full rounded-3xl overflow-hidden bg-black flex flex-col animate-fade-in shadow-2xl">
+    <div ref={containerRef} className="relative flex-1 h-full w-full rounded-3xl overflow-hidden bg-black flex flex-col animate-fade-in shadow-2xl">
       
       {/* Immersive Blur Background */}
       {albumArt && (
@@ -276,12 +296,32 @@ export default function LyricsView() {
           </div>
         </div>
         
-        {syncedLyrics && (
-          <div className="hidden sm:flex items-center px-4 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-md shadow-xl">
-             <Sparkles className="w-4 h-4 text-[var(--brand-mid)] mr-2" />
-             <span className="text-xs font-bold text-white uppercase tracking-widest">Line Sync Active</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2 pointer-events-auto">
+          {syncedLyrics && (
+            <div className="hidden sm:flex items-center px-4 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-md shadow-xl">
+               <Sparkles className="w-4 h-4 text-[var(--brand-mid)] mr-2" />
+               <span className="text-xs font-bold text-white uppercase tracking-widest">Line Sync Active</span>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+            title={isFullscreen ? 'Exit full screen' : 'Full screen'}
+            className="hidden md:flex w-10 h-10 rounded-full bg-white/5 border border-white/10 backdrop-blur-md items-center justify-center text-neutral-300 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={close}
+            aria-label="Close lyrics"
+            title="Close lyrics"
+            className="w-10 h-10 rounded-full bg-white/5 border border-white/10 backdrop-blur-md flex items-center justify-center text-neutral-300 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {/* RENDER ENGINE DUALITY */}
