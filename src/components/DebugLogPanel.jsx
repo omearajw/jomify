@@ -58,8 +58,12 @@ export default function DebugLogPanel({ onClose }) {
   const matching = getEntries().filter((e) => !needle || formatEntry(e).toLowerCase().includes(needle));
   const visible = matching.slice(-shown).reverse();
 
+  // With a filter typed in, copy and share only what it shows: a whole log is long enough that a
+  // chat app cuts the paste off before the part that matters, which is usually the newest
+  const textToSend = () => (needle ? matching.map(formatEntry).join('\n') : formatLog());
+
   const handleCopy = async () => {
-    if (await copyText(formatLog())) {
+    if (await copyText(textToSend())) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }
@@ -85,10 +89,10 @@ export default function DebugLogPanel({ onClose }) {
       </div>
       <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-white/10">
         <button type="button" onClick={handleCopy} className={button}>
-          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} {copied ? 'Copied' : 'Copy all'}
+          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} {copied ? 'Copied' : needle ? `Copy ${matching.length} shown` : 'Copy all'}
         </button>
         {typeof navigator !== 'undefined' && navigator.share && (
-          <button type="button" onClick={() => shareText(formatLog()).catch((err) => console.warn('[debug log] share failed:', err?.message || err))} className={button}>
+          <button type="button" onClick={() => shareText(textToSend()).catch((err) => console.warn('[debug log] share failed:', err?.message || err))} className={button}>
             <Share2 className="w-4 h-4" /> Share
           </button>
         )}
@@ -99,7 +103,7 @@ export default function DebugLogPanel({ onClose }) {
           type="search"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter"
+          placeholder="Filter, e.g. 2026-10-04"
           className="flex-1 min-w-[8rem] h-9 rounded-full bg-white/5 border border-white/10 px-4 text-sm text-white placeholder:text-neutral-500 outline-none focus:border-white/30"
         />
       </div>
