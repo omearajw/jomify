@@ -325,6 +325,7 @@ function initLocalPlayer() {
   let reconnectTimer = null;
   let attempts = 0;
   let readyAt = 0;
+  let readyCount = 0;
   let lastAliveCheckAt = 0;
   // Nothing is worth retrying after these two: the browser cannot run the player at all, or the
   // account may not use it. Every other failure is the network having a moment.
@@ -385,7 +386,8 @@ function initLocalPlayer() {
       clearTimeout(readyTimer);
       clearTimeout(reconnectTimer);
       readyAt = Date.now();
-      log('sdk', 'ready on Spotify Connect', `device ${String(device_id).slice(0, 8)}`);
+      readyCount += 1;
+      log('sdk', readyCount === 1 ? 'ready on Spotify Connect' : 'back on Spotify Connect', `device ${String(device_id).slice(0, 8)}${readyCount > 1 ? `, connection ${readyCount}` : ''}`);
       const s = player();
       s.setDeviceId(device_id);
       s.setSdkStatus('ready');
@@ -393,15 +395,24 @@ function initLocalPlayer() {
       // Apply the volume again once ready; the SDK sometimes starts at its own default regardless
       sdkPlayer.setVolume(startupGain(useUserStore.getState().savedVolume, !isMobileViewport())).catch(() => {});
 
-      // Take over playback only when nothing is playing anywhere. Grabbing it unconditionally
-      // (the old behaviour) would yank a phone's Spotify app to silence every time the PWA opened.
+      // Take over playback only when nothing is playing anywhere, and only on the connection
+      // made when the app opened, with someone looking at it. Grabbing it unconditionally (the
+      // old behaviour) would yank a phone's Spotify app to silence every time the PWA opened;
+      // grabbing it on a reconnect was worse: a Wi-Fi blip drops every Jomify in the house, the
+      // laptop comes back first, finds "nothing playing" because the phone has not re-registered
+      // yet, and takes the music away from it. A play request does not need this anyway: it
+      // targets this player directly when nothing else is active.
       const t = token();
       if (!t) return;
       let state;
       try { state = await fetchPlayerState(t); } catch (err) { log('sdk', 'ready, but could not read playback', err?.message || err); return; }
       if (state === null) {
-        log('sdk', 'ready, nothing playing anywhere: made this the device, paused');
-        transferPlayback(t, device_id, false).catch(() => {});
+        if (readyCount === 1 && document.visibilityState === 'visible') {
+          log('sdk', 'ready, nothing playing anywhere: made this the device, paused');
+          transferPlayback(t, device_id, false).catch(() => {});
+        } else {
+          log('sdk', 'nothing playing anywhere; leaving it', readyCount > 1 ? 'a reconnect never takes playback' : 'the app is in the background');
+        }
       } else {
         log('sdk', 'ready, playback is on', `${state.device?.name || '?'}${state.is_playing ? ', playing' : ', paused'} ${state.item?.name || ''}`.trim());
         applyRemoteState(state);
