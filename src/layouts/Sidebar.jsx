@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Home, Library, Disc3, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus, FolderPlus, Users, UserPlus } from 'lucide-react';
+import { Home, Library, Search, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus, FolderPlus, Users, UserPlus } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { addTracksToPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../services/spotify/api';
 import PlaylistFormDialog from '../components/PlaylistFormDialog';
@@ -385,7 +385,7 @@ export default function Sidebar() {
 
   const navItems = [
     { id: 'home', label: 'Home', icon: Home },
-    { id: 'browse', label: 'Browse', icon: Disc3 },
+    { id: 'browse', label: 'Search', icon: Search },
     { id: 'library', label: 'Your Library', icon: Library },
     { id: 'sevens', label: 'Sevens', icon: Users },
     { id: 'friends', label: 'Friends', icon: UserPlus },

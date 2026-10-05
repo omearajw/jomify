@@ -8,6 +8,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { fetchQueue } from '../services/spotify/api';
 import { formatTime } from '../utils/formatTime';
 import { X, ListPlus } from 'lucide-react';
+import MoreButton from '../components/MoreButton';
 import { cleanString } from '../utils/strings';
 import { isSameTrack } from '../utils/spotifyUri';
 
@@ -33,7 +34,7 @@ const removeManualMatchesFromQueue = (queueTracks, manualTracks) => {
 };
 
 export default function QueuePanel() {
-  const { token, isQueueOpen, toggleQueue, queueRefreshTrigger, manuallyQueuedTracks, queueData, setQueueData } = useSlice(useUserStore, ['token', 'isQueueOpen', 'toggleQueue', 'queueRefreshTrigger', 'manuallyQueuedTracks', 'queueData', 'setQueueData']);
+  const { token, isQueueOpen, toggleQueue, queueRefreshTrigger, manuallyQueuedTracks, queueData, setQueueData, setContextMenu } = useSlice(useUserStore, ['token', 'isQueueOpen', 'toggleQueue', 'queueRefreshTrigger', 'manuallyQueuedTracks', 'queueData', 'setQueueData', 'setContextMenu']);
   const currentTrackUid = usePlayerStore((s) => s.playbackState?.track_window?.current_track?.uid);
   const isMobile = useIsMobile();
 
@@ -61,6 +62,13 @@ export default function QueuePanel() {
 
   if (!isQueueOpen) return null;
 
+  // The same song menu as anywhere else, by right-click or long-press: go to the artist or
+  // album, add to a playlist. Rows used to do nothing at all.
+  const openTrackMenu = (e, track) => {
+    e.preventDefault();
+    setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track });
+  };
+
   // Desktop: a column beside the content. Phone: the same panel, full screen, above everything
   const panel = (
     <div className={isMobile
@@ -68,12 +76,18 @@ export default function QueuePanel() {
       : 'w-80 bg-black/40 backdrop-blur-md border-l border-white/5 flex flex-col h-full overflow-hidden shrink-0 animate-slide-in-right shadow-2xl'}>
       <div className="p-6 border-b border-neutral-800 flex justify-between items-center">
         <h2 className="text-xl font-bold text-white tracking-tight">Queue</h2>
-        <button onClick={toggleQueue} className="text-neutral-400 hover:text-white transition-colors">
+        <button onClick={toggleQueue} aria-label="Close queue" title="Close queue" className="text-neutral-400 hover:text-white transition-colors">
           <X className="w-5 h-5" />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-8 select-none">
+        {!queueData?.currently_playing && manualQueueEntries.length === 0 && regularQueueEntries.length === 0 && (
+          <p className="px-2 py-10 text-center text-sm text-neutral-500">Nothing queued. Play something, or add songs with "Add to Queue" from a song's menu.</p>
+        )}
+        {queueData?.currently_playing && manualQueueEntries.length === 0 && regularQueueEntries.length === 0 && (
+          <p className="px-2 py-6 text-center text-sm text-neutral-500">Nothing after this one yet.</p>
+        )}
         {queueData?.currently_playing && (
           <div>
             <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-4">Now Playing</h3>
@@ -100,7 +114,7 @@ export default function QueuePanel() {
             <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-4">Up Next</h3>
             <div className="flex flex-col space-y-3 mb-6">
               {manualQueueEntries.map(({ key, track }) => (
-                <div key={key} className="flex items-center space-x-3 group cursor-default rounded-md px-2 py-1.5 border border-[var(--brand-mid)]/15 bg-[var(--brand-mid)]/5">
+                <div key={key} onContextMenu={(e) => openTrackMenu(e, track)} className="flex items-center space-x-3 group cursor-default rounded-md px-2 py-1.5 border border-[var(--brand-mid)]/15 bg-[var(--brand-mid)]/5">
                   <ListPlus className="w-4 h-4 text-[var(--brand-mid)] shrink-0" title="Queued item" />
                   <img src={artUrl(track.album?.images, 40)} alt="" width="40" height="40" loading="lazy" decoding="async" className="w-10 h-10 rounded object-cover bg-neutral-800" draggable="false" />
                   <div className="flex flex-col truncate flex-1 pr-2 min-w-0">
@@ -110,6 +124,7 @@ export default function QueuePanel() {
                   <span className="text-neutral-500 text-xs opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity">
                     {formatTime(track.duration_ms)}
                   </span>
+                  <MoreButton onOpen={(e) => openTrackMenu(e, track)} />
                 </div>
               ))}
             </div>
@@ -123,6 +138,7 @@ export default function QueuePanel() {
               {regularQueueEntries.map(({ key, track }) => (
                 <div
                   key={key}
+                  onContextMenu={(e) => openTrackMenu(e, track)}
                   className="flex items-center space-x-3 group cursor-default rounded-md px-2 py-1.5 border border-transparent hover:bg-white/5 transition-colors"
                 >
                   <img src={artUrl(track.album?.images, 40)} alt="" width="40" height="40" loading="lazy" decoding="async" className="w-10 h-10 rounded object-cover bg-neutral-800" draggable="false" />
@@ -135,6 +151,7 @@ export default function QueuePanel() {
                   <span className="text-neutral-500 text-xs opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity">
                     {formatTime(track.duration_ms)}
                   </span>
+                  <MoreButton onOpen={(e) => openTrackMenu(e, track)} />
                 </div>
               ))}
             </div>

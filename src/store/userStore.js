@@ -558,6 +558,11 @@ export const useUserStore = create(
         };
       }),
 
+      // Ctrl/Cmd+K: the Search page clears this once it has focused its box
+      searchFocusRequested: false,
+      requestSearchFocus: () => set({ currentView: 'browse', searchFocusRequested: true, ...(get().currentView === 'browse' ? {} : { viewHistory: pushHistory(get()) }) }),
+      clearSearchFocus: () => set({ searchFocusRequested: false }),
+
       navigateToArtist: (artistId) => set((state) => ({
         viewHistory: pushHistory(state),
         currentView: 'artist',

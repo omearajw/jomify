@@ -5,6 +5,8 @@ export function rowButtonProps(onActivate) {
     role: 'button',
     tabIndex: 0,
     onKeyDown: (e) => {
+      // A focused child button (like, play, artist link) handles its own Enter
+      if (e.target !== e.currentTarget) return;
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         onActivate();

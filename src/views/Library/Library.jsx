@@ -246,6 +246,8 @@ export default function Library() {
   ]);
 
   const [loading, setLoading] = useState(playlists.length === 0);
+  const [loadError, setLoadError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
   // Shared with the sidebar via the store; see the note there
   const isolatedFolderId = activeFolderId;
   const setIsolatedFolderId = setActiveFolderId;
@@ -299,13 +301,16 @@ export default function Library() {
     if (token && playlistCount === 0) {
       fetchUserPlaylists(token).then((data) => {
         setPlaylists(data.items);
+        setLoadError('');
         setLoading(false);
       }).catch((err) => {
+        // A library that failed to load used to look exactly like an empty one
         console.error(err);
+        setLoadError(err?.message === 'RATE_LIMITED' ? 'Spotify is rate-limiting Jomify right now.' : "Couldn't load your library.");
         setLoading(false);
       });
     }
-  }, [token, playlistCount, setPlaylists]);
+  }, [token, playlistCount, setPlaylists, loadAttempt]);
 
   // Manage mode is only meaningful inside a folder, and the sidebar's "+" can request it
   const isManaging = Boolean(activeFolder) && (isManagingRequested || manageFolderId === activeFolder.id);
@@ -785,6 +790,17 @@ export default function Library() {
           ) : (
             <div className={`grid ${getGridClass()}`}>
               {gridItems}
+            </div>
+          )}
+          {!trimmedQuery && loadError && playlistCount === 0 && (
+            <p className="text-red-400 text-sm font-medium mt-6 flex items-center gap-3">
+              {loadError}
+              <button type="button" onClick={() => { setLoading(true); setLoadAttempt((n) => n + 1); }} className="underline hover:text-white transition-colors">Try again</button>
+            </p>
+          )}
+          {!trimmedQuery && !loadError && !loading && playlistCount === 0 && albums.length === 0 && customFolders.length === 0 && (
+            <div className="mt-6 rounded-3xl border border-dashed border-white/10 p-8 text-center text-sm text-neutral-400 max-w-md">
+              Your library is empty. Create a playlist above, or save albums and playlists you find in Search and they'll appear here.
             </div>
           )}
           {!trimmedQuery && madeForYou.length > 0 && (

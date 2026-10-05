@@ -3,9 +3,10 @@ import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
 import { playOn } from '../../services/spotify/playbackController';
-import { searchSpotify, playSingleTrack, checkTracksLiked, fetchSearchPage } from '../../services/spotify/api';
+import { searchSpotify, playSingleTrack, playContext, checkTracksLiked, fetchSearchPage } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
-import { Search, Play, ChevronLeft, Loader } from 'lucide-react';
+import { useIsMobile } from '../../hooks/useMediaQuery';
+import { Search, Play, ChevronLeft, Loader, X } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import { rowButtonProps } from '../../utils/a11y';
 import { isSameTrack, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
@@ -21,6 +22,26 @@ const safeSessionRemove = (key) => {
 
 const hasAnyResults = (results) =>
   ['tracks', 'albums', 'artists', 'playlists'].some(kind => (results?.[kind]?.items?.length ?? 0) > 0);
+
+const ALBUM_KIND = { album: 'Album', single: 'Single', compilation: 'Compilation' };
+// "Album • 2015 • Tame Impala", as Spotify labels album results
+const albumMeta = (album) =>
+  [ALBUM_KIND[album.album_type] || 'Album', album.release_date?.slice(0, 4), album.artists?.[0]?.name]
+    .filter(Boolean).join(' • ');
+
+// Play button that appears over a card's artwork on hover (desktop only; phones tap the card)
+function HoverPlay({ label, onPlay }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={(e) => { e.stopPropagation(); onPlay(); }}
+      className="hidden md:flex absolute bottom-2 right-2 w-10 h-10 rounded-full bg-brand-gradient text-white items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 group-focus-within:opacity-100 group-focus-within:translate-y-0 hover:scale-105 transition-all"
+    >
+      <Play className="w-4 h-4 fill-current ml-0.5" />
+    </button>
+  );
+}
 
 // View-Level Caching: Isolates ephemeral UI memory from the global store
 const getCachedString = (key, defaultVal) => {
@@ -39,8 +60,10 @@ const getCachedJSON = (key, defaultVal) => {
 
 export default function Browse() {
   // Added setContextMenu and setDraggedItem here
-  const { token, setLikedTracks, navigateToArtist, navigateToAlbum, setContextMenu, setDraggedItem, navigateToPlaylist } = useSlice(useUserStore, ['token', 'setLikedTracks', 'navigateToArtist', 'navigateToAlbum', 'setContextMenu', 'setDraggedItem', 'navigateToPlaylist']);
+  const { token, setLikedTracks, navigateToArtist, navigateToAlbum, setContextMenu, setDraggedItem, navigateToPlaylist, searchFocusRequested, clearSearchFocus } = useSlice(useUserStore, ['token', 'setLikedTracks', 'navigateToArtist', 'navigateToAlbum', 'setContextMenu', 'setDraggedItem', 'navigateToPlaylist', 'searchFocusRequested', 'clearSearchFocus']);
   const { currentPlayingTrack } = usePlaybackSummary();
+  const isMobile = useIsMobile();
+  const inputRef = useRef(null);
   
   // Initialize state directly from the session cache
   const [query, setQuery] = useState(() => getCachedString('jomify_browse_query', ''));
@@ -79,6 +102,27 @@ export default function Browse() {
   // of leaving stale results (or nothing at all) on screen.
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [searchAttempt, setSearchAttempt] = useState(0);
+  // Enter pressed before the results arrived: open "All songs" once they do
+  const expandOnResult = useRef(false);
+
+  // Ctrl/Cmd+K (handled in MainLayout, which also brings you here): leave any "See more" list
+  // and focus the box. The box only exists in the standard view, so focus follows the collapse.
+  const [focusKey, setFocusKey] = useState(0);
+  useEffect(() => {
+    if (!searchFocusRequested) return undefined;
+    const id = setTimeout(() => {
+      setExpandedSection(null);
+      setFocusKey((n) => n + 1);
+      clearSearchFocus();
+    }, 0);
+    return () => clearTimeout(id);
+  }, [searchFocusRequested, clearSearchFocus]);
+  useEffect(() => {
+    if (!focusKey) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [focusKey]);
 
   useEffect(() => {
     // Prevent network requests on initial render if we successfully loaded from cache
@@ -95,6 +139,10 @@ export default function Browse() {
         searchSpotify(token, query)
           .then((data) => {
             setResults(data);
+            if (expandOnResult.current) {
+              expandOnResult.current = false;
+              if (data?.tracks?.items?.length) setExpandedSection('tracks');
+            }
             setPaginationUrls({
               tracks: data.tracks?.next || null,
               albums: data.albums?.next || null,
@@ -110,6 +158,9 @@ export default function Browse() {
           })
           .catch((err) => {
             console.error(err);
+            // Stale results under an error read as the answer; clear them
+            setResults(null);
+            setExpandedSection(null);
             setSearchError(
               err?.message === 'RATE_LIMITED'
                 ? 'Spotify is rate-limiting searches right now. Try again in a moment.'
@@ -126,7 +177,21 @@ export default function Browse() {
     }, 400);
 
     return () => clearTimeout(delayDebounce);
-  }, [query, token, setLikedTracks]);
+  }, [query, token, setLikedTracks, searchAttempt]);
+
+  const retrySearch = () => { setSearchError(''); setSearchAttempt((n) => n + 1); };
+  const clearQuery = () => { setQuery(''); inputRef.current?.focus(); };
+  const onInputKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (query) clearQuery(); else inputRef.current?.blur();
+    } else if (e.key === 'Enter' && query.trim()) {
+      e.preventDefault();
+      if (results?.tracks?.items?.length && !searching) setExpandedSection('tracks');
+      else expandOnResult.current = true;
+      if (isMobile) inputRef.current?.blur();
+    }
+  };
 
   const loadMoreResults = useCallback(async (section) => {
     if (!paginationUrls[section] || loadingMore || !token) return;
@@ -189,6 +254,11 @@ export default function Browse() {
   const handleTrackPlay = (trackUri) => {
     if (!token) return;
     playOn((deviceId) => playSingleTrack(token, deviceId, trackUri));
+  };
+
+  const handleContextPlay = (uri) => {
+    if (!token) return;
+    playOn((deviceId) => playContext(token, deviceId, uri));
   };
 
   const handleArtistClick = (e, artistId) => {
@@ -272,6 +342,18 @@ export default function Browse() {
                               {i < track.artists.length - 1 ? ', ' : ''}
                             </span>
                           ))}
+                          {track.album?.name && (
+                            <>
+                              {' • '}
+                              <button
+                                type="button"
+                                onClick={(e) => handleAlbumClick(e, track.album.id)}
+                                className="hover:underline hover:text-white"
+                              >
+                                {track.album.name}
+                              </button>
+                            </>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -317,18 +399,20 @@ export default function Browse() {
                   <div
                     key={playlist.id}
                     onClick={() => { navigateToPlaylist(playlist.id); }}
+                    {...rowButtonProps(() => navigateToPlaylist(playlist.id))}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({ type: 'playlist', x: e.pageX, y: e.pageY, playlistId: playlist.id, playlistSource: 'browse' });
                     }}
-                    className="bg-neutral-800/30 rounded-xl p-4 cursor-pointer hover:bg-neutral-800/60 transition-colors"
+                    className="bg-neutral-800/30 rounded-xl p-4 cursor-pointer hover:bg-neutral-800/60 transition-colors group"
                   >
-                    <div className="w-full aspect-square rounded-md overflow-hidden bg-neutral-700 mb-4">
+                    <div className="relative w-full aspect-square rounded-md overflow-hidden bg-neutral-700 mb-4">
                       {playlist.images?.[0]?.url ? (
                         <img src={artUrl(playlist.images, 300)} alt={playlist.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full bg-neutral-800 flex items-center justify-center">💿</div>
                       )}
+                      <HoverPlay label={`Play ${playlist.name}`} onPlay={() => handleContextPlay(playlist.uri || `spotify:playlist:${playlist.id}`)} />
                     </div>
                     <p className="text-white font-semibold truncate mb-1">{playlist.name}</p>
                     <p className="text-neutral-400 text-xs truncate">{playlist.owner?.display_name || playlist.owner?.id}</p>
@@ -369,10 +453,13 @@ export default function Browse() {
                   key={artist.id} 
                   onClick={(e) => handleArtistClick(e, artist.id)}
                   {...rowButtonProps(() => navigateToArtist(artist.id))}
-                  className="bg-neutral-800/30 p-4 rounded-xl flex flex-col items-center text-center cursor-pointer hover:bg-neutral-800/60 transition-colors"
+                  className="bg-neutral-800/30 p-4 rounded-xl flex flex-col items-center text-center cursor-pointer hover:bg-neutral-800/60 transition-colors group"
                 >
-                  <div className="w-32 h-32 bg-neutral-700 rounded-full mb-3 overflow-hidden shadow-md">
-                    {artist.images?.[0]?.url && <img src={artUrl(artist.images, 160)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />}
+                  <div className="relative w-32 h-32 mb-3">
+                    <div className="w-full h-full bg-neutral-700 rounded-full overflow-hidden shadow-md">
+                      {artist.images?.[0]?.url && <img src={artUrl(artist.images, 160)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />}
+                    </div>
+                    <HoverPlay label={`Play ${artist.name}`} onPlay={() => handleContextPlay(artist.uri || `spotify:artist:${artist.id}`)} />
                   </div>
                   <p className="text-white text-sm font-bold truncate w-full">{artist.name}</p>
                 </div>
@@ -412,13 +499,15 @@ export default function Browse() {
                     e.preventDefault();
                     setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id });
                   }}
+                  {...rowButtonProps(() => navigateToAlbum(album.id))}
                   className="bg-neutral-800/30 p-4 rounded-xl cursor-pointer hover:bg-neutral-800/60 transition-colors group"
                 >
-                  <div className="aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
+                  <div className="relative aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
                     {album.images?.[0]?.url && <img src={artUrl(album.images, 300)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
+                    <HoverPlay label={`Play ${album.name}`} onPlay={() => handleContextPlay(album.uri || `spotify:album:${album.id}`)} />
                   </div>
                   <p className="text-white text-sm font-bold truncate w-full">{album.name}</p>
-                  <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{album.artists?.[0]?.name || ''}</p>
+                  <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{albumMeta(album)}</p>
                 </div>
               ))}
               {/* Infinite scroll sentinel */}
@@ -452,17 +541,32 @@ export default function Browse() {
   // ----------------------------------------
   return (
     <div className="flex flex-col pb-8 select-none px-2">
-      <h1 className="text-4xl font-extrabold text-white tracking-tighter mb-6">Browse</h1>
+      <h1 className="text-4xl font-extrabold text-white tracking-tighter mb-6">Search</h1>
       
       <div className="relative w-full max-w-md mb-8">
-        <Search className="absolute left-4 top-3.5 w-5 h-5 text-neutral-500" />
+        <Search className="absolute left-4 top-3.5 w-5 h-5 text-neutral-500 pointer-events-none" />
         <input 
-          type="text"
+          ref={inputRef}
+          type="search"
+          enterKeyHint="search"
+          autoFocus={!isMobile}
+          aria-label="Search"
           placeholder="Search songs, artists, albums, or playlists..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full bg-neutral-800 border-none rounded-full py-3 pl-12 pr-6 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f91362] transition-all"
+          onKeyDown={onInputKeyDown}
+          className="w-full bg-neutral-800 border-none rounded-full py-3 pl-12 pr-12 text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f91362] transition-all [&::-webkit-search-cancel-button]:hidden"
         />
+        {query && (
+          <button
+            type="button"
+            onClick={clearQuery}
+            aria-label="Clear search"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {searching && (
@@ -471,7 +575,12 @@ export default function Browse() {
         </p>
       )}
       {searchError && (
-        <p className="text-red-400 text-sm font-medium mb-6">{searchError}</p>
+        <p className="text-red-400 text-sm font-medium mb-6 flex items-center gap-3">
+          {searchError}
+          <button type="button" onClick={retrySearch} className="text-white underline underline-offset-2 hover:text-neutral-200">
+            Try again
+          </button>
+        </p>
       )}
       {results && !searching && !hasAnyResults(results) && (
         <p className="text-neutral-400 font-medium mb-6">
@@ -543,6 +652,18 @@ export default function Browse() {
                                 {i < track.artists.length - 1 ? ', ' : ''}
                               </span>
                             ))}
+                            {track.album?.name && (
+                              <>
+                                {' • '}
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleAlbumClick(e, track.album.id)}
+                                  className="hover:underline hover:text-white"
+                                >
+                                  {track.album.name}
+                                </button>
+                              </>
+                            )}
                           </p>
                         </div>
                       </div>
@@ -577,11 +698,12 @@ export default function Browse() {
                       <div
                         key={playlist.id}
                         onClick={() => { navigateToPlaylist(playlist.id); }}
+                        {...rowButtonProps(() => navigateToPlaylist(playlist.id))}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setContextMenu({ type: 'playlist', x: e.pageX, y: e.pageY, playlistId: playlist.id, playlistSource: 'browse' });
                         }}
-                        className="bg-neutral-800/30 rounded-xl p-4 flex items-center gap-3 cursor-pointer hover:bg-neutral-800/60 transition-colors"
+                        className="bg-neutral-800/30 rounded-xl p-4 flex items-center gap-3 cursor-pointer hover:bg-neutral-800/60 transition-colors group"
                       >
                         <div className="w-16 h-16 rounded-md overflow-hidden bg-neutral-700 flex-shrink-0">
                           {playlist.images?.[0]?.url ? (
@@ -590,13 +712,21 @@ export default function Browse() {
                             <div className="w-full h-full bg-neutral-800 flex items-center justify-center">💿</div>
                           )}
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="text-white font-semibold truncate">{playlist.name}</p>
                           <p className="text-neutral-400 text-xs truncate">{playlist.owner?.display_name || playlist.owner?.id}</p>
                           {typeof playlist.tracks?.total === 'number' && (
                             <p className="text-neutral-500 text-xs truncate mt-1">{playlist.tracks.total} tracks</p>
                           )}
                         </div>
+                        <button
+                          type="button"
+                          aria-label={`Play ${playlist.name}`}
+                          onClick={(e) => { e.stopPropagation(); handleContextPlay(playlist.uri || `spotify:playlist:${playlist.id}`); }}
+                          className="hidden md:flex w-10 h-10 rounded-full bg-brand-gradient text-white items-center justify-center shadow-xl opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:scale-105 transition-all shrink-0"
+                        >
+                          <Play className="w-4 h-4 fill-current ml-0.5" />
+                        </button>
                       </div>
                     );
                   })}
@@ -622,10 +752,13 @@ export default function Browse() {
                     key={artist.id} 
                     onClick={(e) => handleArtistClick(e, artist.id)}
                     {...rowButtonProps(() => navigateToArtist(artist.id))}
-                    className="bg-neutral-800/30 p-4 rounded-xl flex flex-col items-center text-center cursor-pointer hover:bg-neutral-800/60 transition-colors"
+                    className="bg-neutral-800/30 p-4 rounded-xl flex flex-col items-center text-center cursor-pointer hover:bg-neutral-800/60 transition-colors group"
                   >
-                    <div className="w-24 h-24 bg-neutral-700 rounded-full mb-3 overflow-hidden shadow-md">
-                      {artist.images?.[0]?.url && <img src={artUrl(artist.images, 160)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />}
+                    <div className="relative w-24 h-24 mb-3">
+                      <div className="w-full h-full bg-neutral-700 rounded-full overflow-hidden shadow-md">
+                        {artist.images?.[0]?.url && <img src={artUrl(artist.images, 160)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />}
+                      </div>
+                      <HoverPlay label={`Play ${artist.name}`} onPlay={() => handleContextPlay(artist.uri || `spotify:artist:${artist.id}`)} />
                     </div>
                     <p className="text-white text-sm font-bold truncate w-full">{artist.name}</p>
                     <p className="text-neutral-400 text-xs uppercase tracking-wider mt-1">Artist</p>
@@ -655,13 +788,15 @@ export default function Browse() {
                       e.preventDefault();
                       setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id });
                     }}
+                    {...rowButtonProps(() => navigateToAlbum(album.id))}
                     className="bg-neutral-800/30 p-4 rounded-xl cursor-pointer hover:bg-neutral-800/60 transition-colors group"
                   >
-                    <div className="aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
+                    <div className="relative aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
                       {album.images?.[0]?.url && <img src={artUrl(album.images, 300)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
+                      <HoverPlay label={`Play ${album.name}`} onPlay={() => handleContextPlay(album.uri || `spotify:album:${album.id}`)} />
                     </div>
                     <p className="text-white text-sm font-bold truncate w-full">{album.name}</p>
-                    <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{album.artists?.[0]?.name || ''}</p>
+                    <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{albumMeta(album)}</p>
                   </div>
                 ))}
               </div>
@@ -671,8 +806,8 @@ export default function Browse() {
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-neutral-500">
-          <p className="text-lg font-medium">Search for music catalog data</p>
-          <p className="text-sm mt-1">No audiobooks, podcasts, or advertisements included.</p>
+          <p className="text-lg font-medium">Find songs, artists, albums and playlists</p>
+          <p className="text-sm mt-1 hidden md:block">Press Enter to see every matching song. Ctrl or ⌘ K brings you here from anywhere.</p>
         </div>
       )}
     </div>

@@ -74,12 +74,12 @@ export default function PlaylistView() {
   const {
     token, updatePlaylistImage, playlists, activePlaylistId,
     setLikedTracks, setContextMenu, setDraggedItem, setPlaylists,
-    navigateToArtist, navigateToAlbum,
+    navigateToArtist, navigateToAlbum, setCurrentView,
     playlistSortSettings, setPlaylistSortSettings
   } = useSlice(useUserStore, [
     'token', 'updatePlaylistImage', 'playlists', 'activePlaylistId',
     'setLikedTracks', 'setContextMenu', 'setDraggedItem', 'setPlaylists',
-    'navigateToArtist', 'navigateToAlbum',
+    'navigateToArtist', 'navigateToAlbum', 'setCurrentView',
     'playlistSortSettings', 'setPlaylistSortSettings'
   ]);
 
@@ -688,6 +688,8 @@ export default function PlaylistView() {
   // Reveal the next page of rows when the sentinel below the list scrolls near the viewport
   const totalRows = sortedTracks.length;
   const nextPageUrl = playlist?.tracks?.next || null;
+  const myId = useUserStore((s) => s.profile?.id);
+  const ownsPlaylist = Boolean(myId && (playlist?.owner?.id === myId || playlist?.collaborative));
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || (visibleCount >= totalRows && !nextPageUrl)) return undefined;
@@ -1050,6 +1052,25 @@ export default function PlaylistView() {
           isSubmitting={isUpdatingPlaylist}
         />
         {!playlist && <SkeletonRows count={8} />}
+        {playlist && totalRows === 0 && (
+          <div className="py-16 text-center">
+            <p className="text-white font-bold text-lg">Nothing here yet</p>
+            <p className="text-neutral-400 text-sm mt-1">
+              {ownsPlaylist
+                ? 'Drag songs in from another playlist, or find some to add.'
+                : 'This playlist has no songs.'}
+            </p>
+            {ownsPlaylist && (
+              <button
+                type="button"
+                onClick={() => setCurrentView('browse')}
+                className="mt-4 px-5 py-2 rounded-full bg-white text-black text-sm font-bold hover:scale-105 transition-transform"
+              >
+                Find songs
+              </button>
+            )}
+          </div>
+        )}
         {sortedTracks.slice(0, visibleCount).map((item, index) => {
           if (!item || !item.track) return null;
           const track = item.track;

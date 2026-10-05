@@ -8,8 +8,17 @@ import { playUris, checkTracksLiked, spotifyFetch } from '../../services/spotify
 import { formatTime } from '../../utils/formatTime';
 import { Play } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
+import { SkeletonHeader, SkeletonRows, SkeletonCards } from '../../components/Skeleton';
 import { rowButtonProps } from '../../utils/a11y';
 import { isSameTrack } from '../../utils/spotifyUri';
+
+// What went wrong, in words rather than the error's own text ("RATE_LIMITED", "Failed to fetch")
+const describeFailure = (err, status) => {
+  if (status === 404) return "Spotify doesn't have this artist.";
+  if (err?.message === 'RATE_LIMITED' || status === 429) return 'Spotify is rate-limiting requests right now. Try again in a moment.';
+  if (status) return `Couldn't load this artist (Spotify answered ${status}).`;
+  return "Couldn't reach Spotify. Check your connection and try again.";
+};
 
 export default function Artist() {
   const { token, setLikedTracks, currentArtistId, setContextMenu, navigateToAlbum } = useSlice(useUserStore, ['token', 'setLikedTracks', 'currentArtistId', 'setContextMenu', 'navigateToAlbum']);
@@ -17,8 +26,11 @@ export default function Artist() {
   const [artist, setArtist] = useState(null);
   const [topTracks, setTopTracks] = useState([]);
   const [albums, setAlbums] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Each part lands on its own, so the header is up while the discography pages in
+  const [loading, setLoading] = useState({ artist: true, tracks: true, albums: true });
   const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const retry = () => { setError(''); setAttempt((n) => n + 1); };
 
 
   useEffect(() => {
@@ -27,25 +39,32 @@ export default function Artist() {
 
     const fetchArtistData = async () => {
       try {
-        setLoading(true);
+        setLoading({ artist: true, tracks: true, albums: true });
         setError('');
+        setArtist(null);
+        setTopTracks([]);
+        setAlbums([]);
         const headers = { Authorization: `Bearer ${token}` };
 
         // Artist details. An error payload is truthy, so without this check a 404 rendered a
         // header full of `undefined` instead of "not found".
         const artistRes = await spotifyFetch(`https://api.spotify.com/v1/artists/${currentArtistId}`, { headers });
         if (!artistRes.ok) {
-          throw new Error(artistRes.status === 404 ? 'Artist not found' : `Spotify returned ${artistRes.status}`);
+          const err = new Error(`Spotify returned ${artistRes.status}`);
+          err.status = artistRes.status;
+          throw err;
         }
         const artistData = await artistRes.json();
         if (cancelled) return;
         setArtist(artistData);
+        setLoading((l) => ({ ...l, artist: false }));
 
         // Top tracks in the listener's own market, not a hardcoded US one
         const tracksRes = await spotifyFetch(`https://api.spotify.com/v1/artists/${currentArtistId}/top-tracks?market=from_token`, { headers });
         const tracksData = tracksRes.ok ? await tracksRes.json() : { tracks: [] };
         if (cancelled) return;
         setTopTracks(tracksData.tracks || []);
+        setLoading((l) => ({ ...l, tracks: false }));
 
         // Check liked status
         if (tracksData.tracks) {
@@ -75,15 +94,15 @@ export default function Artist() {
         if (cancelled) return;
         console.error('Failed to fetch artist data:', err);
         setArtist(null);
-        setError(err.message || 'Failed to load artist');
+        setError(describeFailure(err, err?.status));
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setLoading({ artist: false, tracks: false, albums: false });
       }
     };
 
     fetchArtistData();
     return () => { cancelled = true; };
-  }, [token, currentArtistId, setLikedTracks]);
+  }, [token, currentArtistId, setLikedTracks, attempt]);
 
   // The clicked row and then the rest of the popular tracks, in the order shown. A single URI
   // used to stop dead after one song.
@@ -94,20 +113,25 @@ export default function Artist() {
     playOn((deviceId) => playUris(token, deviceId, uris, index));
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20 text-neutral-400">
-        <p className="text-lg">Loading artist...</p>
-      </div>
-    );
-  }
-
   // Back navigation is the global button in MainLayout; this view used to render a second one
   // 64px below it doing the identical thing.
   if (!artist) {
     return (
       <div className="flex flex-col pb-8">
-        <p className="text-neutral-400">{error || 'Artist not found'}</p>
+        {loading.artist ? (
+          <>
+            <SkeletonHeader round />
+            <SkeletonRows count={6} />
+          </>
+        ) : (
+          <div className="mt-8 max-w-xl rounded-3xl border border-white/10 bg-neutral-900/60 p-8 animate-fade-in">
+            <p className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">Artist</p>
+            <p className="text-neutral-300 text-sm">{error || "Couldn't load this artist."}</p>
+            <button type="button" onClick={retry} className="mt-4 inline-flex items-center rounded-full border border-white/15 px-5 py-2 text-sm font-bold text-white hover:bg-white/5 transition-colors">
+              Try again
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -143,6 +167,7 @@ export default function Artist() {
       </div>
 
       {/* Top Tracks */}
+      {loading.tracks && <div className="mb-12"><SkeletonRows count={5} /></div>}
       {topTracks.length > 0 && (
         <div className="mb-12">
           <h2 className="text-xl md:text-2xl font-bold text-white mb-3 md:mb-6">Popular Tracks</h2>
@@ -187,6 +212,12 @@ export default function Artist() {
       )}
 
       {/* Albums */}
+      {loading.albums && !loading.tracks && (
+        <div>
+          <h2 className="text-2xl font-bold text-white mb-6">Albums</h2>
+          <SkeletonCards count={5} gridClass="grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" />
+        </div>
+      )}
       {albums.length > 0 && (
         <div>
           <h2 className="text-2xl font-bold text-white mb-6">Albums</h2>

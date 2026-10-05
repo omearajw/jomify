@@ -43,6 +43,18 @@ export default function MainLayout({ children }) {
     return installLongPressContextMenu();
   }, [isCoarsePointer]);
 
+  // Ctrl/Cmd+K jumps to Search from any page; the Search page itself focuses the box
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        useUserStore.getState().requestSearchFocus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   // Time-based conditions below need a nudge to re-evaluate; nothing else in the store changes
   // just because a minute passed
   const [now, setNow] = useState(() => Date.now());
