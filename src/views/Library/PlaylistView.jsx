@@ -218,13 +218,22 @@ export default function PlaylistView() {
     setSortedAway((prev) => ({ ...prev, [track.uri]: { playlistId, playlistName, expiresAt: Date.now() + UNDO_MS } }));
   };
 
+  // A song removed through its menu takes the same undo strip as one sorted away, with nothing
+  // to take it back out of. The row used to stay on screen until a reload, with no way back.
+  const markRemoved = (track) => {
+    if (!track?.uri) return;
+    clearTimeout(undoTimers.current[track.uri]);
+    undoTimers.current[track.uri] = setTimeout(() => dropSortedRow(track.uri), UNDO_MS);
+    setSortedAway((prev) => ({ ...prev, [track.uri]: { removed: true, expiresAt: Date.now() + UNDO_MS } }));
+  };
+
   const undoSort = async (item) => {
     const track = item?.track;
     const away = track?.uri ? sortedAway[track.uri] : null;
     if (!token || !away) return;
     clearTimeout(undoTimers.current[track.uri]);
     try {
-      await removeTrackFromPlaylist(token, away.playlistId, track.uri);
+      if (!away.removed) await removeTrackFromPlaylist(token, away.playlistId, track.uri);
       // Spotify appends on re-add, so after a reload the song sits at the bottom of this list
       await addTracksToPlaylist(token, activePlaylistId, [track.uri]);
     } catch (err) {
@@ -235,7 +244,7 @@ export default function PlaylistView() {
     }
     delete undoTimers.current[track.uri];
     setSortedAway((prev) => { const next = { ...prev }; delete next[track.uri]; return next; });
-    toast(`"${track.name}" is back in Unadded Songs`, { tone: 'success' });
+    toast(away.removed ? `"${track.name}" is back` : `"${track.name}" is back in Unadded Songs`, { tone: 'success' });
   };
 
   useEffect(() => {
@@ -612,6 +621,7 @@ export default function PlaylistView() {
       y: e.clientY,
       track: track,
       sourcePlaylistId: activePlaylistId,
+      onRemoved: markRemoved,
       reorder
     });
   };
@@ -1067,12 +1077,13 @@ export default function PlaylistView() {
             }
           }
 
-          const away = isUnaddedSongsPlaylist ? sortedAway[track.uri] : null;
+          const away = sortedAway[track.uri];
           if (away) {
             return (
               <div key={`${track.id}-${index}-away`} className="relative overflow-hidden rounded-md bg-white/5 px-4 py-3 my-0.5 flex items-center gap-4 text-sm animate-fade-in">
                 <div className="flex-1 min-w-0 text-neutral-300 truncate">
-                  <span className="text-white font-medium">{track.name}</span> moved to <span className="text-white font-medium">{away.playlistName}</span>
+                  <span className="text-white font-medium">{track.name}</span>
+                  {away.removed ? ' removed' : <> moved to <span className="text-white font-medium">{away.playlistName}</span></>}
                 </div>
                 <button
                   type="button"
@@ -1192,15 +1203,10 @@ export default function PlaylistView() {
                 }}
                 onDragEnd={() => setDraggedItem(null)}
                 onContextMenu={(e) => {
-                  e.preventDefault();
+                  // The same menu as the rest of the row; this cell used to open one without
+                  // the reorder entries
                   e.stopPropagation();
-                  setContextMenu({ 
-                    type: 'track',
-                    x: e.pageX, 
-                    y: e.pageY, 
-                    track: track, 
-                    sourcePlaylistId: activePlaylistId 
-                  }); 
+                  handleRightClick(e, track, item);
                 }}
                 className="flex items-center justify-between gap-2 md:gap-4 w-full h-full"
               >

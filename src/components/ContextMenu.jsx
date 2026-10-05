@@ -57,14 +57,14 @@ export default function ContextMenu() {
   const {
     contextMenu, setContextMenu, token, triggerQueueRefresh,
     addManuallyQueuedTrack,
-    playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId, activePlaylistId,
+    playlists, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId,
     removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder, renameFolder, createFolder, moveFolder,
     reorderFolders, reorderPlaylistInFolder,
     pinnedItems, togglePin, navigateToArtist, navigateToAlbum, setNowPlayingOpen
   } = useSlice(useUserStore, [
     'contextMenu', 'setContextMenu', 'token', 'triggerQueueRefresh',
     'addManuallyQueuedTrack',
-    'playlists', 'customFolders', 'profile', 'deletePlaylist', 'deleteFolder', 'setCurrentView', 'setActivePlaylistId', 'activePlaylistId',
+    'playlists', 'customFolders', 'profile', 'deletePlaylist', 'deleteFolder', 'setCurrentView', 'setActivePlaylistId',
     'removeAlbumFromLibrary', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'renameFolder', 'createFolder', 'moveFolder',
     'reorderFolders', 'reorderPlaylistInFolder',
     'pinnedItems', 'togglePin', 'navigateToArtist', 'navigateToAlbum', 'setNowPlayingOpen'
@@ -73,8 +73,12 @@ export default function ContextMenu() {
   const menuRef = useRef(null);
   const isMobile = useIsMobile();
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmFolderOpen, setConfirmFolderOpen] = useState(false);
+  // The dialogs outlive the menu: a click inside one lands outside the menu and closes it, and the
+  // folder dialog is opened by a handler that closes the menu deliberately. So each dialog keeps a
+  // snapshot of what it is about rather than reading the menu, and all of them render whether
+  // or not the menu is open.
+  const [confirmPlaylist, setConfirmPlaylist] = useState(null); // { id, name }
+  const [confirmFolder, setConfirmFolder] = useState(null); // { id, name, subs }
   // Which folder dialog is open, and what it should do with the name it collects. The menu
   // itself has usually closed by the time the dialog is on screen, so the item id is captured
   // here rather than read from contextMenu later.
@@ -134,7 +138,71 @@ export default function ContextMenu() {
     el.style.top = `${top}px`;
   }, [contextMenu, isMobile]);
 
-  if (!contextMenu) return null;
+  const confirmDeletePlaylist = async () => {
+    const target = confirmPlaylist;
+    setConfirmPlaylist(null);
+    setContextMenu(null);
+    if (!token || !target) return;
+    try {
+      await unfollowPlaylist(token, target.id);
+      deletePlaylist(target.id);
+      if (target.id === useUserStore.getState().activePlaylistId) {
+        setCurrentView('library');
+        setActivePlaylistId(null);
+      }
+      toast(`Deleted "${target.name}"`, { tone: 'info' });
+    } catch (err) {
+      console.error(err);
+      toast(`Couldn't delete "${target.name}"`, { tone: 'error' });
+    }
+  };
+
+  const confirmDeleteFolder = () => {
+    const target = confirmFolder;
+    setConfirmFolder(null);
+    if (!target) return;
+    // The menu may already have closed under the dialog, so the folder id comes from the
+    // snapshot; an onDelete handler supplied by the opener is still honoured when present
+    if (typeof contextMenu?.onDelete === 'function') contextMenu.onDelete();
+    else deleteFolder(target.id);
+    setContextMenu(null);
+  };
+
+  const dialogs = (
+    <>
+      <FolderFormDialog
+        open={Boolean(folderDialog)}
+        title={folderDialog?.mode === 'rename' ? 'Rename folder' : (folderDialog?.parentId ? 'New subfolder' : 'New folder')}
+        submitLabel={folderDialog?.mode === 'rename' ? 'Rename' : 'Create'}
+        initialName={folderDialog?.mode === 'rename' ? folderDialog.name : ''}
+        parentLabel={folderDialog?.parentId ? customFolders.find(f => f.id === folderDialog.parentId)?.name : ''}
+        onSubmit={({ name }) => {
+          if (folderDialog?.mode === 'rename') renameFolder(folderDialog.folderId, name);
+          else createFolder(name, folderDialog.itemId ? [folderDialog.itemId] : [], folderDialog.parentId ?? null);
+          setFolderDialog(null);
+        }}
+        onCancel={() => setFolderDialog(null)}
+      />
+      <ConfirmDialog
+        open={Boolean(confirmPlaylist)}
+        title="Delete Playlist"
+        message={`Delete "${confirmPlaylist?.name || 'this playlist'}" from your library?`}
+        confirmLabel="Delete Playlist"
+        onConfirm={confirmDeletePlaylist}
+        onCancel={() => setConfirmPlaylist(null)}
+      />
+      <ConfirmDialog
+        open={Boolean(confirmFolder)}
+        title="Delete Folder"
+        message={`Delete "${confirmFolder?.name || 'this folder'}"?${confirmFolder?.subs ? ` This also deletes ${confirmFolder.subs} subfolder${confirmFolder.subs === 1 ? '' : 's'}.` : ''} Your playlists will not be deleted.`}
+        confirmLabel="Delete Folder"
+        onConfirm={confirmDeleteFolder}
+        onCancel={() => setConfirmFolder(null)}
+      />
+    </>
+  );
+
+  if (!contextMenu) return dialogs;
 
   // Submenu geometry, derived from the click position rather than measured. The clamp above
   // only ever moves the menu UP or LEFT, so using the raw coordinates here is conservative:
@@ -257,59 +325,32 @@ export default function ContextMenu() {
 
   const handleRemoveFromPlaylist = async () => {
     if (!token || !contextMenu.track || !contextMenu.sourcePlaylistId) return;
+    const { track, sourcePlaylistId, onRemoved } = contextMenu;
+    setContextMenu(null);
     try {
-      await removeTrackFromPlaylist(token, contextMenu.sourcePlaylistId, contextMenu.track.uri);
-      setContextMenu(null);
+      await removeTrackFromPlaylist(token, sourcePlaylistId, track.uri);
+      // The open playlist drops the row and offers an undo; without this the row stayed until
+      // a reload, with no sign anything had happened
+      if (onRemoved) onRemoved(track);
+      else toast(`Removed "${track.name}"`, { tone: 'info' });
     } catch (err) {
       console.error(err);
+      toast(`Couldn't remove "${track.name}"`, { tone: 'error' });
     }
   };
+
+  const menuPlaylist = contextMenu?.playlistId ? playlists.find(p => p.id === contextMenu.playlistId) : null;
+  const ownsMenuPlaylist = Boolean(menuPlaylist && menuPlaylist.owner?.id === profile?.id);
 
   const handleDeletePlaylist = () => {
-    if (!contextMenu?.playlistId) return;
-    setConfirmOpen(true);
-  };
-
-  const confirmDeletePlaylist = async () => {
-    if (!token || !contextMenu?.playlistId) return;
-    const playlist = playlists.find(p => p.id === contextMenu.playlistId);
-    if (!playlist || playlist.owner.id !== profile?.id) {
-      setContextMenu(null);
-      setConfirmOpen(false);
-      return;
-    }
-
-    try {
-      await unfollowPlaylist(token, playlist.id);
-      deletePlaylist(playlist.id);
-      if (contextMenu.playlistId === activePlaylistId) {
-        setCurrentView('library');
-        setActivePlaylistId(null);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setContextMenu(null);
-      setConfirmOpen(false);
-    }
+    if (!menuPlaylist) return;
+    setConfirmPlaylist({ id: menuPlaylist.id, name: menuPlaylist.name });
   };
 
   const handleDeleteFolder = () => {
     if (!contextMenu?.folderId) return;
-    setConfirmFolderOpen(true);
-  };
-
-  const confirmDeleteFolder = () => {
-    if (!contextMenu?.folderId) return;
-
-    if (typeof contextMenu.onDelete === 'function') {
-      contextMenu.onDelete();
-    } else {
-      deleteFolder(contextMenu.folderId);
-      setContextMenu(null);
-    }
-
-    setConfirmFolderOpen(false);
+    const f = customFolders.find(x => x.id === contextMenu.folderId);
+    setConfirmFolder({ id: contextMenu.folderId, name: contextMenu.folderName || f?.name, subs: f ? descendantIds(customFolders, f.id).length : 0 });
   };
 
   const handleRemoveAlbum = async () => {
@@ -512,13 +553,17 @@ export default function ContextMenu() {
 
       {(contextMenu?.type === 'playlist' || contextMenu?.playlistId) && (
         <>
-          <button
-            onClick={handleDeletePlaylist}
-            className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
-          >
-            <Trash2 className="w-4 h-4 text-red-400" />
-            <span>Delete playlist</span>
-          </button>
+          {/* Only a playlist you own can be deleted. Offering it on others' used to end in a
+              confirm that did nothing, and read "undefined" for playlists not in the library. */}
+          {ownsMenuPlaylist && (
+            <button
+              onClick={handleDeletePlaylist}
+              className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+            >
+              <Trash2 className="w-4 h-4 text-red-400" />
+              <span>Delete playlist</span>
+            </button>
+          )}
 
           {contextMenu?.parentFolderId && (
             <button
@@ -640,39 +685,7 @@ export default function ContextMenu() {
         </>
       )}
 
-      <FolderFormDialog
-        open={Boolean(folderDialog)}
-        title={folderDialog?.mode === 'rename' ? 'Rename folder' : (folderDialog?.parentId ? 'New subfolder' : 'New folder')}
-        submitLabel={folderDialog?.mode === 'rename' ? 'Rename' : 'Create'}
-        initialName={folderDialog?.mode === 'rename' ? folderDialog.name : ''}
-        parentLabel={folderDialog?.parentId ? customFolders.find(f => f.id === folderDialog.parentId)?.name : ''}
-        onSubmit={({ name }) => {
-          if (folderDialog?.mode === 'rename') renameFolder(folderDialog.folderId, name);
-          else createFolder(name, folderDialog.itemId ? [folderDialog.itemId] : [], folderDialog.parentId ?? null);
-          setFolderDialog(null);
-        }}
-        onCancel={() => setFolderDialog(null)}
-      />
-      
-      <ConfirmDialog
-        open={confirmOpen}
-        title="Delete Playlist"
-        message={contextMenu?.playlistId ? `Delete "${playlists.find(p => p.id === contextMenu.playlistId)?.name}" from your library?` : 'Delete this playlist from your library?'}
-        confirmLabel="Delete Playlist"
-        onConfirm={confirmDeletePlaylist}
-        onCancel={() => setConfirmOpen(false)}
-      />
-      <ConfirmDialog
-        open={confirmFolderOpen}
-        title="Delete Folder"
-        message={(() => {
-          const subs = folder ? descendantIds(customFolders, folder.id).length : 0;
-          return `Delete "${contextMenu?.folderName || folder?.name}"?${subs ? ` This also deletes ${subs} subfolder${subs === 1 ? '' : 's'}.` : ''} Your playlists will not be deleted.`;
-        })()}
-        confirmLabel="Delete Folder"
-        onConfirm={confirmDeleteFolder}
-        onCancel={() => setConfirmFolderOpen(false)}
-      />
+      {dialogs}
     </div>
     </>,
     document.body
