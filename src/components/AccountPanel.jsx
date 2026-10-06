@@ -9,6 +9,7 @@ import ConfirmDialog from './ConfirmDialog';
 import NotificationToggle from './NotificationToggle';
 import DebugLogPanel from './DebugLogPanel';
 import { disableNotifications } from '../pwa/push';
+import { clearLibraryCache } from '../services/libraryCache';
 import { Keyboard } from 'lucide-react';
 
 const ENDINGS = [
@@ -166,6 +167,7 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
     const canHardClear = isSafeToHardLogout();
     if (canHardClear) clearMeta();
     logout({ hard: canHardClear });
+    clearLibraryCache();
     window.location.href = '/';
   };
   const disconnectDialog = (

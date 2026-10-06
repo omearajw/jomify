@@ -23,7 +23,10 @@ import { collaboratorStyleFor } from '../../utils/collaboratorStyle';
 import { rowButtonProps } from '../../utils/a11y';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
+import { scrollParent } from '../../utils/dom';
 import { isSameTrack, isUnplayable, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
+import { useSelection } from '../../hooks/useSelection';
+import SelectionBar from '../../components/SelectionBar';
 
 // Rows rendered at once; more appear as you scroll. A 1000-track playlist used to mount every
 // row (25k DOM nodes) up front.
@@ -270,6 +273,7 @@ export default function PlaylistView() {
     undoTimers.current[track.uri] = setTimeout(() => dropSortedRow(track.uri), UNDO_MS);
     setSortedAway((prev) => ({ ...prev, [track.uri]: { removed: true, expiresAt: Date.now() + UNDO_MS } }));
   };
+  const markRemovedMany = (tracks) => tracks.forEach(markRemoved);
 
   const undoSort = async (item) => {
     const track = item?.track;
@@ -687,14 +691,20 @@ export default function PlaylistView() {
     const reorder = isMine && sortBy === 'custom' && index !== -1
       ? { index, count: items.length, move: (delta) => moveTrack(index, delta) }
       : null;
+    // Right-click on one of several selected rows acts on all of them
+    const inSelection = track?.uri && selection.has(track.uri) && selectedTracks.length > 1;
     setContextMenu({
       type: 'track',
       x: e.clientX,
       y: e.clientY,
       track: track,
+      tracks: inSelection ? selectedTracks : undefined,
       sourcePlaylistId: activePlaylistId,
       onRemoved: markRemoved,
-      reorder
+      onRemovedMany: markRemovedMany,
+      onDone: inSelection ? selection.clear : undefined,
+      onSelect: track?.uri && !inSelection ? () => selection.toggle(track.uri) : undefined,
+      reorder: inSelection ? null : reorder
     });
   };
 
@@ -766,6 +776,31 @@ export default function PlaylistView() {
     });
   }, [sortedTracks, needle]);
   const totalRows = rows.length;
+
+  // Several rows at once (Shift/Ctrl-click, or "Select" from the row menu), keyed by uri in
+  // display order so Shift extends through what is on screen
+  const rowKeys = useMemo(() => rows.map(({ item }) => item?.track?.uri).filter(Boolean), [rows]);
+  const selection = useSelection(rowKeys);
+  const selectedTracks = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const { item } of rows) {
+      const t = item?.track;
+      if (t?.uri && selection.selected.has(t.uri) && !seen.has(t.uri)) { seen.add(t.uri); out.push(t); }
+    }
+    return out;
+  }, [rows, selection.selected]);
+  const removeSelected = async (tracks) => {
+    if (!token || !activePlaylistId || tracks.length === 0) return;
+    try {
+      await removeTracksFromPlaylist(token, activePlaylistId, tracks.map((t) => t.uri));
+      markRemovedMany(tracks);
+      selection.clear();
+    } catch (err) {
+      console.error(err);
+      toast(`Couldn't remove ${tracks.length} songs`, { tone: 'error' });
+    }
+  };
 
   // Drag a row to reorder, in your own playlist's custom order (desktop; the phone has the menu)
   const dragRow = useRef(null);
@@ -841,7 +876,7 @@ export default function PlaylistView() {
       if (!entries.some(e => e.isIntersecting)) return;
       if (visibleCount < totalRows) setVisibleCount(n => Math.min(n + ROW_PAGE, totalRows));
       else if (nextPageUrl && !isFetchingMore.current) loadRestOfTracks(nextPageUrl, 1);
-    }, { rootMargin: '800px 0px' });
+    }, { root: scrollParent(el), rootMargin: '800px 0px' });
     observer.observe(el);
     return () => observer.disconnect();
   // loadRestOfTracks is a hoisted declaration that only reads the token; listing it would re-run this every render
@@ -1415,10 +1450,11 @@ export default function PlaylistView() {
           return (
             <div
               key={`${track.id}-${index}`}
-              onClick={() => handleTrackSelect(index)}
+              onClick={(e) => (selection.wantsSelect(e) && track.uri ? selection.toggle(track.uri, { range: e.shiftKey }) : handleTrackSelect(index))}
               {...rowButtonProps(() => handleTrackSelect(index))}
               onContextMenu={(e) => handleRightClick(e, track, item)}
-              draggable={canReorder}
+              aria-selected={selection.active ? selection.has(track.uri) : undefined}
+              draggable={canReorder && !selection.active}
               onDragStart={canReorder ? (e) => {
                 dragRow.current = index;
                 e.dataTransfer.effectAllowed = 'all';
@@ -1445,7 +1481,7 @@ export default function PlaylistView() {
               style={collaboratorStyleFor(adderId, isCollaborative, isFirstInGroup, isLastInGroup)}
               aria-disabled={unplayable || undefined}
               title={unplayable ? 'Not available on Spotify' : undefined}
-              className={`grid ${gridColumns} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${bgHoverClass} ${radiusClass} ${marginClass} ${unplayable ? 'opacity-45' : ''} ${dropAt === index ? 'shadow-[inset_0_2px_0_var(--brand-mid)]' : ''} ${dropAt === index + 1 && index === totalRows - 1 ? 'shadow-[inset_0_-2px_0_var(--brand-mid)]' : ''}`}
+              className={`grid ${gridColumns} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${bgHoverClass} ${radiusClass} ${marginClass} ${unplayable ? 'opacity-45' : ''} ${selection.has(track.uri) ? 'bg-white/10 ring-1 ring-inset ring-white/20' : ''} ${dropAt === index ? 'shadow-[inset_0_2px_0_var(--brand-mid)]' : ''} ${dropAt === index + 1 && index === totalRows - 1 ? 'shadow-[inset_0_-2px_0_var(--brand-mid)]' : ''}`}
             >
               <div className="text-neutral-400 w-4 h-4 hidden md:flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
@@ -1601,6 +1637,14 @@ export default function PlaylistView() {
           )}
         </div>
       )}
+      <SelectionBar
+        count={selection.count}
+        tracks={selectedTracks}
+        onClear={selection.clear}
+        onRemove={ownsPlaylist ? removeSelected : undefined}
+        onRemovedMany={markRemovedMany}
+        sourcePlaylistId={activePlaylistId}
+      />
     </div>
   );
 }

@@ -143,6 +143,26 @@ check('an empty skip list removes the playlist entry', !('p9' in s().sortSkips))
 s().setSortModeSettings({ advance: true });
 check('sort mode settings patch, keeping the rest', s().sortModeSettings.advance === true && s().sortModeSettings.autoplay === true);
 
+// --- Library cache (opening offline) -----------------------------------------
+section('library cache');
+const { hydrateLibraryFromCache, loadLibraryCache, startLibraryCache, clearLibraryCache } = await import('../src/services/libraryCache.js');
+globalThis.setTimeout = (fn) => { fn(); return 0; }; // save at once, the debounce is a browser nicety
+globalThis.clearTimeout = () => {};
+const stopCache = startLibraryCache();
+useUserStore.setState({ token: 't', profile: { id: 'me', display_name: 'Me', images: [{ url: 'a' }, { url: 'b' }], email: 'x@y' }, playlists: [{ id: 'p1', name: 'One', images: [{ url: 'i' }], owner: { id: 'me', display_name: 'Me', href: 'h' }, tracks: { total: 3, items: [{ track: { id: 't' } }] } }], albums: [{ id: 'a1', name: 'Alb', artists: [{ id: 'ar', name: 'Art', href: 'h' }], images: [] }], followedArtists: [{ id: 'ar', name: 'Art', images: [], followers: { total: 9 } }] });
+const snap = loadLibraryCache();
+check('a snapshot is written when the library changes', snap && snap.playlists.length === 1 && snap.albums.length === 1 && snap.followedArtists.length === 1);
+check('it keeps only what the shelves need', snap.playlists[0].tracks.items === undefined && snap.playlists[0].owner.href === undefined && snap.profile.email === undefined && snap.profile.images.length === 1);
+useUserStore.setState({ playlists: [], albums: [], followedArtists: [], profile: null });
+check('hydrate fills an empty store from the snapshot', hydrateLibraryFromCache() === true && s().playlists[0].name === 'One' && s().albums[0].name === 'Alb' && s().profile.id === 'me');
+useUserStore.setState({ playlists: [{ id: 'live', name: 'Live' }] });
+hydrateLibraryFromCache();
+check('hydrate never replaces live data', s().playlists[0].id === 'live');
+stopCache();
+clearLibraryCache();
+check('clear removes it', loadLibraryCache() === null);
+useUserStore.setState({ token: null, profile: null, playlists: [], albums: [], followedArtists: [] });
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) { console.log(failures.map(f => `  - ${f}`).join('\n')); process.exit(1); }
 console.log('');

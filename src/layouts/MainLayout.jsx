@@ -6,7 +6,7 @@ import ContextMenu from '../components/ContextMenu';
 import ToastHost from '../components/Toast';
 import SyncConflictDialog from '../components/SyncConflictDialog';
 import ShortcutsHelp from '../components/ShortcutsHelp';
-import { ChevronLeft, AlertTriangle, CloudOff } from 'lucide-react';
+import { ChevronLeft, AlertTriangle, CloudOff, WifiOff } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { useSyncStore } from '../store/syncStore';
 import UpdatePrompt from '../pwa/registerServiceWorker';
@@ -66,6 +66,16 @@ export default function MainLayout({ children }) {
 
   const isCoolingDown = Boolean(apiCooldownUntil && apiCooldownUntil > now);
 
+  // No connection: the shelves still show from the cache, playback can't
+  const [offline, setOffline] = useState(() => typeof navigator !== 'undefined' && navigator.onLine === false);
+  useEffect(() => {
+    const on = () => setOffline(false);
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+
   // Clear the cooldown from the store when it lapses; the derived flag above follows
   useEffect(() => {
     if (!apiCooldownUntil || apiCooldownUntil <= Date.now()) return;
@@ -81,7 +91,7 @@ export default function MainLayout({ children }) {
 
   // Views with their own sticky sub-headers (Browse) need to know how tall this one is, so it
   // is published as a CSS variable instead of being hard-coded as a magic number over there.
-  const bannerHeight = (isCoolingDown ? 44 : 0) + (syncBroken ? 44 : 0);
+  const bannerHeight = (isCoolingDown ? 44 : 0) + (syncBroken ? 44 : 0) + (offline ? 44 : 0);
   const backBarHeight = canGoBack ? 64 : 0;
 
   return (
@@ -99,8 +109,14 @@ export default function MainLayout({ children }) {
           {/* One sticky header, so banners and the back button stack instead of all pinning to
               top:0 and covering each other. The back row only exists when there is somewhere
               to go back to. */}
-          {(isCoolingDown || syncBroken || canGoBack) && (
+          {(isCoolingDown || syncBroken || canGoBack || offline) && (
             <div className="sticky top-0 z-30">
+              {offline && (
+                <div className="bg-neutral-800/95 backdrop-blur-md text-white px-4 md:px-8 py-3 flex items-center justify-center space-x-3 text-sm font-medium shadow-lg animate-fade-in">
+                  <WifiOff className="w-5 h-5 text-neutral-400" />
+                  <span>No connection. Your library is shown as it was last seen; playback needs Spotify.</span>
+                </div>
+              )}
               {isCoolingDown && (
                 <div className="bg-red-500/90 backdrop-blur-md text-white px-4 md:px-8 py-3 flex items-center justify-center space-x-3 text-sm font-medium shadow-lg animate-fade-in">
                   <AlertTriangle className="w-5 h-5" />

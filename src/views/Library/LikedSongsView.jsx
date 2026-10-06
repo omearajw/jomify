@@ -5,6 +5,7 @@ import { fetchInitialLikedSongs, playLikedSongsQueue, fetchMoreTracks } from '..
 import { playOn, setShuffle } from '../../services/spotify/playbackController';
 import { formatTime } from '../../utils/formatTime';
 import { artUrl } from '../../utils/images';
+import { scrollParent } from '../../utils/dom';
 import { Clock3, Play, Heart, Shuffle, Search, ArrowUpDown } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import { rowButtonProps } from '../../utils/a11y';
@@ -13,6 +14,9 @@ import { Skeleton, SkeletonRows } from '../../components/Skeleton';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { isSameTrack, isUnplayable } from '../../utils/spotifyUri';
 import { toast } from '../../store/toastStore';
+import { toggleTrackLike } from '../../services/spotify/api';
+import { useSelection } from '../../hooks/useSelection';
+import SelectionBar from '../../components/SelectionBar';
 
 const ROW_PAGE = 150;
 const randomIndex = (count) => Math.floor(Math.random() * count);
@@ -133,6 +137,32 @@ export default function LikedSongsView() {
   const items = sortLiked(liveItems, sortMode).filter((item) => matchesQuery(item.track, needle));
 
   const country = useUserStore((s) => s.profile?.country);
+
+  // Several rows at once, keyed by uri in display order
+  const rowKeys = items.map((item) => item.track?.uri).filter(Boolean);
+  const selection = useSelection(rowKeys);
+  const selectedTracks = items.map((item) => item.track).filter((t) => t?.uri && selection.selected.has(t.uri));
+  const unlikeSelected = async (tracks) => {
+    if (!token || tracks.length === 0) return;
+    const results = await Promise.allSettled(tracks.map((t) => toggleTrackLike(token, t.id, true)));
+    const done = {};
+    tracks.forEach((t, i) => { if (results[i].status === 'fulfilled') done[t.id] = false; });
+    setLikedTracks(done);
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (failed) toast(`Couldn't remove ${failed} of ${tracks.length}`, { tone: 'error' });
+    else toast(`Removed ${tracks.length} songs from Liked Songs`, { tone: 'info' });
+    selection.clear();
+  };
+  const openRowMenu = (e, track) => {
+    const inSelection = track?.uri && selection.has(track.uri) && selectedTracks.length > 1;
+    setContextMenu({
+      type: 'track', x: e.pageX, y: e.pageY, track,
+      tracks: inSelection ? selectedTracks : undefined,
+      onDone: inSelection ? selection.clear : undefined,
+      onSelect: track?.uri && !inSelection ? () => selection.toggle(track.uri) : undefined
+    });
+  };
+
   const handleTrackSelect = (index) => {
     if (!token || !trackData) return;
     if (isUnplayable(items[index]?.track, country)) { toast("Spotify can't play this song."); return; }
@@ -172,7 +202,7 @@ export default function LikedSongsView() {
       if (!entries.some(e => e.isIntersecting)) return;
       if (visibleCount < totalRows) setVisibleCount(n => Math.min(n + ROW_PAGE, totalRows));
       else if (nextPageUrl && !isFetchingMore.current) loadRestOfTracks(nextPageUrl, 1);
-    }, { rootMargin: '800px 0px' });
+    }, { root: scrollParent(el), rootMargin: '800px 0px' });
     observer.observe(el);
     return () => observer.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -268,12 +298,13 @@ export default function LikedSongsView() {
           return (
             <div
               key={`${track.id}-${index}`}
-              onClick={() => handleTrackSelect(index)}
+              onClick={(e) => (selection.wantsSelect(e) && track.uri ? selection.toggle(track.uri, { range: e.shiftKey }) : handleTrackSelect(index))}
               {...rowButtonProps(() => handleTrackSelect(index))}
-              onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track }); }}
+              onContextMenu={(e) => { e.preventDefault(); openRowMenu(e, track); }}
               aria-disabled={unplayable || undefined}
+              aria-selected={selection.active ? selection.has(track.uri) : undefined}
               title={unplayable ? 'Not available on Spotify' : undefined}
-              className={`grid ${GRID} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${unplayable ? 'opacity-45' : ''}`}
+              className={`grid ${GRID} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${unplayable ? 'opacity-45' : ''} ${selection.has(track.uri) ? 'bg-white/10 ring-1 ring-inset ring-white/20' : ''}`}
             >
               <div className="text-neutral-400 w-4 h-4 hidden md:flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
@@ -310,7 +341,7 @@ export default function LikedSongsView() {
               <div className="flex items-center justify-end space-x-4">
                 <LikeButton trackId={track.id} />
                 <span className="hidden md:inline text-neutral-400 w-8 text-right">{formatTime(track.duration_ms)}</span>
-                <MoreButton onOpen={(e) => setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track })} />
+                <MoreButton onOpen={(e) => openRowMenu(e, track)} />
               </div>
             </div>
           );
@@ -321,6 +352,7 @@ export default function LikedSongsView() {
           </div>
         )}
       </div>
+      <SelectionBar count={selection.count} tracks={selectedTracks} onClear={selection.clear} onRemove={unlikeSelected} removeLabel="Remove from Liked" />
     </div>
   );
 }

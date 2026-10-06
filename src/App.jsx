@@ -15,6 +15,7 @@ import PlaylistView from './views/Library/PlaylistView';
 import { startPlaybackController, playOn } from './services/spotify/playbackController';
 import { installHistorySync, syncSheetWithHistory } from './pwa/historySync';
 import { pathToFrame } from './pwa/routes';
+import { hydrateLibraryFromCache, startLibraryCache } from './services/libraryCache';
 import { isMobileViewport, useIsMobile } from './hooks/useMediaQuery';
 import Artist from './views/Artist/Artist';
 import Album from './views/Album/Album';
@@ -43,6 +44,11 @@ const LEGACY_SEVEN_PLAYLIST_IDS = ['5kJPA0nczW9zoQs7jcQ5ok', '2KmKTCZFO9wofPRwqJ
 
 // Coming back to the app after this long rechecks whose turn it is in each Seven
 const SEVENS_RECHECK_MS = 5 * 60 * 1000;
+
+// The shelves as last seen, so the app opens at once (and opens at all with no connection);
+// what Spotify sends replaces them as it arrives, and every change is kept for next time
+if (useUserStore.getState().token) hydrateLibraryFromCache();
+startLibraryCache();
 
 // Where the app opens: a link to a page wins; otherwise the page you were on (persisted), or
 // Home / Library by preference

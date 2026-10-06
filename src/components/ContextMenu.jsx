@@ -3,12 +3,12 @@ import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import { playOn } from '../services/spotify/playbackController';
 import {
-  addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, unsaveAlbum, saveAlbumToLibrary,
+  addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, removeTracksFromPlaylist, unfollowPlaylist, unsaveAlbum, saveAlbumToLibrary,
   followPlaylist, fetchPlaylistSummary, fetchAlbumsByIds, fetchAlbumTrackUris, playContext, toggleTrackLike, checkTracksLiked,
   followArtists, unfollowArtists
 } from '../services/spotify/api';
 import { shareSpotifyLink } from '../services/share';
-import { ListPlus, Plus, ChevronRight, ChevronDown, ChevronUp, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil, CornerDownRight, User, Disc3, Heart, Play, Share2, UserPlus, UserCheck, BookmarkPlus, BookmarkMinus } from 'lucide-react';
+import { ListPlus, Plus, ChevronRight, ChevronDown, ChevronUp, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil, CornerDownRight, User, Disc3, Heart, Play, Share2, UserPlus, UserCheck, BookmarkPlus, BookmarkMinus, CheckSquare } from 'lucide-react';
 import { idFromUri } from '../utils/spotifyUri';
 import FolderFormDialog from './FolderFormDialog';
 import { toast } from '../store/toastStore';
@@ -336,20 +336,28 @@ export default function ContextMenu() {
   const canPin = ['playlist', 'album', 'folder'].includes(activeType);
   const isPinned = canPin ? pinnedItems.some(i => i.id === activeId) : false;
 
+  // Several rows selected: the menu acts on all of them; `tracks` stands in for `track`
+  const manyTracks = Array.isArray(contextMenu?.tracks) ? contextMenu.tracks.filter((t) => t?.uri) : null;
+  const trackList = manyTracks || (contextMenu?.track ? [contextMenu.track] : []);
+  const describeMany = (list) => (list.length === 1 ? `"${list[0].name}"` : `${list.length} songs`);
+
   const handleAddToQueue = async () => {
-    const track = contextMenu.track;
-    if (!token || !track) return;
+    const list = trackList;
+    if (!token || list.length === 0) return;
     closeMenu();
     // Finding a device, waiting for this browser's player and asking where to play are the same
     // as for a play. With no device this used to open the picker and then forget the song.
     await playOn(async (deviceId) => {
-      await addToQueue(token, deviceId, track.uri);
-      // Only record the entry once Spotify has accepted it. It's persisted, so a failed add used
-      // to leave a phantom in the queue panel that survived restarts.
-      addManuallyQueuedTrack(track);
+      for (const track of list) {
+        await addToQueue(token, deviceId, track.uri);
+        // Only record the entry once Spotify has accepted it. It's persisted, so a failed add
+        // used to leave a phantom in the queue panel that survived restarts.
+        addManuallyQueuedTrack(track);
+      }
       setTimeout(() => triggerQueueRefresh(), 750);
-      toast(`Queued "${track.name}"`, { tone: 'success' });
-    }, { track, quiet: true }).catch(() => toast("Couldn't add to the queue", { tone: 'error' }));
+      toast(`Queued ${describeMany(list)}`, { tone: 'success' });
+      contextMenu.onDone?.();
+    }, { track: list[0], quiet: true }).catch(() => toast("Couldn't add to the queue", { tone: 'error' }));
   };
 
   const menuAlbumId = contextMenu?.albumId || null;
@@ -361,14 +369,16 @@ export default function ContextMenu() {
 
   // What "Add to playlist" adds: the song, or every song of the album
   const handleAddToPlaylist = async (playlistId) => {
-    if (!token || (!contextMenu.track && !menuAlbumId)) return;
+    if (!token || (trackList.length === 0 && !menuAlbumId)) return;
     const playlistName = playlists.find(p => p.id === playlistId)?.name || 'playlist';
-    const what = contextMenu.track ? `"${contextMenu.track.name}"` : `"${menuAlbum?.name || 'the album'}"`;
+    const what = trackList.length ? describeMany(trackList) : `"${menuAlbum?.name || 'the album'}"`;
+    const onDone = contextMenu.onDone;
     closeMenu();
     try {
-      const uris = contextMenu.track ? [contextMenu.track.uri] : await fetchAlbumTrackUris(token, menuAlbumId);
+      const uris = trackList.length ? trackList.map((t) => t.uri) : await fetchAlbumTrackUris(token, menuAlbumId);
       for (let i = 0; i < uris.length; i += 100) await addTracksToPlaylist(token, playlistId, uris.slice(i, i + 100));
       toast(`Added ${what} to ${playlistName}`, { tone: 'success' });
+      onDone?.();
     } catch (err) {
       console.error(err);
       toast(`Couldn't add to ${playlistName}`, { tone: 'error' });
@@ -488,18 +498,22 @@ export default function ContextMenu() {
   const share = (type, id, name) => { closeMenu(); shareSpotifyLink(type, id, name); };
 
   const handleRemoveFromPlaylist = async () => {
-    if (!token || !contextMenu.track || !contextMenu.sourcePlaylistId) return;
-    const { track, sourcePlaylistId, onRemoved } = contextMenu;
+    if (!token || trackList.length === 0 || !contextMenu.sourcePlaylistId) return;
+    const { sourcePlaylistId, onRemoved, onRemovedMany, onDone } = contextMenu;
+    const list = trackList;
     setContextMenu(null);
     try {
-      await removeTrackFromPlaylist(token, sourcePlaylistId, track.uri);
-      // The open playlist drops the row and offers an undo; without this the row stayed until
+      if (list.length === 1) await removeTrackFromPlaylist(token, sourcePlaylistId, list[0].uri);
+      else await removeTracksFromPlaylist(token, sourcePlaylistId, list.map((t) => t.uri));
+      // The open playlist drops the rows and offers an undo; without this the row stayed until
       // a reload, with no sign anything had happened
-      if (onRemoved) onRemoved(track);
-      else toast(`Removed "${track.name}"`, { tone: 'info' });
+      if (list.length > 1 && onRemovedMany) onRemovedMany(list);
+      else if (onRemoved) list.forEach((t) => onRemoved(t));
+      else toast(`Removed ${describeMany(list)}`, { tone: 'info' });
+      onDone?.();
     } catch (err) {
       console.error(err);
-      toast(`Couldn't remove "${track.name}"`, { tone: 'error' });
+      toast(`Couldn't remove ${describeMany(list)}`, { tone: 'error' });
     }
   };
 
@@ -704,8 +718,14 @@ export default function ContextMenu() {
         </div>
       )}
 
-      {(contextMenu?.type === 'track' || contextMenu?.track) && (
+      {(contextMenu?.type === 'track' || contextMenu?.track || manyTracks) && (
         <>
+          {manyTracks && (
+            <p className="px-4 pb-2 text-xs font-bold uppercase tracking-wider text-neutral-500 border-b border-white/5 mb-1">{manyTracks.length} songs selected</p>
+          )}
+          {contextMenu.onSelect && !manyTracks && (
+            <MenuItem icon={CheckSquare} label="Select" onClick={() => { const fn = contextMenu.onSelect; closeMenu(); fn(); }} />
+          )}
           <button
             onClick={handleAddToQueue}
             className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
@@ -713,7 +733,7 @@ export default function ContextMenu() {
             <ListPlus className="w-4 h-4 text-neutral-400" />
             <span>Add to Queue</span>
           </button>
-          {trackId && (
+          {trackId && !manyTracks && (
             <MenuItem icon={Heart} label={trackLiked === true ? 'Remove from Liked Songs' : 'Save to Liked Songs'} onClick={handleLikeToggle} iconClass={trackLiked === true ? 'fill-[var(--brand-mid)] text-[var(--brand-mid)]' : ''} />
           )}
 
@@ -758,7 +778,7 @@ export default function ContextMenu() {
           )}
 
           {addToPlaylistMenu}
-          {trackId && <MenuItem icon={Share2} label="Share" onClick={() => share('track', trackId, contextMenu.track?.name)} />}
+          {trackId && !manyTracks && <MenuItem icon={Share2} label="Share" onClick={() => share('track', trackId, contextMenu.track?.name)} />}
         </>
       )}
 
