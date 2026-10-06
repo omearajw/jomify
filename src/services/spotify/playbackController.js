@@ -245,8 +245,10 @@ function checkNetworkAfterPause() {
 // shows up here as a different active device. Nothing is changed; the log is the point.
 const UNASKED_PAUSE_LOOK_MS = 2500;
 let unaskedPauseTimer = null;
+let lastUnaskedPauseAt = 0;
 function inspectUnaskedPause(pausedState) {
   clearTimeout(unaskedPauseTimer);
+  lastUnaskedPauseAt = Date.now();
   const song = pausedState.track_window?.current_track?.name || '?';
   const at = `${Math.round((pausedState.position || 0) / 1000)}s`;
   unaskedPauseTimer = setTimeout(async () => {
@@ -326,6 +328,34 @@ function initLocalPlayer() {
   let attempts = 0;
   let readyAt = 0;
   let readyCount = 0;
+  // When the connection last came up, and when it last came back after dropping. The player
+  // pauses when its connection drops and does not resume on reconnecting; a pause that landed
+  // between two connections, or in the seconds after one came back, was the drop's doing.
+  let lastReadyAt = 0;
+  let reconnectedAt = 0;
+  const RECONNECT_PAUSE_WINDOW_MS = 10000;
+  const RESUME_SETTLE_MS = 1500;
+  let resumeAfterDropTimer = null;
+  const resumeAfterDrop = (why) => {
+    clearTimeout(resumeAfterDropTimer);
+    resumeAfterDropTimer = setTimeout(async () => {
+      const s = player();
+      const st = s.playbackState;
+      if (!s.isLocalActive || !st?.paused) return;
+      if (Date.now() - lastIntentAt < INTENT_WINDOW_MS) return; // the user has spoken since
+      const song = st.track_window?.current_track?.name || '?';
+      log('sdk', 'the connection dropped and came back with the music paused; starting it again', `${song} at ${Math.round((st.position || 0) / 1000)}s, ${why}`);
+      try {
+        await sdkPlayer.resume();
+        setTimeout(() => {
+          const now = player().playbackState;
+          log('sdk', now?.paused ? 'still paused after the restart' : 'playing again', `${song} at ${Math.round((now?.position || 0) / 1000)}s`);
+        }, 2500);
+      } catch (err) {
+        log('sdk', 'could not restart the music after the reconnect', err?.message || err);
+      }
+    }, RESUME_SETTLE_MS);
+  };
   let lastAliveCheckAt = 0;
   // Nothing is worth retrying after these two: the browser cannot run the player at all, or the
   // account may not use it. Every other failure is the network having a moment.
@@ -387,6 +417,9 @@ function initLocalPlayer() {
       clearTimeout(reconnectTimer);
       readyAt = Date.now();
       readyCount += 1;
+      const previousReadyAt = lastReadyAt;
+      lastReadyAt = readyAt;
+      if (readyCount > 1) reconnectedAt = readyAt;
       log('sdk', readyCount === 1 ? 'ready on Spotify Connect' : 'back on Spotify Connect', `device ${String(device_id).slice(0, 8)}${readyCount > 1 ? `, connection ${readyCount}` : ''}`);
       const s = player();
       s.setDeviceId(device_id);
@@ -415,7 +448,20 @@ function initLocalPlayer() {
         }
       } else {
         log('sdk', 'ready, playback is on', `${state.device?.name || '?'}${state.is_playing ? ', playing' : ', paused'} ${state.item?.name || ''}`.trim());
+        const ours = state.device?.id === device_id;
+        // The previous page of this same app, killed by the phone mid-song: Spotify still lists
+        // it as the device playing, so every tap used to go to a corpse. Only a Jomify of this
+        // platform that isn't us can be that; carry on here from where it got to.
+        if (readyCount === 1 && !ours && state.device?.name === PLAYER_NAME) {
+          log('sdk', 'playback is on an earlier page of this app that no longer exists; carrying on here', `${state.item?.name || '?'} at ${Math.round((state.progress_ms || 0) / 1000)}s${state.is_playing ? '' : ', paused'}`);
+          transferPlayback(t, device_id, Boolean(state.is_playing)).catch((err) => log('sdk', 'could not carry on here', err?.message || err));
+          return;
+        }
         applyRemoteState(state);
+        // Back from a drop with the music paused on this device by the drop itself
+        if (readyCount > 1 && ours && lastUnaskedPauseAt > previousReadyAt && (!state.is_playing || player().playbackState?.paused)) {
+          resumeAfterDrop('paused while the connection was down');
+        }
       }
     });
 
@@ -462,6 +508,10 @@ function initLocalPlayer() {
           log('playback', state.paused ? 'paused' : 'resumed', `at ${Math.round((state.position || 0) / 1000)}s of ${Math.round((state.duration || 0) / 1000)}s${unasked ? ', nobody in Jomify asked for it' : ''}${document.hidden ? ', in the background' : ''}`);
           if (unasked && state.paused && document.hidden) checkNetworkAfterPause();
           if (unasked && state.paused) inspectUnaskedPause(state);
+          // A connection that has just come back and reports the song paused, with no word
+          // from the user, is the drop still being felt
+          if (unasked && state.paused && reconnectedAt && Date.now() - reconnectedAt < RECONNECT_PAUSE_WINDOW_MS) resumeAfterDrop('paused as the connection came back');
+          if (!state.paused) clearTimeout(resumeAfterDropTimer);
         }
       }
       if (!state) {
