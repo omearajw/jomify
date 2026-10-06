@@ -3,7 +3,7 @@ import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
 import { playOn } from '../../services/spotify/playbackController';
-import { searchSpotify, playSingleTrack, playContext, checkTracksLiked, fetchSearchPage } from '../../services/spotify/api';
+import { searchSpotify, playSingleTrack, playContext, playUris, checkTracksLiked, fetchSearchPage } from '../../services/spotify/api';
 import { formatTime } from '../../utils/formatTime';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { Search, Play, ChevronLeft, Loader, X } from 'lucide-react';
@@ -269,10 +269,15 @@ export default function Browse() {
   }, [expandedSection, paginationUrls, loadingMore, loadMoreResults]);
 
   const country = useUserStore((s) => s.profile?.country);
+  // The song, then the rest of the results after it, so playback carries on as Spotify's does
+  // instead of stopping after one song
   const handleTrackPlay = (track) => {
     if (!token || !track?.uri) return;
     if (isUnplayable(track, country)) { toast("Spotify can't play this song."); return; }
-    playOn((deviceId) => playSingleTrack(token, deviceId, track.uri), { track });
+    const list = (results?.tracks?.items || []).filter((t) => t?.uri && !isUnplayable(t, country));
+    const at = list.findIndex((t) => t.uri === track.uri);
+    const uris = at >= 0 ? list.slice(at).map((t) => t.uri).slice(0, 100) : [track.uri];
+    playOn((deviceId) => (uris.length > 1 ? playUris(token, deviceId, uris, 0) : playSingleTrack(token, deviceId, track.uri)), { track });
   };
 
   const handleContextPlay = (uri) => {

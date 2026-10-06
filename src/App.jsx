@@ -43,6 +43,12 @@ const LEGACY_SEVEN_PLAYLIST_IDS = ['5kJPA0nczW9zoQs7jcQ5ok', '2KmKTCZFO9wofPRwqJ
 // Coming back to the app after this long rechecks whose turn it is in each Seven
 const SEVENS_RECHECK_MS = 5 * 60 * 1000;
 
+// Where the app opens: the page you were on (persisted), or Home / Library by preference
+{
+  const startup = useUserStore.getState().playbackSettings?.startupPage;
+  if (startup === 'home' || startup === 'library') useUserStore.setState({ currentView: startup, viewHistory: [] });
+}
+
 function App() {
   const {
     token, refreshToken, tokenExpiresAt, logout, profile,
@@ -95,8 +101,11 @@ function App() {
       // The legacy Sevens seed runs only after a SUCCESSFUL first sync. Seeding after a failed
       // one used to stamp the two hardcoded Sevens with a fresh clock on a device that had never
       // seen the server, and they then won the merge against the real configuration.
+      // Only the two legacy Sevens this account actually has in its library: on any other
+      // account the seed used to add two playlists that weren't theirs
+      const mine = new Set(useUserStore.getState().playlists.map((p) => p.id));
       const legacyPool = localStorage.getItem('jomify_pool_playlist_id') || '';
-      seedLegacySevens(LEGACY_SEVEN_PLAYLIST_IDS, legacyPool);
+      seedLegacySevens(LEGACY_SEVEN_PLAYLIST_IDS.filter((id) => mine.has(id)), legacyPool);
     });
 
     return () => { cancelled = true; syncEngine.stop(); };
@@ -441,7 +450,7 @@ function App() {
                 <button
                   type="button"
                   onClick={() => useUserStore.getState().setAccountOpen(true)}
-                  aria-label="Account and sync"
+                  aria-label="Settings"
                   className="md:hidden absolute top-0 right-0 w-11 h-11 flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-neutral-300 active:bg-white/10"
                 >
                   <Settings className="w-5 h-5" />

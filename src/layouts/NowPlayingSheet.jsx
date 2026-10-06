@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ChevronDown, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, MonitorSpeaker, ListMusic, MicVocal, Ellipsis
+  ChevronDown, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, MonitorSpeaker, ListMusic, MicVocal, Ellipsis, Volume2
 } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
@@ -14,6 +14,8 @@ import TrackArtists from '../components/TrackArtists';
 import { idFromUri } from '../utils/spotifyUri';
 import { useSlice } from '../store/selectors';
 import { usePlayingFrom, playingFromLabel } from '../hooks/usePlayingFrom';
+import SleepTimer from '../components/SleepTimer';
+import { setVolume as setPlaybackVolume } from '../services/spotify/playbackController';
 
 // Outer component only decides whether the sheet exists; the body mounts fresh each time it
 // opens so its scrub state starts clean (same split as the dialogs).
@@ -40,7 +42,14 @@ function NowPlayingSheetBody() {
     else if (playingFrom.type === 'artist') navigateToArtist(playingFrom.id);
     else setCurrentView('liked-songs');
   };
-  const { isShuffled, repeatMode, activeDevice, sdkStatus } = useSlice(usePlayerStore, ['isShuffled', 'repeatMode', 'activeDevice', 'sdkStatus']);
+  const { isShuffled, repeatMode, activeDevice, sdkStatus, remoteVolume, autoplaySource } = useSlice(usePlayerStore, ['isShuffled', 'repeatMode', 'activeDevice', 'sdkStatus', 'remoteVolume', 'autoplaySource']);
+  // What comes next: this browser's player knows; for another device, the queue the panel fetched
+  const nextTrack = usePlayerStore((s) => s.playbackState?.track_window?.next_tracks?.[0] || null);
+  const queuedNext = useUserStore((s) => s.queueData?.queue?.[0] || null);
+  const upNext = nextTrack || queuedNext;
+  // A speaker or computer playing: its volume, from here
+  const remoteVolumeControl = Boolean(activeDevice) && !activeDevice.isLocal && activeDevice.supportsVolume !== false;
+  const [volumeDraft, setVolumeDraft] = useState(null);
   const { position, duration, paused, track } = useProgress();
   const [scrub, setScrub] = useState(null);
 
@@ -90,7 +99,11 @@ function NowPlayingSheetBody() {
         </button>
         <div className="min-w-0 text-center">
           {/* What the music is coming from, as Spotify shows; the device sits beneath it */}
-          {playingFrom ? (
+          {autoplaySource ? (
+            <p className="text-xs font-bold uppercase tracking-widest text-[var(--brand-light)] truncate">
+              Autoplay · {autoplaySource === 'liked' ? 'from your Liked Songs' : "songs by the playlist's artists"}
+            </p>
+          ) : playingFrom ? (
             <button type="button" onClick={openPlayingFrom} className="block max-w-full text-xs font-bold uppercase tracking-widest text-white truncate">
               {playingFromLabel(playingFrom)}
             </button>
@@ -201,10 +214,37 @@ function NowPlayingSheetBody() {
           </button>
         </div>
 
+        {upNext && (
+          <p className="text-xs text-neutral-400 truncate -mt-2">
+            <span className="font-bold uppercase tracking-widest text-neutral-500 mr-2">Next</span>
+            <span className="text-neutral-200">{upNext.name}</span>{upNext.artists?.length ? ` · ${upNext.artists.map((a) => a.name).join(', ')}` : ''}
+          </p>
+        )}
+
+        {remoteVolumeControl && (
+          <div className="flex items-center gap-3 text-neutral-400">
+            <Volume2 className="w-4 h-4 shrink-0" />
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={volumeDraft ?? remoteVolume ?? 50}
+              onChange={(e) => setVolumeDraft(parseInt(e.target.value, 10))}
+              onPointerUp={() => { if (volumeDraft !== null) { setPlaybackVolume(volumeDraft); setVolumeDraft(null); } }}
+              onTouchEnd={() => { if (volumeDraft !== null) { setPlaybackVolume(volumeDraft); setVolumeDraft(null); } }}
+              onKeyUp={() => { if (volumeDraft !== null) { setPlaybackVolume(volumeDraft); setVolumeDraft(null); } }}
+              aria-label={`Volume on ${activeDevice.name}`}
+              className="w-full h-1.5 rounded-lg appearance-none accent-white"
+            />
+            <span className="text-xs tabular-nums w-8 text-right">{volumeDraft ?? remoteVolume ?? '–'}</span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between text-neutral-300">
           <button type="button" onClick={() => setDevicePickerOpen(true)} aria-label="Choose a device" className={`w-12 h-12 flex items-center justify-center ${activeDevice && !activeDevice.isLocal ? 'text-[var(--brand-mid)]' : ''}`}>
             <MonitorSpeaker className="w-6 h-6" />
           </button>
+          <SleepTimer buttonClass="w-12 h-12 flex items-center justify-center" />
           <button type="button" onClick={() => { close(); setCurrentView('lyrics'); }} disabled={!track} aria-label="Lyrics" className="w-12 h-12 flex items-center justify-center disabled:opacity-40">
             <MicVocal className="w-6 h-6" />
           </button>

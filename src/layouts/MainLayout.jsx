@@ -5,6 +5,7 @@ import QueuePanel from './QueuePanel';
 import ContextMenu from '../components/ContextMenu';
 import ToastHost from '../components/Toast';
 import SyncConflictDialog from '../components/SyncConflictDialog';
+import ShortcutsHelp from '../components/ShortcutsHelp';
 import { ChevronLeft, AlertTriangle, CloudOff } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { useSyncStore } from '../store/syncStore';
@@ -156,6 +157,7 @@ export default function MainLayout({ children }) {
       <ContextMenu />
       <ToastHost />
       <SyncConflictDialog />
+      <ShortcutsHelp />
       {isZenMode && <Suspense fallback={null}><ZenMode /></Suspense>}
       {registerServiceWorker && <UpdatePrompt />}
     </div>

@@ -14,7 +14,8 @@ import { toast } from '../../store/toastStore';
 import {
   checkTracksLiked,
   fetchPlayerState, fetchDevices, transferPlayback, pausePlayback, resumePlayback,
-  skipToNext, skipToPrevious, seekPlayback, setPlaybackVolume, setRepeatMode, toggleShuffleState
+  skipToNext, skipToPrevious, seekPlayback, setPlaybackVolume, setRepeatMode, toggleShuffleState,
+  playUris, playContext, fetchPlaylistTrackArtists, fetchArtistTopTracks
 } from './api';
 import { toSdkShape, toSdkTrack, resolveDeviceId, REPEAT_NAMES, describePlatform, playerNameFor, localDeviceLabel, sliderGain, startupGain } from './playbackAdapter';
 import { isMobileViewport } from '../../hooks/useMediaQuery';
@@ -270,6 +271,92 @@ function inspectUnaskedPause(pausedState) {
   }, UNASKED_PAUSE_LOOK_MS);
 }
 
+// --- Sleep timer ------------------------------------------------------------------------------
+// { until } pauses when the clock runs out; { atSongEnd } pauses when the song changes.
+let sleepTimeout = null;
+export function setSleepTimer(timer) {
+  clearTimeout(sleepTimeout);
+  sleepTimeout = null;
+  player().setSleepTimer(timer || null);
+  if (!timer) { log('playback', 'sleep timer off'); return; }
+  if (timer.until) {
+    log('playback', 'sleep timer set', `pausing in ${Math.round((timer.until - Date.now()) / 60000)} min`);
+    sleepTimeout = setTimeout(() => {
+      player().setSleepTimer(null);
+      const st = player().playbackState;
+      if (st && !st.paused) { log('playback', 'sleep timer: pausing'); togglePlay(); toast('Sleep timer: music paused', { tone: 'info' }); }
+    }, Math.max(0, timer.until - Date.now()));
+  } else {
+    log('playback', 'sleep timer set', 'pausing when this song ends');
+  }
+}
+function sleepAtSongChange() {
+  const s = player();
+  if (!s.sleepTimer?.atSongEnd) return;
+  s.setSleepTimer(null);
+  log('playback', 'sleep timer: song ended, pausing');
+  // The next song has just started; stop it before it gets going
+  setTimeout(() => { const st = player().playbackState; if (st && !st.paused) togglePlay(); }, 300);
+  toast('Sleep timer: music paused', { tone: 'info' });
+}
+
+// --- When a playlist ends ---------------------------------------------------------------------
+// Spotify's own autoplay carries on with songs it chooses; Jomify can't see that choice coming,
+// only that the context ran out and something else began. The setting says what to do then:
+// let Spotify choose (nothing), carry on into Liked Songs, play songs by the playlist's own
+// artists, or stop.
+let wasNearEnd = null; // { contextUri, trackUri } when the last song of a context is almost over
+function noteNearEnd(state) {
+  const nextTracks = state?.track_window?.next_tracks || [];
+  const nearEnd = state && !state.paused && nextTracks.length === 0 && state.duration > 0
+    && state.duration - (state.position || 0) < 15000 && state.repeat_mode === 0;
+  wasNearEnd = nearEnd ? { contextUri: state.context?.uri || null, trackUri: state.track_window?.current_track?.uri } : null;
+}
+async function afterContextEnded(ended, newState) {
+  const endedContextUri = ended?.contextUri || null;
+  const setting = useUserStore.getState().playbackSettings?.whenPlaylistEnds || 'spotify';
+  const t = token();
+  const newTrack = newState?.track_window?.current_track;
+  const stillSame = newTrack?.uri === ended?.trackUri && newState?.paused;
+  log('playback', 'the playlist ran out', `${stillSame ? 'nothing followed' : `Spotify went on to ${newTrack?.name || '?'}`}; setting: ${setting}`);
+  if (!t || setting === 'spotify') return;
+  const s = player();
+  if (setting === 'stop') {
+    if (!stillSame) { setTimeout(() => { if (!player().playbackState?.paused) togglePlay(); }, 300); }
+    toast('Playlist finished', { tone: 'info' });
+    return;
+  }
+  const deviceId = s.deviceId;
+  try {
+    if (setting === 'liked') {
+      const userId = useUserStore.getState().profile?.id;
+      if (!userId) return;
+      await setShuffle(true, deviceId).catch(() => {});
+      await playContext(t, deviceId, `spotify:user:${userId}:collection`, 0);
+      s.setAutoplaySource('liked');
+      log('playback', 'carrying on into Liked Songs');
+    } else if (setting === 'artists') {
+      const playlistId = /^spotify:playlist:(.+)$/.exec(endedContextUri || '')?.[1];
+      if (!playlistId) return;
+      const tracks = await fetchPlaylistTrackArtists(t, playlistId);
+      const own = new Set(tracks.map((x) => x.id));
+      const artistIds = [...new Set(tracks.flatMap((x) => x.artists.map((a) => a.id)))].sort(() => Math.random() - 0.5).slice(0, 8);
+      const pool = [];
+      for (const id of artistIds) {
+        const top = await fetchArtistTopTracks(t, id);
+        pool.push(...top.filter((x) => x?.uri && !own.has(x.id)).map((x) => x.uri));
+      }
+      const uris = [...new Set(pool)].sort(() => Math.random() - 0.5).slice(0, 60);
+      if (!uris.length) { log('playback', 'no songs by the playlist\'s artists to carry on with'); return; }
+      await playUris(t, deviceId, uris, 0);
+      s.setAutoplaySource('artists');
+      log('playback', 'carrying on with songs by the playlist\'s artists', `${artistIds.length} artists, ${uris.length} songs`);
+    }
+  } catch (err) {
+    log('playback', 'could not carry on after the playlist', err?.message || err);
+  }
+}
+
 // While the app is in the background, note every minute what this browser's player says it is
 // doing. A page Chrome freezes or kills simply stops writing notes, so the gap says when, and a
 // player that has stopped by itself says so while the page is still alive.
@@ -486,6 +573,14 @@ function initLocalPlayer() {
         const track = state.track_window?.current_track;
         if (track?.uri !== before?.track_window?.current_track?.uri) {
           log('playback', 'now playing', `${track?.name || '?'} by ${track?.artists?.map((a) => a.name).join(', ') || '?'}${state.paused ? ', arrived paused' : ''}`);
+          sleepAtSongChange();
+          // The last song of a context was almost over and now something else is on: it ran out
+          if (wasNearEnd && (state.context?.uri !== wasNearEnd.contextUri || !state.context?.uri || Date.now() - lastIntentAt > INTENT_WINDOW_MS)) {
+            const ended = wasNearEnd; wasNearEnd = null;
+            if (Date.now() - lastIntentAt > INTENT_WINDOW_MS) afterContextEnded(ended, state);
+          } else if (Date.now() - lastIntentAt < INTENT_WINDOW_MS) {
+            s.setAutoplaySource(null);
+          }
           // A song that finished by itself should be followed by the next one playing, but Spotify
           // sometimes loads the next one paused at the start and leaves it there: twice in one
           // evening's log, with nobody touching anything. Start it, unless someone in Jomify asked
@@ -520,6 +615,12 @@ function initLocalPlayer() {
         setPresence('off');
         return;
       }
+      // A context that ran out with nothing after it: the same song, paused at the start
+      if (wasNearEnd && state.paused && (state.position || 0) === 0 && state.track_window?.current_track?.uri === wasNearEnd.trackUri && before && !before.paused) {
+        const ended = wasNearEnd; wasNearEnd = null;
+        afterContextEnded(ended, state);
+      }
+      noteNearEnd(state);
       s.setPlaybackState(state);
       syncMediaSession(state);
       setPresence(state.paused ? 'paused' : 'playing');
@@ -847,6 +948,7 @@ function parkPlay(play) {
 export async function playOn(play, { track, quiet = false } = {}) {
   activateLocalPlayer(); // synchronously, while still inside the tap
   if (!token()) return;
+  if (!quiet) { player().setAutoplaySource(null); lastIntentAt = Date.now(); }
 
   // Name the song straight away. Finding a device can take a round trip, and a tap that shows
   // nothing for half a second reads as a button that did not work.

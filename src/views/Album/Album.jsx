@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
-import { playOn } from '../../services/spotify/playbackController';
+import { playOn, setShuffle } from '../../services/spotify/playbackController';
+
+const randomIndex = (count) => Math.floor(Math.random() * count);
 import MoreButton from '../../components/MoreButton';
 import { SkeletonHeader, SkeletonRows } from '../../components/Skeleton';
 import { playContext, checkTracksLiked, fetchMoreTracks, spotifyFetch, saveAlbumToLibrary, unsaveAlbum } from '../../services/spotify/api';
 import { formatTime, formatDuration } from '../../utils/formatTime';
-import { Plus, Check, Loader2, Disc3 } from 'lucide-react';
+import { Plus, Check, Loader2, Disc3, Play, Shuffle } from 'lucide-react';
 
 const ALBUM_KIND = { album: 'Album', single: 'Single', compilation: 'Compilation' };
 
@@ -197,12 +199,30 @@ export default function Album() {
               {shown.total_tracks} {shown.total_tracks === 1 ? 'song' : 'songs'}
               {totalLength && `, ${totalLength}`}
             </p>
+            <div className="mt-3 md:mt-4 flex flex-wrap items-center gap-2 md:gap-3">
+            <button
+              type="button"
+              onClick={() => playOn((deviceId) => playContext(token, deviceId, `spotify:album:${shown.id}`, 0))}
+              aria-label={`Play ${shown.name}`}
+              className="w-11 h-11 md:w-12 md:h-12 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-xl shrink-0"
+            >
+              <Play className="w-5 h-5 fill-current ml-0.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => playOn(async (deviceId) => { await setShuffle(true, deviceId); await playContext(token, deviceId, `spotify:album:${shown.id}`, randomIndex(Math.max(1, shown.total_tracks || tracks.length || 1))); })}
+              aria-label="Shuffle play"
+              title="Shuffle play"
+              className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-neutral-300 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Shuffle className="w-4 h-4" />
+            </button>
             <button
               type="button"
               onClick={handleToggleSave}
               disabled={saving}
               aria-pressed={isSaved}
-              className={`mt-3 md:mt-4 inline-flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-sm font-bold transition-all disabled:opacity-60 ${
+              className={`inline-flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-sm font-bold transition-all disabled:opacity-60 ${
                 isSaved
                   ? 'bg-white/10 border border-white/15 text-white hover:bg-white/15'
                   : 'bg-brand-gradient text-white shadow-brand-glow hover:scale-105'
@@ -211,6 +231,7 @@ export default function Album() {
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : isSaved ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
               {isSaved ? 'In your library' : 'Save to library'}
             </button>
+            </div>
           </div>
         </div>
       </div>

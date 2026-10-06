@@ -57,6 +57,7 @@ export default function LikeButton({ trackId }) {
   return (
     <button
       type="button"
+      data-like-for={trackId}
       onClick={handleToggle}
       aria-pressed={isLiked}
       aria-label={isLiked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}

@@ -5,7 +5,7 @@ import { fetchInitialLikedSongs, playLikedSongsQueue, fetchMoreTracks } from '..
 import { playOn, setShuffle } from '../../services/spotify/playbackController';
 import { formatTime } from '../../utils/formatTime';
 import { artUrl } from '../../utils/images';
-import { Clock3, Play, Heart, Shuffle } from 'lucide-react';
+import { Clock3, Play, Heart, Shuffle, Search, ArrowUpDown } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import { rowButtonProps } from '../../utils/a11y';
 import MoreButton from '../../components/MoreButton';
@@ -16,6 +16,26 @@ import { toast } from '../../store/toastStore';
 
 const ROW_PAGE = 150;
 const randomIndex = (count) => Math.floor(Math.random() * count);
+const SORTS = [
+  { id: 'added_desc', label: 'Recently added' },
+  { id: 'added_asc', label: 'Oldest added' },
+  { id: 'title', label: 'Title' },
+  { id: 'artist', label: 'Artist' },
+  { id: 'album', label: 'Album' },
+  { id: 'duration', label: 'Duration' }
+];
+const byText = (a, b) => (a || '').localeCompare(b || '', undefined, { sensitivity: 'base' });
+function sortLiked(items, mode) {
+  if (mode === 'added_desc') return items; // Spotify's own order: newest first
+  const sorted = [...items];
+  if (mode === 'added_asc') sorted.reverse();
+  else if (mode === 'title') sorted.sort((a, b) => byText(a.track?.name, b.track?.name));
+  else if (mode === 'artist') sorted.sort((a, b) => byText(a.track?.artists?.[0]?.name, b.track?.artists?.[0]?.name) || byText(a.track?.name, b.track?.name));
+  else if (mode === 'album') sorted.sort((a, b) => byText(a.track?.album?.name, b.track?.album?.name) || (a.track?.track_number || 0) - (b.track?.track_number || 0));
+  else if (mode === 'duration') sorted.sort((a, b) => (a.track?.duration_ms || 0) - (b.track?.duration_ms || 0));
+  return sorted;
+}
+const matchesQuery = (track, needle) => !needle || [track?.name, track?.album?.name, ...(track?.artists || []).map((a) => a.name)].some((t) => (t || '').toLowerCase().includes(needle));
 // Phone: art, title/artists, like + duration + menu. Desktop: the same table as a playlist.
 const GRID = 'grid-cols-[40px_minmax(0,1fr)_auto] md:grid-cols-[16px_48px_minmax(0,1.2fr)_minmax(0,1fr)_140px_80px]';
 
@@ -104,8 +124,13 @@ export default function LikedSongsView() {
   }
 
   // Rows whose song was unliked since loading are gone, as Spotify's own list does
-  const items = (trackData?.items || []).filter((item) => item.track && likedTracks[item.track.id] !== false);
-  const removedCount = (trackData?.items.length ?? 0) - items.length;
+  const liveItems = (trackData?.items || []).filter((item) => item.track && likedTracks[item.track.id] !== false);
+  const removedCount = (trackData?.items.length ?? 0) - liveItems.length;
+  // Sort and find, over what has loaded
+  const [sortMode, setSortMode] = useState('added_desc');
+  const [find, setFind] = useState('');
+  const needle = find.trim().toLowerCase();
+  const items = sortLiked(liveItems, sortMode).filter((item) => matchesQuery(item.track, needle));
 
   const country = useUserStore((s) => s.profile?.country);
   const handleTrackSelect = (index) => {
@@ -197,6 +222,29 @@ export default function LikedSongsView() {
         <button onClick={handleShufflePlay} aria-label="Shuffle play" title="Shuffle play" className={`w-11 h-11 flex items-center justify-center hover:scale-110 transition-all ${isShuffled ? 'text-[var(--brand-mid)]' : 'text-neutral-400 hover:text-white'}`}>
           <Shuffle className="w-6 h-6" />
         </button>
+      </div>
+
+      {/* Find and sort, as Spotify's Liked Songs has */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4 px-1 md:px-4">
+        <label className="relative flex-1 min-w-0 max-w-md">
+          <Search className="w-4 h-4 text-neutral-500 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="search"
+            value={find}
+            onChange={(e) => setFind(e.target.value)}
+            placeholder="Find in Liked Songs"
+            aria-label="Find in Liked Songs"
+            className="w-full bg-neutral-900 border border-white/10 rounded-full py-2 pl-11 pr-4 text-sm text-white placeholder:text-neutral-500 outline-none focus:border-[var(--brand-mid)]"
+          />
+        </label>
+        <label className="flex items-center gap-2 rounded-full border border-white/10 bg-neutral-900 px-4 py-2 text-sm text-neutral-300 shrink-0 w-fit">
+          <ArrowUpDown className="w-4 h-4 text-neutral-500" />
+          <span className="sr-only">Sort</span>
+          <select value={sortMode} onChange={(e) => setSortMode(e.target.value)} aria-label="Sort Liked Songs" className="bg-transparent text-white font-semibold outline-none">
+            {SORTS.map((s) => <option key={s.id} value={s.id} className="bg-neutral-900">{s.label}</option>)}
+          </select>
+        </label>
+        {needle && <p className="text-xs text-neutral-500">{items.length} match{items.length === 1 ? '' : 'es'}{trackData?.next ? ' so far' : ''}</p>}
       </div>
 
       {/* Tracklist Header */}

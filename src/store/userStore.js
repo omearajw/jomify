@@ -581,6 +581,11 @@ export const useUserStore = create(
         };
       }),
 
+      // Playback and startup preferences. whenPlaylistEnds: 'spotify' (let Spotify's own autoplay
+      // choose) | 'liked' | 'artists' | 'stop'. startupPage: 'resume' | 'home' | 'library'.
+      playbackSettings: { whenPlaylistEnds: 'spotify', startupPage: 'resume' },
+      setPlaybackSetting: (key, value) => set((state) => ({ playbackSettings: { ...state.playbackSettings, [key]: value } })),
+
       // Artists you follow, loaded at start like playlists and albums; kept current as you follow
       followedArtists: [],
       setFollowedArtists: (artists) => set({ followedArtists: uniqueById(artists || []) }),
@@ -602,6 +607,10 @@ export const useUserStore = create(
       // Bumped after a drop lands, so Home rechecks whose turn it is without a relaunch
       sevensCheckNonce: 0,
       bumpSevensCheck: () => set((state) => ({ sevensCheckNonce: state.sevensCheckNonce + 1 })),
+
+      // The keyboard shortcuts sheet ("?")
+      isShortcutsOpen: false,
+      setShortcutsOpen: (isShortcutsOpen) => set({ isShortcutsOpen }),
 
       // Ctrl/Cmd+K: the Search page clears this once it has focused its box
       searchFocusRequested: false,
@@ -721,6 +730,7 @@ export const useUserStore = create(
         friends: state.friends,
         sortModeSettings: state.sortModeSettings,
         sortSkips: state.sortSkips,
+        playbackSettings: state.playbackSettings,
         // Where you were, so a reload reopens it (Spotify does the same). The history stack is
         // not kept: the browser's own back stack starts fresh on reload and the two must agree.
         currentView: state.currentView === 'lyrics' ? 'home' : state.currentView,

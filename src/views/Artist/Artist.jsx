@@ -2,14 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
-import { playOn } from '../../services/spotify/playbackController';
+import { playOn, setShuffle } from '../../services/spotify/playbackController';
 import MoreButton, { CardMoreButton } from '../../components/MoreButton';
-import { playUris, checkTracksLiked, spotifyFetch, fetchArtistAlbums, followArtists, unfollowArtists, checkFollowingArtists, playContext } from '../../services/spotify/api';
+import { playUris, checkTracksLiked, spotifyFetch, fetchArtistAlbums, followArtists, unfollowArtists, checkFollowingArtists, playContext, fetchAlbumTrackUris } from '../../services/spotify/api';
 import { loadAllLikedSongs, likedSongsLoaded, likedSongsByArtist } from '../../services/likedLibrary';
 import { toast } from '../../store/toastStore';
 import { shareSpotifyLink } from '../../services/share';
 import { formatTime } from '../../utils/formatTime';
-import { Play, UserPlus, UserCheck, Loader2, Share2, Heart } from 'lucide-react';
+import { Play, UserPlus, UserCheck, Loader2, Share2, Heart, Shuffle } from 'lucide-react';
+
+const randomIndex = (count) => Math.floor(Math.random() * count);
 import LikeButton from '../../components/LikeButton';
 import { SkeletonHeader, SkeletonRows, SkeletonCards } from '../../components/Skeleton';
 import { rowButtonProps } from '../../utils/a11y';
@@ -198,12 +200,27 @@ export default function Artist() {
 
   // The clicked row and then the rest of the popular tracks, in the order shown. A single URI
   // used to stop dead after one song.
+  // After the ten popular tracks, play on into the artist's albums rather than stopping
   const handleTrackPlay = (trackUri) => {
     if (!token) return;
-    const uris = topTracks.slice(0, 10).map(t => t.uri).filter(Boolean);
-    const index = Math.max(0, uris.indexOf(trackUri));
+    const top = topTracks.slice(0, 10).map(t => t.uri).filter(Boolean);
+    const index = Math.max(0, top.indexOf(trackUri));
     const track = topTracks.find((t) => t.uri === trackUri) || null;
-    playOn((deviceId) => playUris(token, deviceId, uris, index), { track });
+    playOn(async (deviceId) => {
+      const more = [];
+      for (const album of albumsOnly.slice(0, 3)) {
+        if (top.length + more.length >= 100) break;
+        try { more.push(...(await fetchAlbumTrackUris(token, album.id)).filter((u) => !top.includes(u))); } catch { /* the popular tracks still play */ }
+      }
+      return playUris(token, deviceId, [...top, ...more].slice(0, 100), index);
+    }, { track });
+  };
+  const shufflePlay = () => {
+    if (!token || !artist) return;
+    playOn(async (deviceId) => {
+      await setShuffle(true, deviceId);
+      await playContext(token, deviceId, `spotify:artist:${artist.id}`, randomIndex(Math.max(1, topTracks.length)));
+    });
   };
 
   // Back navigation is the global button in MainLayout; this view used to render a second one
@@ -255,6 +272,9 @@ export default function Artist() {
               className="w-11 h-11 md:w-12 md:h-12 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-xl shrink-0"
             >
               <Play className="w-5 h-5 fill-current ml-0.5" />
+            </button>
+            <button type="button" onClick={shufflePlay} aria-label="Shuffle play" title="Shuffle play" className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-neutral-300 hover:text-white hover:bg-white/10 transition-colors">
+              <Shuffle className="w-4 h-4" />
             </button>
             <button
               type="button"

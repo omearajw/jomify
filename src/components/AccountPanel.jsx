@@ -9,6 +9,44 @@ import ConfirmDialog from './ConfirmDialog';
 import NotificationToggle from './NotificationToggle';
 import DebugLogPanel from './DebugLogPanel';
 import { disableNotifications } from '../pwa/push';
+import { Keyboard } from 'lucide-react';
+
+const ENDINGS = [
+  { id: 'spotify', label: 'Let Spotify choose', hint: "Spotify's own autoplay carries on with songs it picks" },
+  { id: 'liked', label: 'Carry on into Liked Songs', hint: 'Shuffled, from your whole collection' },
+  { id: 'artists', label: "Songs by the playlist's artists", hint: "Popular songs by the people on the playlist that weren't on it" },
+  { id: 'stop', label: 'Stop', hint: 'Silence when the playlist ends' }
+];
+const STARTS = [
+  { id: 'resume', label: 'Where I left off' },
+  { id: 'home', label: 'Home' },
+  { id: 'library', label: 'Your Library' }
+];
+const GRID_SIZES = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']];
+const LIBRARY_SORTS = [['recent', 'Recently played'], ['spotify', 'Spotify order'], ['az', 'A to Z'], ['za', 'Z to A'], ['owner', 'By owner']];
+
+function Choice({ label, value, options, onChange }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <p className="text-sm font-semibold text-white mb-3">{label}</p>
+      <div className="flex flex-col gap-1" role="radiogroup" aria-label={label}>
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={value === o.id}
+            onClick={() => onChange(o.id)}
+            className={`w-full text-left rounded-xl px-3 py-2 transition-colors ${value === o.id ? 'bg-white/10 text-white' : 'text-neutral-300 hover:bg-white/5'}`}
+          >
+            <span className="text-sm font-medium">{o.label}</span>
+            {o.hint && <span className="block text-xs text-neutral-500">{o.hint}</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function formatAgo(timestamp) {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -110,6 +148,14 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
   // because wiping folders over a transient network blip is exactly the bug commit ea508a9 fixed.
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const sevensNotifications = useUserStore((s) => s.sevensNotifications);
+  const playbackSettings = useUserStore((s) => s.playbackSettings);
+  const setPlaybackSetting = useUserStore((s) => s.setPlaybackSetting);
+  const libraryGridSize = useUserStore((s) => s.libraryGridSize);
+  const setLibraryGridSize = useUserStore((s) => s.setLibraryGridSize);
+  const librarySort = useUserStore((s) => s.librarySort);
+  const setLibrarySort = useUserStore((s) => s.setLibrarySort);
+  const setShortcutsOpen = useUserStore((s) => s.setShortcutsOpen);
+  const setAccountOpen = useUserStore((s) => s.setAccountOpen);
   const handleDisconnect = async () => {
     setConfirmDisconnect(false);
     // Otherwise the server keeps pinging a phone that no longer belongs to this account
@@ -166,7 +212,7 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
           <button onClick={() => setShowLog(true)} className="hover:text-white transition-colors">Log</button>
           <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
           {/* Notifications and Disconnect live in the full panel, the same one the phone opens */}
-          <button onClick={() => useUserStore.getState().setAccountOpen(true)} className="hover:text-white transition-colors">Account…</button>
+          <button onClick={() => useUserStore.getState().setAccountOpen(true)} className="hover:text-white transition-colors">Settings…</button>
         </div>
         <p className="text-neutral-700 truncate" title={tagline}>Build {__BUILD_ID__}{tagline ? ` · ${tagline}` : ''}</p>
         {fileInput}
@@ -188,7 +234,33 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
       {backupMessage && (
         <p className={`px-1 text-sm ${backupMessage.isError ? 'text-red-400' : 'text-[var(--brand-start)]'}`}>{backupMessage.text}</p>
       )}
+
+      <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500">Playback</p>
+      <Choice label="When a playlist ends" value={playbackSettings?.whenPlaylistEnds || 'spotify'} options={ENDINGS} onChange={(v) => setPlaybackSetting('whenPlaylistEnds', v)} />
+
+      <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500">App</p>
+      <Choice label="Open on" value={playbackSettings?.startupPage || 'resume'} options={STARTS} onChange={(v) => setPlaybackSetting('startupPage', v)} />
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-white">Library card size</p>
+          <div className="flex items-center gap-1 bg-black/30 rounded-full p-1">
+            {GRID_SIZES.map(([id, label]) => (
+              <button key={id} type="button" aria-pressed={libraryGridSize === id} onClick={() => setLibraryGridSize(id)} className={`px-3 py-1 rounded-full text-xs font-bold ${libraryGridSize === id ? 'bg-white text-black' : 'text-neutral-400 hover:text-white'}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+        <label className="flex items-center justify-between gap-3">
+          <span className="text-sm font-semibold text-white">Library order</span>
+          <select value={librarySort} onChange={(e) => setLibrarySort(e.target.value)} className="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none">
+            {LIBRARY_SORTS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>
+      </div>
+
+      <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500">Sevens</p>
       <NotificationToggle />
+
+      <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500">Account and sync</p>
       <div className="rounded-2xl border border-white/10 divide-y divide-white/5 overflow-hidden">
         <button type="button" onClick={handleSyncNow} disabled={syncing} className={`${row} disabled:opacity-60`}>
           <RefreshCw className={`w-5 h-5 text-neutral-400 ${syncing ? 'animate-spin' : ''}`} /> Sync now
@@ -201,6 +273,9 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
         </button>
         <button type="button" onClick={() => setShowLog(true)} className={row}>
           <Bug className="w-5 h-5 text-neutral-400" /> Debug log
+        </button>
+        <button type="button" onClick={() => { setAccountOpen(false); setShortcutsOpen(true); }} className={`${row} hidden md:flex`}>
+          <Keyboard className="w-5 h-5 text-neutral-400" /> Keyboard shortcuts
         </button>
         <button type="button" onClick={() => setConfirmDisconnect(true)} className={`${row} text-red-400`}>
           <LogOut className="w-5 h-5" /> Disconnect account

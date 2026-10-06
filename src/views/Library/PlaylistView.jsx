@@ -3,7 +3,7 @@ import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { playOn, setShuffle } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
-import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch, reorderPlaylistTracks, addTracksToPlaylist, removeTrackFromPlaylist, removeTracksFromPlaylist, fetchMoreTracks, followPlaylist, unfollowPlaylist } from '../../services/spotify/api';
+import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch, reorderPlaylistTracks, addTracksToPlaylist, removeTrackFromPlaylist, removeTracksFromPlaylist, fetchMoreTracks, followPlaylist, unfollowPlaylist, searchSpotify } from '../../services/spotify/api';
 import { playlistItemsUrl, normalizePlaylist } from '../../services/spotify/compat';
 import SortIntoChips from '../../components/SortIntoChips';
 import { useUnaddedSuggestions, noteTrackSorted } from './useUnaddedSuggestions';
@@ -12,7 +12,7 @@ import { SkeletonHeader, SkeletonRows } from '../../components/Skeleton';
 import { toast } from '../../store/toastStore';
 import { fromSpotifyText } from '../../utils/strings';
 import { formatTime, formatDuration } from '../../utils/formatTime';
-import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink, Undo2, Pencil, Layers, BookmarkPlus } from 'lucide-react';
+import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink, Undo2, Pencil, Layers, BookmarkPlus, Search } from 'lucide-react';
 import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
 import UserChip from '../../components/UserChip';
 import LikeButton from '../../components/LikeButton';
@@ -23,7 +23,7 @@ import { collaboratorStyleFor } from '../../utils/collaboratorStyle';
 import { rowButtonProps } from '../../utils/a11y';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
-import { isSameTrack, isUnplayable } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
 
 // Rows rendered at once; more appear as you scroll. A 1000-track playlist used to mount every
 // row (25k DOM nodes) up front.
@@ -742,16 +742,89 @@ export default function PlaylistView() {
   }, [playlist, sortBy, sortOrder]);
 
   // Reveal the next page of rows when the sentinel below the list scrolls near the viewport
-  const totalRows = sortedTracks.length;
+  const myId = useUserStore((s) => s.profile?.id);
+  const ownsPlaylist = Boolean(myId && (playlist?.owner?.id === myId || playlist?.collaborative));
+
+  // Find in playlist: rows keep their index into sortedTracks, which play and reorder rely on
+  const [find, setFind] = useState('');
+  const needle = find.trim().toLowerCase();
+  const rows = useMemo(() => {
+    const all = sortedTracks.map((item, i) => ({ item, i }));
+    if (!needle) return all;
+    return all.filter(({ item }) => {
+      const t = item?.track;
+      return t && [t.name, t.album?.name, ...(t.artists || []).map((a) => a.name)].some((x) => (x || '').toLowerCase().includes(needle));
+    });
+  }, [sortedTracks, needle]);
+  const totalRows = rows.length;
+
+  // Drag a row to reorder, in your own playlist's custom order (desktop; the phone has the menu)
+  const dragRow = useRef(null);
+  const [dropAt, setDropAt] = useState(null); // index of the row the dragged one would land before
+  const canReorder = ownsPlaylist && sortBy === 'custom' && !needle;
+  const reorderTo = (from, to) => {
+    if (!token || !activePlaylistId || from === to || from === to - 1) return;
+    const items = playlist?.tracks?.items || [];
+    if (from < 0 || from >= items.length || to < 0 || to > items.length) return;
+    const landing = to > from ? to - 1 : to;
+    setPlaylist((prev) => {
+      if (!prev) return prev;
+      const next = [...prev.tracks.items];
+      const [moved] = next.splice(from, 1);
+      next.splice(landing, 0, moved);
+      return { ...prev, tracks: { ...prev.tracks, items: next } };
+    });
+    reorderPlaylistTracks(token, activePlaylistId, from, to).catch((err) => {
+      console.error(err);
+      toast("Spotify wouldn't move that track", { tone: 'error' });
+      setPlaylist((prev) => {
+        if (!prev) return prev;
+        const next = [...prev.tracks.items];
+        const [moved] = next.splice(landing, 1);
+        next.splice(from, 0, moved);
+        return { ...prev, tracks: { ...prev.tracks, items: next } };
+      });
+    });
+  };
+
+  // "Find something to add": a search that adds straight into this playlist
+  const [addQuery, setAddQuery] = useState('');
+  const [addResults, setAddResults] = useState(null);
+  const [addSearching, setAddSearching] = useState(false);
+  useEffect(() => {
+    const q = addQuery.trim();
+    if (!ownsPlaylist || !token || !q) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setAddSearching(true);
+      searchSpotify(token, q)
+        .then((data) => { if (!cancelled) setAddResults((data?.tracks?.items || []).filter(Boolean)); })
+        .catch(() => { if (!cancelled) setAddResults([]); })
+        .finally(() => { if (!cancelled) setAddSearching(false); });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [addQuery, token, ownsPlaylist]);
+  // Results belong to the query typed; an emptied box shows none
+  const shownAddResults = addQuery.trim() ? addResults : null;
+  const addFound = async (track) => {
+    if (!token || !activePlaylistId) return;
+    try {
+      await addTracksToPlaylist(token, activePlaylistId, [track.uri]);
+      const entry = { added_at: new Date().toISOString(), added_by: { id: myId }, track };
+      setPlaylist((prev) => (prev ? { ...prev, tracks: { ...prev.tracks, items: [...prev.tracks.items, entry], total: (prev.tracks.total || prev.tracks.items.length) + 1 } } : prev));
+      toast(`Added "${track.name}"`, { tone: 'success' });
+    } catch (err) {
+      console.error(err);
+      toast(`Couldn't add "${track.name}"`, { tone: 'error' });
+    }
+  };
   const nextPageUrl = playlist?.tracks?.next || null;
   // Only once every page is in; a partial total would read as the whole playlist's
   const totalLength = useMemo(() => {
     if (!playlist || playlist.tracks?.next || !playlist.tracks?.items?.length) return '';
     return formatDuration(playlist.tracks.items.reduce((sum, item) => sum + (item.track?.duration_ms || 0), 0));
   }, [playlist]);
-  const myId = useUserStore((s) => s.profile?.id);
   const country = useUserStore((s) => s.profile?.country);
-  const ownsPlaylist = Boolean(myId && (playlist?.owner?.id === myId || playlist?.collaborative));
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || (visibleCount >= totalRows && !nextPageUrl)) return undefined;
@@ -1139,6 +1212,24 @@ export default function PlaylistView() {
       )}
       </div>
 
+      {/* Find in playlist */}
+      {playlist && sortedTracks.length > 8 && (
+        <div className="flex items-center gap-3 mb-4 px-1 md:px-4">
+          <label className="relative flex-1 min-w-0 max-w-md">
+            <ListFilter className="w-4 h-4 text-neutral-500 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="search"
+              value={find}
+              onChange={(e) => setFind(e.target.value)}
+              placeholder="Find in playlist"
+              aria-label="Find in playlist"
+              className="w-full bg-neutral-900 border border-white/10 rounded-full py-2 pl-11 pr-4 text-sm text-white placeholder:text-neutral-500 outline-none focus:border-[var(--brand-mid)]"
+            />
+          </label>
+          {needle && <p className="text-xs text-neutral-500">{rows.length} match{rows.length === 1 ? '' : 'es'}</p>}
+        </div>
+      )}
+
       {/* Tracklist Header */}
       <div className={`hidden md:grid ${gridColumns} gap-4 px-4 py-2 border-b border-neutral-800 text-neutral-400 text-sm mb-4 items-center select-none`}>
         <span>#</span>
@@ -1228,7 +1319,7 @@ export default function PlaylistView() {
             )}
           </div>
         )}
-        {sortedTracks.slice(0, visibleCount).map((item, index) => {
+        {rows.slice(0, visibleCount).map(({ item, i: index }) => {
           if (!item || !item.track) return null;
           const track = item.track;
 
@@ -1306,10 +1397,34 @@ export default function PlaylistView() {
               onClick={() => handleTrackSelect(index)}
               {...rowButtonProps(() => handleTrackSelect(index))}
               onContextMenu={(e) => handleRightClick(e, track, item)}
+              draggable={canReorder}
+              onDragStart={canReorder ? (e) => {
+                dragRow.current = index;
+                e.dataTransfer.effectAllowed = 'all';
+                e.dataTransfer.setData('application/x-jomify-row', String(index));
+                e.dataTransfer.setData(TRACK_DRAG_TYPE, track.uri);
+                e.dataTransfer.setData('text/plain', track.uri);
+                setTimeout(() => setDraggedItem({ type: 'track', uri: track.uri }), 0);
+              } : undefined}
+              onDragOver={canReorder ? (e) => {
+                if (dragRow.current === null) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                const r = e.currentTarget.getBoundingClientRect();
+                setDropAt(e.clientY < r.top + r.height / 2 ? index : index + 1);
+              } : undefined}
+              onDrop={canReorder ? (e) => {
+                if (dragRow.current === null) return;
+                e.preventDefault();
+                const r = e.currentTarget.getBoundingClientRect();
+                reorderTo(dragRow.current, e.clientY < r.top + r.height / 2 ? index : index + 1);
+                dragRow.current = null; setDropAt(null);
+              } : undefined}
+              onDragEnd={canReorder ? () => { dragRow.current = null; setDropAt(null); setDraggedItem(null); } : undefined}
               style={collaboratorStyleFor(adderId, isCollaborative, isFirstInGroup, isLastInGroup)}
               aria-disabled={unplayable || undefined}
               title={unplayable ? 'Not available on Spotify' : undefined}
-              className={`grid ${gridColumns} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${bgHoverClass} ${radiusClass} ${marginClass} ${unplayable ? 'opacity-45' : ''}`}
+              className={`grid ${gridColumns} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${bgHoverClass} ${radiusClass} ${marginClass} ${unplayable ? 'opacity-45' : ''} ${dropAt === index ? 'shadow-[inset_0_2px_0_var(--brand-mid)]' : ''} ${dropAt === index + 1 && index === totalRows - 1 ? 'shadow-[inset_0_-2px_0_var(--brand-mid)]' : ''}`}
             >
               <div className="text-neutral-400 w-4 h-4 hidden md:flex items-center justify-center">
                 {isCurrentTrack && !isCurrentTrackPaused ? (
@@ -1423,7 +1538,48 @@ export default function PlaylistView() {
             {Math.max(0, (view.tracks.total || totalRows) - Math.min(visibleCount, totalRows))} more…
           </div>
         )}
+        {needle && rows.length === 0 && <p className="py-10 text-center text-sm text-neutral-500">Nothing in this playlist matches "{find.trim()}".</p>}
       </div>
+
+      {/* Find something to add: your own playlists, as Spotify's "Let's find something for your playlist" */}
+      {ownsPlaylist && playlist && (
+        <div className="mt-10 px-1 md:px-4 max-w-2xl">
+          <h3 className="text-lg font-bold text-white mb-1">Find something to add</h3>
+          <p className="text-sm text-neutral-500 mb-3">Search Spotify and add straight into this playlist.</p>
+          <label className="relative block">
+            <Search className="w-4 h-4 text-neutral-500 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="search"
+              value={addQuery}
+              onChange={(e) => setAddQuery(e.target.value)}
+              placeholder="Songs or artists"
+              aria-label="Find something to add"
+              className="w-full bg-neutral-900 border border-white/10 rounded-full py-2.5 pl-11 pr-4 text-sm text-white placeholder:text-neutral-500 outline-none focus:border-[var(--brand-mid)]"
+            />
+          </label>
+          {addSearching && <p className="mt-3 text-xs text-neutral-500">Searching…</p>}
+          {shownAddResults && !addSearching && shownAddResults.length === 0 && <p className="mt-3 text-xs text-neutral-500">Nothing found.</p>}
+          {shownAddResults && shownAddResults.length > 0 && (
+            <ul className="mt-3 divide-y divide-white/5 rounded-2xl border border-white/10 overflow-hidden">
+              {shownAddResults.slice(0, 10).map((t) => {
+                const already = (playlist.tracks?.items || []).some((it) => it.track?.uri === t.uri);
+                return (
+                  <li key={t.id} className="flex items-center gap-3 px-3 py-2 bg-neutral-900/60">
+                    <img src={artUrl(t.album?.images, 40)} alt="" width="40" height="40" loading="lazy" decoding="async" className="w-10 h-10 rounded object-cover bg-neutral-800" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-white truncate">{t.name}</p>
+                      <p className="text-xs text-neutral-400 truncate">{(t.artists || []).map((a) => a.name).join(', ')} · {t.album?.name}</p>
+                    </div>
+                    <button type="button" onClick={() => addFound(t)} disabled={already} className="rounded-full border border-white/15 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/10 disabled:opacity-50 disabled:cursor-default">
+                      {already ? 'Added' : 'Add'}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }

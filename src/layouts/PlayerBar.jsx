@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Volume2, Mic2, Maximize2, VolumeX, Shuffle, ListMusic, Repeat, Repeat1, MonitorSpeaker } from 'lucide-react';
+import SleepTimer from '../components/SleepTimer';
 import { usePlayerStore } from '../store/playerStore';
 import { formatTime } from '../utils/formatTime';
 import { useUserStore } from '../store/userStore';
@@ -130,7 +131,7 @@ export default function PlayerBar() {
   // re-subscribes. Ignored while typing in a field or when a modifier is held.
   const latest = useRef({});
   useEffect(() => {
-    latest.current = { handleTogglePlay, seekBy, changeVolumeBy, toggleMute, hasTrack: Boolean(currentTrack) };
+    latest.current = { handleTogglePlay, seekBy, changeVolumeBy, toggleMute, hasTrack: Boolean(currentTrack), currentTrack, toggleQueue, toggleZenMode, isQueueOpen };
   });
 
   useEffect(() => {
@@ -138,8 +139,34 @@ export default function PlayerBar() {
       Boolean(el) && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
 
     const onKey = (e) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      if (isTyping(e.target)) return;
       const h = latest.current;
+      const store = useUserStore.getState();
+      // With a modifier: next/previous and back, as Spotify's own apps have them
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+        if (e.key === 'ArrowRight' && h.hasTrack) { e.preventDefault(); nextTrack(); return; }
+        if (e.key === 'ArrowLeft' && h.hasTrack) { e.preventDefault(); previousTrack(); return; }
+        return;
+      }
+      if (e.altKey && !e.metaKey && !e.ctrlKey) {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); store.goBack(); }
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '?' || (e.shiftKey && e.key === '/')) { e.preventDefault(); store.setShortcutsOpen(!store.isShortcutsOpen); return; }
+      if (e.shiftKey) return;
+      switch (e.key) {
+        case 's': case 'S': toggleShuffle(); break;
+        case 'r': case 'R': cycleRepeat(); break;
+        case 'q': case 'Q': h.toggleQueue(); break;
+        case 'z': case 'Z': h.toggleZenMode(); break;
+        case 'l': case 'L': {
+          const id = h.currentTrack?.id || idFromUri(h.currentTrack?.uri, 'track');
+          if (id) document.querySelector(`[data-like-for="${id}"]`)?.click();
+          break;
+        }
+        default:
+      }
       switch (e.key) {
         case ' ':
           e.preventDefault();
@@ -344,6 +371,8 @@ export default function PlayerBar() {
             }}
           />
         </div>
+
+        <SleepTimer buttonClass="transition-colors hover:text-white flex items-center" />
 
         <button
           onClick={toggleQueue}

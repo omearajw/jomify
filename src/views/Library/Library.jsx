@@ -811,7 +811,7 @@ export default function Library() {
               <button
                 type="button"
                 onClick={() => useUserStore.getState().setAccountOpen(true)}
-                aria-label="Account and sync"
+                aria-label="Settings"
                 className="md:hidden w-10 h-10 flex items-center justify-center rounded-full border border-white/20 text-neutral-300 active:bg-white/10"
               >
                 <Settings className="w-4 h-4" />

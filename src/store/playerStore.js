@@ -23,6 +23,13 @@ export const usePlayerStore = create((set) => ({
   isLocalActive: false,  // the active device is this browser, so SDK events drive the state
   remoteVolume: null,    // last known volume of a remote active device, 0-100
 
+  // Sleep timer: { until: ms } pauses at a time, { atSongEnd: true } when the song finishes
+  sleepTimer: null,
+  setSleepTimer: (sleepTimer) => set({ sleepTimer }),
+  // Set while the music playing is Jomify's own choice after a playlist ended: 'liked' | 'artists'
+  autoplaySource: null,
+  setAutoplaySource: (autoplaySource) => set((current) => (current.autoplaySource === autoplaySource ? current : { autoplaySource })),
+
   setPlayer: (playerInstance) => set({ player: playerInstance }),
   setDeviceId: (id) => set({ deviceId: id }),
 

@@ -786,6 +786,13 @@ async function setFollowingArtists(token, ids, method) {
 export const followArtists = (token, ids) => setFollowingArtists(token, ids, 'PUT');
 export const unfollowArtists = (token, ids) => setFollowingArtists(token, ids, 'DELETE');
 
+// An artist's popular tracks; deprecated with nothing in its place, so a refusal is an empty list
+export async function fetchArtistTopTracks(token, artistId) {
+  const response = await spotifyFetch(`${API}/artists/${encodeURIComponent(artistId)}/top-tracks?market=from_token`, { method: 'GET', headers: auth(token) });
+  if (!response.ok) return [];
+  return (await response.json()).tracks || [];
+}
+
 // One of Spotify's discography groups (album, single, appears_on, compilation), every page
 export async function fetchArtistAlbums(token, artistId, group, { maxPages = 6 } = {}) {
   const out = [];
@@ -855,6 +862,16 @@ export async function fetchPlaylistTrackArtists(token, playlistId) {
     url = data.next;
   }
   return tracks;
+}
+
+// Starts any context (playlist, album, artist) at a given song and keeps going through the rest
+export async function playContextFromTrack(token, deviceId, contextUri, trackUri) {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/me/player/play${deviceQuery(deviceId)}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ context_uri: contextUri, offset: { uri: trackUri } })
+  });
+  if (!response.ok) throw await playbackError(response, 'Failed to start playback');
 }
 
 // Starts a playlist at a given track and keeps going through the rest of it. Offsetting by uri
