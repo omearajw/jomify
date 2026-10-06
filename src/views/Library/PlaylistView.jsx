@@ -3,7 +3,8 @@ import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { playOn, setShuffle } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
-import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch, reorderPlaylistTracks, addTracksToPlaylist, removeTrackFromPlaylist } from '../../services/spotify/api';
+import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch, reorderPlaylistTracks, addTracksToPlaylist, removeTrackFromPlaylist, removeTracksFromPlaylist, fetchMoreTracks } from '../../services/spotify/api';
+import { playlistItemsUrl, normalizePlaylist } from '../../services/spotify/compat';
 import SortIntoChips from '../../components/SortIntoChips';
 import { useUnaddedSuggestions, noteTrackSorted } from './useUnaddedSuggestions';
 import SortMode from './SortMode';
@@ -298,13 +299,10 @@ export default function PlaylistView() {
     let items = [];
     let url = initialUrl;
     while (url) {
-      const res = await spotifyFetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) {
-        throw new Error(`Couldn't load ${label} (Spotify returned ${res.status}). Nothing was changed.`);
-      }
-      const data = await res.json();
+      let data;
+      // fetchMoreTracks knows the new and old names for a playlist's pages and throws on a bad one
+      try { data = await fetchMoreTracks(token, url); }
+      catch (err) { throw new Error(`Couldn't load ${label} (${err?.status ? `Spotify returned ${err.status}` : err?.message || 'no answer'}). Nothing was changed.`, { cause: err }); }
       if (!Array.isArray(data.items)) {
         throw new Error(`Unexpected response while loading ${label}. Nothing was changed.`);
       }
@@ -328,7 +326,7 @@ export default function PlaylistView() {
 
       const playlistTrackIds = new Set();
       for (const checkId of selectedCheckPlaylistIds) {
-        const checkTracks = await fetchAllPages(`https://api.spotify.com/v1/playlists/${checkId}/tracks?limit=100`, 'a check playlist');
+        const checkTracks = await fetchAllPages(playlistItemsUrl(checkId, 'limit=100'), 'a check playlist');
         for (const item of checkTracks) {
           if (item.track && item.track.id) {
             const cleanedName = cleanString(item.track.name);
@@ -340,7 +338,7 @@ export default function PlaylistView() {
 
       setSyncStatusText('Scanning current Unadded Songs playlist...');
 
-      const currentUnaddedTracks = await fetchAllPages(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks?limit=100`, 'this playlist');
+      const currentUnaddedTracks = await fetchAllPages(playlistItemsUrl(playlist.id, 'limit=100'), 'this playlist');
 
       const likedSongIdsMap = new Set(allLikedSongs.map(item => item.track?.id).filter(Boolean));
       const currentUnaddedTrackIds = new Set(currentUnaddedTracks.map(item => item.track?.id).filter(Boolean));
@@ -404,17 +402,8 @@ export default function PlaylistView() {
         setSyncStatusText(`Removing ${tracksToRemove.length} sorted/unliked tracks...`);
         for (let i = 0; i < tracksToRemove.length; i += 100) {
           const chunk = tracksToRemove.slice(i, i + 100);
-          const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
-            method: 'DELETE',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ tracks: chunk })
-          });
-          if (!res.ok) {
-            throw new Error(`Removing tracks failed partway (Spotify returned ${res.status}). Re-run the check to finish.`);
-          }
+          try { await removeTracksFromPlaylist(token, playlist.id, chunk.map((t) => t.uri)); }
+          catch (err) { throw new Error(`Removing tracks failed partway (Spotify returned ${err?.status || '?'}). Re-run the check to finish.`, { cause: err }); }
         }
       }
 
@@ -423,17 +412,8 @@ export default function PlaylistView() {
         setSyncStatusText(`Adding ${newUnaddedUris.length} new unadded songs...`);
         for (let i = 0; i < newUnaddedUris.length; i += 100) {
           const batch = newUnaddedUris.slice(i, i + 100);
-          const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ uris: batch })
-          });
-          if (!res.ok) {
-            throw new Error(`Adding tracks failed partway (Spotify returned ${res.status}). Re-run the check to finish.`);
-          }
+          try { await addTracksToPlaylist(token, playlist.id, batch); }
+          catch (err) { throw new Error(`Adding tracks failed partway (${err?.message || 'Spotify refused'}). Re-run the check to finish.`, { cause: err }); }
         }
       }
 
@@ -485,7 +465,8 @@ export default function PlaylistView() {
           // instead of spinning forever
           // Forget the load so a later attempt (a token refresh, coming back to the page) retries
           if (!res.ok) { loadedPlaylistId.current = null; setLoadError({ id: requestedId, status: res.status }); return null; }
-          return res.json();
+          // The songs sit under `items` now and `tracks` before; the page reads `tracks`
+          return normalizePlaylist(await res.json());
         })
         .then(async (data) => {
           if (!data) return;
@@ -520,8 +501,7 @@ export default function PlaylistView() {
 
     while (nextUrl) {
       try {
-        const res = await spotifyFetch(nextUrl, { headers: { Authorization: `Bearer ${token}` } });
-        const nextData = await res.json();
+        const nextData = await fetchMoreTracks(token, nextUrl);
         
         if (!nextData.items || nextData.items.length === 0) break;
 

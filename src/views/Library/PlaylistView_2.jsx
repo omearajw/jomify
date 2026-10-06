@@ -16,6 +16,7 @@ const formatBatchDate = (iso) => {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 };
 import { fetchPlaylistDetails, fetchMoreTracks, addTracksToPlaylist, playPlaylistTrack, fetchSevenTrackMeta } from '../../services/spotify/api';
+import { playlistItemsUrl } from '../../services/spotify/compat';
 import { formatTime } from '../../utils/formatTime';
 import { Play, X, LayoutPanelLeft, ArrowRight, Loader2, Disc3 } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
@@ -26,7 +27,7 @@ import { getCollaboratorStyle } from '../../utils/collaboratorStyle';
 import { isSameTrack, isUnplayable } from '../../utils/spotifyUri';
 
 const PAGE = 100;
-const pageUrl = (playlistId, offset, limit) => `https://api.spotify.com/v1/playlists/${playlistId}/tracks?offset=${offset}&limit=${limit}`;
+const pageUrl = (playlistId, offset, limit) => playlistItemsUrl(playlistId, `offset=${offset}&limit=${limit}`);
 
 // The newest batches sit at the end of the playlist, so after the details request (which
 // brings the first page) the remaining pages are fetched from the end backwards and shown as a

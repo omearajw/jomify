@@ -16,7 +16,9 @@ const WATCHED_FIELDS = {
   '/artists/': ['followers', 'popularity', 'genres'],
   '/tracks/': ['popularity', 'linked_from', 'available_markets'],
   '/albums/': ['label', 'popularity', 'copyrights'],
-  '/users/': ['followers']
+  '/users/': ['followers'],
+  // The songs moved from `tracks` to `items`, and inside each from `track` to `item`
+  '/playlists/': ['tracks', 'items']
 };
 
 async function get(path, token) {

@@ -11,6 +11,7 @@ import LikeButton from '../../components/LikeButton';
 import MoreButton, { CardMoreButton } from '../../components/MoreButton';
 import { rowButtonProps } from '../../utils/a11y';
 import { isSameTrack, isUnplayable, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
+import { normalizePlaylist } from '../../services/spotify/compat';
 import { toast } from '../../store/toastStore';
 
 const MAX_CACHED_RESULTS_BYTES = 500 * 1024;
@@ -139,7 +140,9 @@ export default function Browse() {
         setSearching(true);
         setSearchError('');
         searchSpotify(token, query)
-          .then((data) => {
+          .then((raw) => {
+            // Playlists in search results carry their count under `items` now, `tracks` before
+            const data = Array.isArray(raw?.playlists?.items) ? { ...raw, playlists: { ...raw.playlists, items: raw.playlists.items.map(normalizePlaylist) } } : raw;
             setResults(data);
             if (expandOnResult.current) {
               expandOnResult.current = false;

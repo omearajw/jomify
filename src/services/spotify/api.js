@@ -3,6 +3,27 @@ import { ensureFreshToken, isTokenStale } from './session';
 import { timeoutSignal, REQUEST_TIMEOUT_MS } from './http';
 import { log } from '../debugLog';
 import { toSpotifyDescription } from '../../utils/strings';
+import {
+  API, withFallback, playlistItemsUrl, swapItemsPath, isPlaylistItemsUrl, bothPlaylistFields, bothPageFields,
+  normalizePage, normalizePlaylist,
+  LIBRARY_BATCH, trackUri, albumUri, userUri, playlistUri, libraryUrl, libraryContainsUrl
+} from './compat';
+
+const auth = (token) => ({ Authorization: `Bearer ${token}` });
+const authJson = (token) => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' });
+
+// A few things at a time: enough to be quick, not enough to trip the rate limit
+async function inBatches(items, size, worker) {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(...(await Promise.all(items.slice(i, i + size).map(worker))));
+  }
+  return out;
+}
+
+// The library: one endpoint for liked songs, saved albums, followed people and playlists, in
+// place of the four it replaced. Each takes URIs, 40 at a time.
+const libraryWrite = (token, method, uris) => spotifyFetch(libraryUrl(uris), { method, headers: auth(token) });
 
 // "GET /v1/me/player" for the log: the path names the endpoint, and the query string adds nothing
 const describeRequest = (url, options) => {
@@ -157,49 +178,48 @@ export async function fetchRecentlyPlayed(token, limit = 50) {
   return (await response.json()).items || [];
 }
 
-export async function fetchAlbumsByIds(token, ids) {
-  const out = [];
-  for (let i = 0; i < ids.length; i += 20) {
-    const response = await spotifyFetch(`https://api.spotify.com/v1/albums?ids=${ids.slice(i, i + 20).join(',')}`, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!response.ok) throw new Error('Failed to fetch albums');
-    out.push(...((await response.json()).albums || []));
-  }
-  return out;
+// The batch endpoints (/albums?ids=, /artists?ids=) are deprecated with no batch replacement;
+// one request per item, a few at a time. An item Spotify cannot find is left out, as the batch
+// endpoints left it null.
+async function fetchEach(token, path, ids, label) {
+  const unique = [...new Set((ids || []).filter(Boolean))];
+  const results = await inBatches(unique, 6, async (id) => {
+    const response = await spotifyFetch(`${API}/${path}/${encodeURIComponent(id)}`, { headers: auth(token) });
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`Failed to fetch ${label} (${response.status})`);
+    return response.json();
+  });
+  return results.filter(Boolean);
 }
-
-export async function fetchArtistsByIds(token, ids) {
-  const out = [];
-  for (let i = 0; i < ids.length; i += 50) {
-    const response = await spotifyFetch(`https://api.spotify.com/v1/artists?ids=${ids.slice(i, i + 50).join(',')}`, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!response.ok) throw new Error('Failed to fetch artists');
-    out.push(...((await response.json()).artists || []));
-  }
-  return out;
-}
+export const fetchAlbumsByIds = (token, ids) => fetchEach(token, 'albums', ids, 'albums');
+export const fetchArtistsByIds = (token, ids) => fetchEach(token, 'artists', ids, 'artists');
 
 // Name, art and owner only; enough for a card without paying for the whole track list
 export async function fetchPlaylistSummary(token, playlistId) {
-  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}?fields=id,name,images,owner(id,display_name)`, {
+  const response = await spotifyFetch(`${API}/playlists/${playlistId}?fields=${bothPlaylistFields('id,name,images,owner(id,display_name),tracks.total')}`, {
     method: 'GET',
-    headers: { Authorization: `Bearer ${token}` }
+    headers: auth(token)
   });
   if (!response.ok) { const err = new Error(`Failed to fetch playlist (${response.status})`); err.status = response.status; throw err; }
-  return await response.json();
+  return normalizePlaylist(await response.json());
+}
+
+// A page of a playlist's songs by URL: one Spotify handed back as `next`, or one built with
+// playlistItemsUrl. Tries the URL under the new name first, the old name if that is refused.
+export async function fetchPlaylistItemsPage(token, url) {
+  const request = (u) => spotifyFetch(u, { method: 'GET', headers: auth(token) });
+  const response = isPlaylistItemsUrl(url)
+    ? await withFallback('playlist items', () => request(swapItemsPath(url, false)), () => request(swapItemsPath(url, true)))
+    : await request(url);
+  if (!response.ok) { const err = new Error(`Failed to fetch playlist songs (${response.status})`); err.status = response.status; throw err; }
+  return normalizePage(await response.json());
 }
 
 // Moves the track at rangeStart so it sits before insertBefore (Spotify's own semantics)
 export async function reorderPlaylistTracks(token, playlistId, rangeStart, insertBefore) {
-  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ range_start: rangeStart, insert_before: insertBefore, range_length: 1 })
-  });
+  const body = JSON.stringify({ range_start: rangeStart, insert_before: insertBefore, range_length: 1 });
+  const request = (legacy) => spotifyFetch(playlistItemsUrl(playlistId, '', { legacy }), { method: 'PUT', headers: authJson(token), body });
+  const response = await withFallback('reorder playlist items', () => request(false), () => request(true));
   if (!response.ok) throw new Error(`Failed to reorder tracks (${response.status})`);
   return await response.json();
 }
@@ -236,7 +256,7 @@ export async function fetchUserPlaylists(token) {
     const data = await response.json();
     
     // Combine the new batch of playlists with the ones we already found
-    allPlaylists = [...allPlaylists, ...data.items];
+    allPlaylists = [...allPlaylists, ...data.items.map(normalizePlaylist)];
     
     // Update the URL to the next page (Spotify sets this to null on the last page)
     nextUrl = data.next;
@@ -253,31 +273,25 @@ export async function fetchPlaylistDetails(token, playlistId) {
   });
   
   if (!response.ok) throw new Error("Failed to fetch playlist details");
-  return await response.json();
+  return normalizePlaylist(await response.json());
 }
 
+// Unfollowing is removing the playlist from the library now; deleting your own is the same call
 export async function unfollowPlaylist(token, playlistId) {
-  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}/followers`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` }
-  });
-
+  const response = await withFallback('unfollow playlist',
+    () => libraryWrite(token, 'DELETE', [playlistUri(playlistId)]),
+    () => spotifyFetch(`${API}/playlists/${playlistId}/followers`, { method: 'DELETE', headers: auth(token) }));
   if (!response.ok) throw new Error("Failed to delete playlist");
 }
 
 export async function createPlaylist(token, userId, { name, description = '', public: isPublic = false, collaborative = false } = {}) {
-  const response = await spotifyFetch(`https://api.spotify.com/v1/users/${encodeURIComponent(userId)}/playlists`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    // An empty description is left out rather than sent: Spotify answers an empty one with a 400
-    body: JSON.stringify({ name, public: isPublic, collaborative, ...(toSpotifyDescription(description) ? { description: toSpotifyDescription(description) } : {}) })
-  });
-
+  // An empty description is left out rather than sent: Spotify answers an empty one with a 400
+  const body = JSON.stringify({ name, public: isPublic, collaborative, ...(toSpotifyDescription(description) ? { description: toSpotifyDescription(description) } : {}) });
+  const response = await withFallback('create playlist',
+    () => spotifyFetch(`${API}/me/playlists`, { method: 'POST', headers: authJson(token), body }),
+    () => spotifyFetch(`${API}/users/${encodeURIComponent(userId)}/playlists`, { method: 'POST', headers: authJson(token), body }));
   if (!response.ok) throw new Error("Failed to create playlist");
-  return await response.json();
+  return normalizePlaylist(await response.json());
 }
 
 export async function updatePlaylist(token, playlistId, { name, description = undefined, public: isPublic = undefined, collaborative = undefined } = {}) {
@@ -387,14 +401,16 @@ export async function uploadPlaylistCoverImage(token, playlistId, imageFile) {
 }
 
 // NEW: A dedicated function to grab the next chunks
+// The next page of anything paginated: liked songs, an album's tracks, a playlist's songs
 export async function fetchMoreTracks(token, nextUrl) {
+  if (isPlaylistItemsUrl(nextUrl)) return fetchPlaylistItemsPage(token, nextUrl);
   const response = await spotifyFetch(nextUrl, {
     method: "GET",
-    headers: { Authorization: "Bearer " + token }
+    headers: auth(token)
   });
   
   if (!response.ok) throw new Error("Failed to fetch more tracks");
-  return await response.json();
+  return normalizePage(await response.json());
 }
 
 export async function playPlaylistTrack(token, deviceId, playlistId, trackIndex) {
@@ -500,33 +516,29 @@ export async function playContext(token, deviceId, contextUri, offsetIndex = 0) 
   if (!response.ok) throw await playbackError(response, "Failed to start playback");
 }
 
+// Which of these songs are liked: { id: true|false }. The library endpoint first; the old
+// per-type one when refused. A failed batch leaves its ids out rather than guessing.
 export async function checkTracksLiked(token, trackIds) {
-  if (!trackIds || trackIds.length === 0) return {};
+  const ids = [...new Set((trackIds || []).filter(Boolean))];
+  if (ids.length === 0) return {};
   const results = {};
-
-  // Check in batches of 50 to respect API limits
-  for (let i = 0; i < trackIds.length; i += 50) {
-    const chunk = trackIds.slice(i, i + 50);
-    const url = "https://" + "api.spotify.com/v1/me/tracks/contains?ids=" + chunk.join(",");
-    
-    const res = await spotifyFetch(url, { headers: { Authorization: "Bearer " + token } });
-    if (res.ok) {
-      const booleans = await res.json();
-      chunk.forEach((id, index) => {
-        results[id] = booleans[index]; // Maps the ID to true/false
-      });
-    }
+  for (let i = 0; i < ids.length; i += LIBRARY_BATCH) {
+    const chunk = ids.slice(i, i + LIBRARY_BATCH);
+    const response = await withFallback('library contains',
+      () => spotifyFetch(libraryContainsUrl(chunk.map(trackUri)), { headers: auth(token) }),
+      () => spotifyFetch(`${API}/me/tracks/contains?ids=${chunk.join(',')}`, { headers: auth(token) }));
+    if (!response.ok) continue;
+    const booleans = await response.json();
+    chunk.forEach((id, index) => { results[id] = Boolean(booleans[index]); });
   }
   return results;
 }
 
 export async function toggleTrackLike(token, trackId, isCurrentlyLiked) {
-  const url = "https://" + "api.spotify.com/v1/me/tracks?ids=" + trackId;
-  const response = await spotifyFetch(url, {
-    method: isCurrentlyLiked ? "DELETE" : "PUT",
-    headers: { Authorization: "Bearer " + token }
-  });
-
+  const method = isCurrentlyLiked ? 'DELETE' : 'PUT';
+  const response = await withFallback('library write',
+    () => libraryWrite(token, method, [trackUri(trackId)]),
+    () => spotifyFetch(`${API}/me/tracks?ids=${trackId}`, { method, headers: auth(token) }));
   if (!response.ok) throw new Error("Failed to toggle like status");
 }
 
@@ -612,58 +624,40 @@ export async function addToQueue(token, deviceId, trackUri) {
   if (!response.ok) throw await playbackError(response, "Failed to add to queue");
 }
 
+// Up to 100 at a time; the caller chunks
 export async function addTracksToPlaylist(token, playlistId, uris) {
-  // Fixed the missing $ and using the direct secure API endpoint
-  const url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks`;
-  
-  const response = await spotifyFetch(url, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ uris })
-  });
-
+  const body = JSON.stringify({ uris });
+  const request = (legacy) => spotifyFetch(playlistItemsUrl(playlistId, '', { legacy }), { method: 'POST', headers: authJson(token), body });
+  const response = await withFallback('add playlist items', () => request(false), () => request(true));
   if (!response.ok) throw new Error("Failed to add tracks to playlist");
   return await response.json();
 }
 
-export async function removeTrackFromPlaylist(token, playlistId, trackUri) {
-  const url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks`;
-  
-  const response = await spotifyFetch(url, {
-    method: "DELETE",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      tracks: [{ uri: trackUri }]
-    })
+// The new endpoint names the list `items`, the old one `tracks`; both take { uri } entries
+export async function removeTracksFromPlaylist(token, playlistId, uris) {
+  const entries = uris.map((uri) => ({ uri }));
+  const request = (legacy) => spotifyFetch(playlistItemsUrl(playlistId, '', { legacy }), {
+    method: 'DELETE',
+    headers: authJson(token),
+    body: JSON.stringify(legacy ? { tracks: entries } : { items: entries })
   });
-
-  if (!response.ok) throw new Error("Failed to remove track from playlist");
+  const response = await withFallback('remove playlist items', () => request(false), () => request(true));
+  if (!response.ok) { const err = new Error(`Failed to remove tracks from playlist (${response.status})`); err.status = response.status; throw err; }
   return await response.json();
 }
+export const removeTrackFromPlaylist = (token, playlistId, uri) => removeTracksFromPlaylist(token, playlistId, [uri]);
 
 export async function saveAlbumToLibrary(token, albumId) {
-  const url = `https://api.spotify.com/v1/me/albums?ids=${encodeURIComponent(albumId)}`;
-  const response = await spotifyFetch(url, {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${token}` }
-  });
-
+  const response = await withFallback('library write',
+    () => libraryWrite(token, 'PUT', [albumUri(albumId)]),
+    () => spotifyFetch(`${API}/me/albums?ids=${encodeURIComponent(albumId)}`, { method: 'PUT', headers: auth(token) }));
   if (!response.ok) throw new Error('Failed to save album to library');
 }
 
 export async function unsaveAlbum(token, albumId) {
-  const url = `https://api.spotify.com/v1/me/albums?ids=${encodeURIComponent(albumId)}`;
-  const response = await spotifyFetch(url, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` }
-  });
-
+  const response = await withFallback('library write',
+    () => libraryWrite(token, 'DELETE', [albumUri(albumId)]),
+    () => spotifyFetch(`${API}/me/albums?ids=${encodeURIComponent(albumId)}`, { method: 'DELETE', headers: auth(token) }));
   if (!response.ok) throw new Error('Failed to remove album from library');
 }
 // ==========================================
@@ -674,18 +668,14 @@ export async function unsaveAlbum(token, albumId) {
 // Using `fields` keeps these payloads tiny, which matters because we cross-reference
 // several playlists at once whenever the workspace opens.
 export async function fetchSevenTrackMeta(token, playlistId) {
-  const fields = "next,items(added_by(id),track(uri,name,artists(name)))";
-  let url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100&fields=${encodeURIComponent(fields)}`;
+  const fields = bothPageFields("next,items(added_by(id),track(uri,name,artists(name)))");
+  let url = playlistItemsUrl(playlistId, `limit=100&fields=${encodeURIComponent(fields)}`);
   const items = [];
 
   while (url) {
-    const response = await spotifyFetch(url, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    if (!response.ok) throw new Error("Failed to fetch Seven track metadata");
-    const data = await response.json();
+    let data;
+    try { data = await fetchPlaylistItemsPage(token, url); }
+    catch { throw new Error("Failed to fetch Seven track metadata"); }
 
     (data.items || []).forEach((item) => {
       if (!item?.track?.uri) return;
@@ -736,21 +726,20 @@ export async function fetchUserPublicPlaylists(token, userId) {
   return items;
 }
 
+// Following someone is saving them to the library now
 export async function checkFollowingUsers(token, ids) {
   if (!ids?.length) return [];
-  const response = await spotifyFetch(`https://api.spotify.com/v1/me/following/contains?type=user&ids=${ids.map(encodeURIComponent).join(',')}`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` }
-  });
+  const response = await withFallback('library contains users',
+    () => spotifyFetch(libraryContainsUrl(ids.map(userUri)), { headers: auth(token) }),
+    () => spotifyFetch(`${API}/me/following/contains?type=user&ids=${ids.map(encodeURIComponent).join(',')}`, { headers: auth(token) }));
   if (!response.ok) throw statusError('Failed to check following', response);
   return await response.json();
 }
 
 async function setFollowingUsers(token, ids, method) {
-  const response = await spotifyFetch(`https://api.spotify.com/v1/me/following?type=user&ids=${ids.map(encodeURIComponent).join(',')}`, {
-    method,
-    headers: { Authorization: `Bearer ${token}` }
-  });
+  const response = await withFallback('library write users',
+    () => libraryWrite(token, method, ids.map(userUri)),
+    () => spotifyFetch(`${API}/me/following?type=user&ids=${ids.map(encodeURIComponent).join(',')}`, { method, headers: auth(token) }));
   if (!response.ok) throw statusError(method === 'PUT' ? 'Failed to follow' : 'Failed to unfollow', response);
 }
 export const followUsers = (token, ids) => setFollowingUsers(token, ids, 'PUT');
@@ -774,23 +763,21 @@ export function detectPartnerCandidates(trackMeta, myUserId) {
 // --- Unadded Songs sorting ----------------------------------------------------------------------
 
 export async function fetchPlaylistSnapshot(token, playlistId) {
-  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}?fields=id,name,snapshot_id,tracks(total)`, {
+  const response = await spotifyFetch(`${API}/playlists/${playlistId}?fields=${bothPlaylistFields('id,name,snapshot_id,tracks(total)')}`, {
     method: 'GET',
-    headers: { Authorization: `Bearer ${token}` }
+    headers: auth(token)
   });
   if (!response.ok) { const err = new Error(`Failed to fetch playlist (${response.status})`); err.status = response.status; throw err; }
-  return await response.json();
+  return normalizePlaylist(await response.json());
 }
 
 // Just enough of every track to profile a playlist's taste: ids and artists
 export async function fetchPlaylistTrackArtists(token, playlistId) {
-  const fields = 'next,items(track(id,name,artists(id,name)))';
-  let url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100&fields=${encodeURIComponent(fields)}`;
+  const fields = bothPageFields('next,items(track(id,name,artists(id,name)))');
+  let url = playlistItemsUrl(playlistId, `limit=100&fields=${encodeURIComponent(fields)}`);
   const tracks = [];
   while (url) {
-    const response = await spotifyFetch(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) { const err = new Error(`Failed to fetch playlist tracks (${response.status})`); err.status = response.status; throw err; }
-    const data = await response.json();
+    const data = await fetchPlaylistItemsPage(token, url);
     for (const item of data.items || []) {
       if (item?.track?.id) tracks.push({ id: item.track.id, name: item.track.name, artists: (item.track.artists || []).filter((a) => a?.id) });
     }

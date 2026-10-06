@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { redirectToAuthCodeFlow, getAccessToken } from './services/spotify/auth';
 import { ensureFreshToken } from './services/spotify/session';
-import { fetchUserProfile, fetchUserPlaylists, fetchUserAlbums, spotifyFetch, playContext } from './services/spotify/api';
+import { fetchUserProfile, fetchUserPlaylists, fetchUserAlbums, spotifyFetch, playContext, fetchAlbumsByIds, fetchPlaylistDetails, fetchPlaylistItemsPage } from './services/spotify/api';
+import { bothPlaylistFields, normalizePlaylist, playlistItemsUrl } from './services/spotify/compat';
 import { useUserStore } from './store/userStore';
 import { useSlice } from './store/selectors';
 import MainLayout from './layouts/MainLayout';
@@ -295,20 +296,10 @@ function App() {
 
       [...missingPlaylists, ...missingAlbums].forEach(id => hydratedPinnedIds.current.add(id));
 
-      const headers = { Authorization: `Bearer ${token}` };
-
-      // /v1/albums?ids= takes up to 20 per call
       let newAlbums = [];
-      for (let i = 0; i < missingAlbums.length; i += 20) {
-        const chunk = missingAlbums.slice(i, i + 20);
-        try {
-          const res = await spotifyFetch(`https://api.spotify.com/v1/albums?ids=${chunk.join(',')}`, { headers });
-          if (!res.ok) continue;
-          const data = await res.json();
-          (data.albums || []).forEach((album) => { if (album?.id) newAlbums.push(album); });
-        } catch (e) {
-          console.error("Hydration failed for albums", e);
-        }
+      if (missingAlbums.length) {
+        try { newAlbums = await fetchAlbumsByIds(token, missingAlbums); }
+        catch (e) { console.error("Hydration failed for albums", e); }
       }
 
       let newPlaylists = [];
@@ -317,9 +308,7 @@ function App() {
         try {
           const res = await Promise.all(
             playlistCandidates.map(id =>
-              spotifyFetch(`https://api.spotify.com/v1/playlists/${id}`, { headers })
-                .then(r => (r.ok ? r.json() : null))
-                .catch(() => null)
+              fetchPlaylistDetails(token, id).catch(() => null)
             )
           );
           newPlaylists = res.filter(p => p && !p.error && p.id);
@@ -364,19 +353,16 @@ function App() {
         const id = seven.playlistId;
         try {
           // 1. Fetch only metadata and total track count (super lightweight)
-          const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${id}?fields=id,name,images,tracks.total`, { 
+          const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${id}?fields=${bothPlaylistFields('id,name,images,tracks.total')}`, { 
             headers: { Authorization: `Bearer ${token}` }
           });
-          const data = await res.json();
+          const data = normalizePlaylist(await res.json());
           
           if (data.tracks && data.tracks.total > 0) {
             data.partnerName = seven.partnerName || null;
             // 2. Fetch EXACTLY the last track to check who added it
             const offset = data.tracks.total - 1;
-            const trackRes = await spotifyFetch(`https://api.spotify.com/v1/playlists/${id}/tracks?limit=1&offset=${offset}`, { 
-              headers: { Authorization: `Bearer ${token}` }
-            });
-            const trackData = await trackRes.json();
+            const trackData = await fetchPlaylistItemsPage(token, playlistItemsUrl(id, `limit=1&offset=${offset}`));
             const lastAdderId = trackData.items[0]?.added_by?.id;
             
             // If the last person to add a track WAS NOT you, it's your turn!
