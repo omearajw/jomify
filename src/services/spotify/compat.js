@@ -92,5 +92,6 @@ export const trackUri = (id) => (String(id).startsWith('spotify:') ? id : `spoti
 export const albumUri = (id) => (String(id).startsWith('spotify:') ? id : `spotify:album:${id}`);
 export const userUri = (id) => (String(id).startsWith('spotify:') ? id : `spotify:user:${id}`);
 export const playlistUri = (id) => (String(id).startsWith('spotify:') ? id : `spotify:playlist:${id}`);
+export const artistUri = (id) => (String(id).startsWith('spotify:') ? id : `spotify:artist:${id}`);
 export const libraryUrl = (uris) => `${API}/me/library?uris=${encodeURIComponent(uris.join(','))}`;
 export const libraryContainsUrl = (uris) => `${API}/me/library/contains?uris=${encodeURIComponent(uris.join(','))}`;

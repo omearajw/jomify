@@ -6,10 +6,15 @@ import { toSpotifyDescription } from '../../utils/strings';
 import {
   API, withFallback, playlistItemsUrl, swapItemsPath, isPlaylistItemsUrl, bothPlaylistFields, bothPageFields,
   normalizePage, normalizePlaylist,
-  LIBRARY_BATCH, trackUri, albumUri, userUri, playlistUri, libraryUrl, libraryContainsUrl
+  LIBRARY_BATCH, trackUri, albumUri, userUri, playlistUri, artistUri, libraryUrl, libraryContainsUrl
 } from './compat';
 
 const auth = (token) => ({ Authorization: `Bearer ${token}` });
+const statusError = (message, response) => {
+  const err = new Error(`${message} (${response.status})`);
+  err.status = response.status;
+  return err;
+};
 const authJson = (token) => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' });
 
 // A few things at a time: enough to be quick, not enough to trip the rate limit
@@ -274,6 +279,14 @@ export async function fetchPlaylistDetails(token, playlistId) {
   
   if (!response.ok) throw new Error("Failed to fetch playlist details");
   return normalizePlaylist(await response.json());
+}
+
+// Saving someone else's playlist is adding it to the library (following it, in the old words)
+export async function followPlaylist(token, playlistId) {
+  const response = await withFallback('follow playlist',
+    () => libraryWrite(token, 'PUT', [playlistUri(playlistId)]),
+    () => spotifyFetch(`${API}/playlists/${playlistId}/followers`, { method: 'PUT', headers: authJson(token), body: JSON.stringify({ public: false }) }));
+  if (!response.ok) throw statusError('Failed to save the playlist', response);
 }
 
 // Unfollowing is removing the playlist from the library now; deleting your own is the same call
@@ -707,12 +720,6 @@ export async function fetchSpotifyUser(token, userId) {
 // Spotify has no endpoint that lists the users you follow and no user search, so a friends list
 // is built by hand from profile links; these are the calls a friend's page needs.
 
-const statusError = (message, response) => {
-  const err = new Error(`${message} (${response.status})`);
-  err.status = response.status;
-  return err;
-};
-
 export async function fetchUserPublicPlaylists(token, userId) {
   const items = [];
   let url = `https://api.spotify.com/v1/users/${encodeURIComponent(userId)}/playlists?limit=50`;
@@ -744,6 +751,70 @@ async function setFollowingUsers(token, ids, method) {
 }
 export const followUsers = (token, ids) => setFollowingUsers(token, ids, 'PUT');
 export const unfollowUsers = (token, ids) => setFollowingUsers(token, ids, 'DELETE');
+
+// --- Artists you follow ----------------------------------------------------------------------
+// Listing them is the one follow endpoint Spotify kept as it was (cursor paged); following and
+// checking go through the library like everything else.
+export async function fetchFollowedArtists(token) {
+  const artists = [];
+  let url = `${API}/me/following?type=artist&limit=50`;
+  while (url) {
+    const response = await spotifyFetch(url, { method: 'GET', headers: auth(token) });
+    if (!response.ok) throw statusError('Failed to fetch followed artists', response);
+    const page = (await response.json()).artists || {};
+    artists.push(...(page.items || []).filter(Boolean));
+    url = page.cursors?.after ? `${API}/me/following?type=artist&limit=50&after=${encodeURIComponent(page.cursors.after)}` : null;
+  }
+  return artists;
+}
+
+export async function checkFollowingArtists(token, ids) {
+  if (!ids?.length) return [];
+  const response = await withFallback('library contains artists',
+    () => spotifyFetch(libraryContainsUrl(ids.map(artistUri)), { headers: auth(token) }),
+    () => spotifyFetch(`${API}/me/following/contains?type=artist&ids=${ids.map(encodeURIComponent).join(',')}`, { headers: auth(token) }));
+  if (!response.ok) throw statusError('Failed to check following', response);
+  return await response.json();
+}
+
+async function setFollowingArtists(token, ids, method) {
+  const response = await withFallback('library write artists',
+    () => libraryWrite(token, method, ids.map(artistUri)),
+    () => spotifyFetch(`${API}/me/following?type=artist&ids=${ids.map(encodeURIComponent).join(',')}`, { method, headers: auth(token) }));
+  if (!response.ok) throw statusError(method === 'PUT' ? 'Failed to follow' : 'Failed to unfollow', response);
+}
+export const followArtists = (token, ids) => setFollowingArtists(token, ids, 'PUT');
+export const unfollowArtists = (token, ids) => setFollowingArtists(token, ids, 'DELETE');
+
+// One of Spotify's discography groups (album, single, appears_on, compilation), every page
+export async function fetchArtistAlbums(token, artistId, group, { maxPages = 6 } = {}) {
+  const out = [];
+  let url = `${API}/artists/${encodeURIComponent(artistId)}/albums?include_groups=${group}&limit=50&market=from_token`;
+  let pages = 0;
+  while (url && pages < maxPages) {
+    const response = await spotifyFetch(url, { method: 'GET', headers: auth(token) });
+    if (!response.ok) throw statusError('Failed to fetch the discography', response);
+    const data = await response.json();
+    out.push(...(data.items || []));
+    url = data.next;
+    pages += 1;
+  }
+  return out;
+}
+
+// Every track of an album, for queueing or adding the whole record somewhere
+export async function fetchAlbumTrackUris(token, albumId) {
+  const uris = [];
+  let url = `${API}/albums/${encodeURIComponent(albumId)}/tracks?limit=50`;
+  while (url) {
+    const response = await spotifyFetch(url, { method: 'GET', headers: auth(token) });
+    if (!response.ok) throw statusError("Failed to fetch the album's tracks", response);
+    const data = await response.json();
+    uris.push(...(data.items || []).map((t) => t?.uri).filter(Boolean));
+    url = data.next;
+  }
+  return uris;
+}
 
 // Works out who a Seven is *with*: everyone who has ever added a track except you.
 // Returns the candidates in order of how many tracks they contributed, so the most

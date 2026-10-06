@@ -214,7 +214,7 @@ export default function Sidebar() {
     }
   };
 
-  const handleCreatePlaylistFromSidebar = async ({ name, description, imageFile }) => {
+  const handleCreatePlaylistFromSidebar = async ({ name, description, imageFile, isPublic = false, collaborative = false }) => {
     if (!token || !profile?.id) return;
     setShowCreatePlaylistDialog(false);
 
@@ -222,8 +222,8 @@ export default function Sidebar() {
       const newPlaylist = await createPlaylist(token, profile.id, {
         name,
         description,
-        public: false,
-        collaborative: false
+        public: isPublic,
+        collaborative
       });
 
       if (imageFile) {

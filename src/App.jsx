@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { redirectToAuthCodeFlow, getAccessToken } from './services/spotify/auth';
 import { ensureFreshToken } from './services/spotify/session';
-import { fetchUserProfile, fetchUserPlaylists, fetchUserAlbums, spotifyFetch, playContext, fetchAlbumsByIds, fetchPlaylistDetails, fetchPlaylistItemsPage } from './services/spotify/api';
+import { fetchUserProfile, fetchUserPlaylists, fetchUserAlbums, spotifyFetch, playContext, fetchAlbumsByIds, fetchPlaylistDetails, fetchPlaylistItemsPage, fetchFollowedArtists } from './services/spotify/api';
 import { bothPlaylistFields, normalizePlaylist, playlistItemsUrl } from './services/spotify/compat';
 import { useUserStore } from './store/userStore';
 import { useSlice } from './store/selectors';
@@ -205,6 +205,14 @@ function App() {
       });
     }
   }, [token, setToken]);
+
+  // Artists you follow, alongside playlists and albums
+  useEffect(() => {
+    if (!token || useUserStore.getState().followedArtists.length) return;
+    fetchFollowedArtists(token)
+      .then((artists) => useUserStore.getState().setFollowedArtists(artists))
+      .catch((error) => console.error('Unable to preload followed artists:', error));
+  }, [token]);
 
   // --- INITIAL DATA FETCH (WITH RACE-CONDITION SAFE MERGING) ---
   useEffect(() => {

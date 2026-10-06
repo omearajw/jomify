@@ -10,18 +10,45 @@ export default function PlaylistFormDialog(props) {
   return <PlaylistFormDialogBody {...props} />;
 }
 
+function Switch({ label, hint, on, disabled = false, onChange }) {
+  return (
+    <label className={`flex items-center justify-between gap-4 px-4 py-3 ${disabled ? 'opacity-60' : 'cursor-pointer'}`}>
+      <span>
+        <span className="block text-sm font-semibold text-white">{label}</span>
+        <span className="block text-xs text-neutral-400">{hint}</span>
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => onChange(!on)}
+        className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${on ? 'bg-[var(--brand-mid)]' : 'bg-neutral-700'}`}
+      >
+        <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
+      </button>
+    </label>
+  );
+}
+
 function PlaylistFormDialogBody({
   title,
   submitLabel,
   initialName = '',
   initialDescription = '',
   initialImageUrl = '',
+  initialPublic = false,
+  initialCollaborative = false,
   onSubmit,
   onCancel,
   isSubmitting = false
 }) {
   const [name, setName] = useState(initialName || '');
   const [description, setDescription] = useState(initialDescription || '');
+  // Spotify only allows collaboration on private playlists, so one switch rules the other
+  const [isPublic, setIsPublic] = useState(Boolean(initialPublic) && !initialCollaborative);
+  const [collaborative, setCollaborative] = useState(Boolean(initialCollaborative));
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(initialImageUrl || '');
   const canSubmit = Boolean(name.trim()) && !isSubmitting;
@@ -33,7 +60,7 @@ function PlaylistFormDialogBody({
   }, [onCancel]);
 
   const submit = () => {
-    if (canSubmit) onSubmit({ name: name.trim(), description: description.trim(), imageFile, imagePreview });
+    if (canSubmit) onSubmit({ name: name.trim(), description: description.trim(), imageFile, imagePreview, isPublic: isPublic && !collaborative, collaborative });
   };
 
   return createPortal(
@@ -75,6 +102,22 @@ function PlaylistFormDialogBody({
               rows={4}
               className="w-full rounded-2xl bg-neutral-900 border border-white/10 px-4 py-3 text-white placeholder:text-neutral-500 focus:border-[#f91362] outline-none focus:ring-2 focus:ring-[#f91362]/20"
               placeholder="A playlist for late night listening..."
+            />
+          </div>
+
+          <div className="rounded-2xl border border-white/10 divide-y divide-white/5 overflow-hidden">
+            <Switch
+              label="Public"
+              hint={collaborative ? 'A collaborative playlist is always private' : isPublic ? 'Shows on your profile and in search' : 'Only people with the link can see it'}
+              on={isPublic && !collaborative}
+              disabled={collaborative}
+              onChange={setIsPublic}
+            />
+            <Switch
+              label="Collaborative"
+              hint="Anyone with the link can add and remove songs"
+              on={collaborative}
+              onChange={(v) => { setCollaborative(v); if (v) setIsPublic(false); }}
             />
           </div>
 

@@ -3,7 +3,7 @@ import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { playOn, setShuffle } from '../../services/spotify/playbackController';
 import MoreButton from '../../components/MoreButton';
-import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch, reorderPlaylistTracks, addTracksToPlaylist, removeTrackFromPlaylist, removeTracksFromPlaylist, fetchMoreTracks } from '../../services/spotify/api';
+import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch, reorderPlaylistTracks, addTracksToPlaylist, removeTrackFromPlaylist, removeTracksFromPlaylist, fetchMoreTracks, followPlaylist, unfollowPlaylist } from '../../services/spotify/api';
 import { playlistItemsUrl, normalizePlaylist } from '../../services/spotify/compat';
 import SortIntoChips from '../../components/SortIntoChips';
 import { useUnaddedSuggestions, noteTrackSorted } from './useUnaddedSuggestions';
@@ -12,7 +12,7 @@ import { SkeletonHeader, SkeletonRows } from '../../components/Skeleton';
 import { toast } from '../../store/toastStore';
 import { fromSpotifyText } from '../../utils/strings';
 import { formatTime, formatDuration } from '../../utils/formatTime';
-import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink, Undo2, Pencil, Layers } from 'lucide-react';
+import { Clock3, Play, Shuffle, RefreshCw, ListFilter, Check, X, ArrowUpDown, ArrowUp, ArrowDown, Users, ExternalLink, Undo2, Pencil, Layers, BookmarkPlus } from 'lucide-react';
 import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
 import UserChip from '../../components/UserChip';
 import LikeButton from '../../components/LikeButton';
@@ -146,7 +146,34 @@ export default function PlaylistView() {
   // Set when something needs every page (Sort mode); a one-page scroll load then keeps going
   const wantAllPages = useRef(false);
 
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(() => useUserStore.getState().editPlaylistRequest === activePlaylistId);
+  useEffect(() => {
+    if (useUserStore.getState().editPlaylistRequest) useUserStore.getState().clearEditPlaylistRequest();
+  }, [activePlaylistId]);
+
+  // Someone else's playlist: in the library (followed) or not; saving follows it
+  const inLibrary = playlists.some((p) => p.id === activePlaylistId);
+  const [savingPlaylist, setSavingPlaylist] = useState(false);
+  const toggleSaved = async () => {
+    if (!token || !view || savingPlaylist) return;
+    setSavingPlaylist(true);
+    try {
+      if (inLibrary) {
+        await unfollowPlaylist(token, activePlaylistId);
+        setPlaylists(playlists.filter((p) => p.id !== activePlaylistId));
+        toast(`Removed "${view.name}" from your library`, { tone: 'info' });
+      } else {
+        await followPlaylist(token, activePlaylistId);
+        setPlaylists([...playlists, { id: view.id, name: view.name, images: view.images, owner: view.owner, tracks: { total: view.tracks?.total ?? 0 }, collaborative: Boolean(view.collaborative), type: 'playlist' }]);
+        toast(`Saved "${view.name}" to your library`, { tone: 'success' });
+      }
+    } catch (err) {
+      console.error(err);
+      toast(inLibrary ? "Couldn't remove the playlist" : "Couldn't save the playlist", { tone: 'error' });
+    } finally {
+      setSavingPlaylist(false);
+    }
+  };
   const [isUpdatingPlaylist, setIsUpdatingPlaylist] = useState(false);
 
   // --- "UNADDED SONGS" SYNC LOGIC STATES ---
@@ -583,7 +610,7 @@ export default function PlaylistView() {
     playOn((deviceId) => startTrack(deviceId, originalIndex), { track: sortedTracks[originalIndex]?.track });
   };
 
-  const handleUpdatePlaylist = async ({ name, description, imageFile }) => {
+  const handleUpdatePlaylist = async ({ name, description, imageFile, isPublic, collaborative }) => {
     if (!token || !activePlaylistId) return;
     setIsUpdatingPlaylist(true);
 
@@ -592,6 +619,8 @@ export default function PlaylistView() {
       // playlist with no description sent an empty one, which Spotify refuses with a 400.
       const changes = { name };
       if (description !== fromSpotifyText(view.description)) changes.description = description;
+      if (isPublic !== undefined && isPublic !== Boolean(view.public)) changes.public = isPublic;
+      if (collaborative !== undefined && collaborative !== Boolean(view.collaborative)) changes.collaborative = collaborative;
       const updated = await updatePlaylist(token, activePlaylistId, changes);
       
       if (imageFile) {
@@ -606,6 +635,11 @@ export default function PlaylistView() {
       }
       
       const nextDescription = updated.description ?? view.description;
+      if (changes.public !== undefined || changes.collaborative !== undefined) {
+        const flags = { ...(changes.public !== undefined ? { public: changes.public } : {}), ...(changes.collaborative !== undefined ? { collaborative: changes.collaborative } : {}) };
+        setPlaylist((prev) => (prev ? { ...prev, ...flags } : prev));
+        setPlaylists(playlists.map((p) => (p.id === activePlaylistId ? { ...p, ...flags } : p)));
+      }
       setPlaylist((prev) => prev ? { ...prev, name: updated.name, description: nextDescription } : prev);
       setPlaylists(playlists.map((p) => p.id === activePlaylistId ? { ...p, name: updated.name, description: nextDescription } : p));
       
@@ -851,13 +885,26 @@ export default function PlaylistView() {
               </button>
             </>
           )}
-          <button
-            type="button"
-            onClick={() => setEditDialogOpen(true)}
-            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors"
-          >
-            Edit playlist
-          </button>
+          {ownsPlaylist ? (
+            <button
+              type="button"
+              onClick={() => setEditDialogOpen(true)}
+              className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200 transition-colors"
+            >
+              Edit playlist
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={toggleSaved}
+              disabled={savingPlaylist}
+              aria-pressed={inLibrary}
+              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all disabled:opacity-60 ${inLibrary ? 'bg-white/10 border border-white/15 text-white hover:bg-white/15' : 'bg-brand-gradient text-white shadow-brand-glow hover:scale-105'}`}
+            >
+              {inLibrary ? <Check className="w-4 h-4" /> : <BookmarkPlus className="w-4 h-4" />}
+              {inLibrary ? 'In your library' : 'Save to library'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -999,14 +1046,27 @@ export default function PlaylistView() {
           >
             <ArrowUpDown className="w-5 h-5" />
           </button>
-          <button
-            type="button"
-            onClick={() => setEditDialogOpen(true)}
-            aria-label="Edit playlist"
-            className="w-11 h-11 rounded-full border border-white/10 bg-neutral-900 flex items-center justify-center text-neutral-300"
-          >
-            <Pencil className="w-5 h-5" />
-          </button>
+          {ownsPlaylist ? (
+            <button
+              type="button"
+              onClick={() => setEditDialogOpen(true)}
+              aria-label="Edit playlist"
+              className="w-11 h-11 rounded-full border border-white/10 bg-neutral-900 flex items-center justify-center text-neutral-300"
+            >
+              <Pencil className="w-5 h-5" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={toggleSaved}
+              disabled={savingPlaylist}
+              aria-label={inLibrary ? 'Remove from your library' : 'Save to your library'}
+              aria-pressed={inLibrary}
+              className={`w-11 h-11 rounded-full border flex items-center justify-center transition-colors ${inLibrary ? 'border-[var(--brand-mid)]/50 bg-[var(--brand-mid)]/15 text-white' : 'border-white/10 bg-neutral-900 text-neutral-300'}`}
+            >
+              {inLibrary ? <Check className="w-5 h-5" /> : <BookmarkPlus className="w-5 h-5" />}
+            </button>
+          )}
         </div>
       </div>
       {isUnaddedSongsPlaylist && isSyncing && syncStatusText && (
@@ -1142,6 +1202,8 @@ export default function PlaylistView() {
           initialName={view.name}
           initialDescription={fromSpotifyText(view.description)}
           initialImageUrl={view.images?.[0]?.url || ''}
+          initialPublic={Boolean(view.public)}
+          initialCollaborative={Boolean(view.collaborative)}
           onSubmit={handleUpdatePlaylist}
           onCancel={() => setEditDialogOpen(false)}
           isSubmitting={isUpdatingPlaylist}

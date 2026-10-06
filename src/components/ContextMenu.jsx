@@ -2,14 +2,33 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import { playOn } from '../services/spotify/playbackController';
-import { addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, unsaveAlbum, saveAlbumToLibrary } from '../services/spotify/api';
-import { ListPlus, Plus, ChevronRight, ChevronDown, ChevronUp, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil, CornerDownRight, User, Disc3 } from 'lucide-react';
+import {
+  addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, unfollowPlaylist, unsaveAlbum, saveAlbumToLibrary,
+  followPlaylist, fetchPlaylistSummary, fetchAlbumsByIds, fetchAlbumTrackUris, playContext, toggleTrackLike, checkTracksLiked,
+  followArtists, unfollowArtists
+} from '../services/spotify/api';
+import { shareSpotifyLink } from '../services/share';
+import { ListPlus, Plus, ChevronRight, ChevronDown, ChevronUp, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil, CornerDownRight, User, Disc3, Heart, Play, Share2, UserPlus, UserCheck, BookmarkPlus, BookmarkMinus } from 'lucide-react';
 import { idFromUri } from '../utils/spotifyUri';
 import FolderFormDialog from './FolderFormDialog';
 import { toast } from '../store/toastStore';
 import { flattenFolderTree, descendantIds, childrenOf } from '../utils/library';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useSlice } from '../store/selectors';
+
+// One ordinary entry: icon, label, action
+function MenuItem({ icon: Icon, label, onClick, iconClass = '' }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+    >
+      <Icon className={`w-4 h-4 text-neutral-400 shrink-0 ${iconClass}`} />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
 
 // One picker for every "Move to…" list: playlists, albums and folders. Rows are indented by
 // depth and labelled with their path so two "Favourites" folders in different places can be
@@ -60,14 +79,18 @@ export default function ContextMenu() {
     playlists, albums, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId,
     removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder, renameFolder, createFolder, moveFolder,
     reorderFolders, reorderPlaylistInFolder,
-    pinnedItems, togglePin, movePinnedItem, navigateToArtist, navigateToAlbum, setNowPlayingOpen
+    pinnedItems, togglePin, movePinnedItem, navigateToArtist, navigateToAlbum, setNowPlayingOpen,
+    setPlaylists, setAlbums, likedTracks, setLikedTracks, followedArtists, addFollowedArtist, removeFollowedArtist,
+    navigateToPlaylist, requestEditPlaylist
   } = useSlice(useUserStore, [
     'contextMenu', 'setContextMenu', 'token', 'triggerQueueRefresh',
     'addManuallyQueuedTrack',
     'playlists', 'albums', 'customFolders', 'profile', 'deletePlaylist', 'deleteFolder', 'setCurrentView', 'setActivePlaylistId',
     'removeAlbumFromLibrary', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'renameFolder', 'createFolder', 'moveFolder',
     'reorderFolders', 'reorderPlaylistInFolder',
-    'pinnedItems', 'togglePin', 'movePinnedItem', 'navigateToArtist', 'navigateToAlbum', 'setNowPlayingOpen'
+    'pinnedItems', 'togglePin', 'movePinnedItem', 'navigateToArtist', 'navigateToAlbum', 'setNowPlayingOpen',
+    'setPlaylists', 'setAlbums', 'likedTracks', 'setLikedTracks', 'followedArtists', 'addFollowedArtist', 'removeFollowedArtist',
+    'navigateToPlaylist', 'requestEditPlaylist'
   ]);
 
   const menuRef = useRef(null);
@@ -329,19 +352,140 @@ export default function ContextMenu() {
     }, { track, quiet: true }).catch(() => toast("Couldn't add to the queue", { tone: 'error' }));
   };
 
+  const menuAlbumId = contextMenu?.albumId || null;
+  const menuAlbum = contextMenu?.album || albums.find((a) => a.id === menuAlbumId) || null;
+  const albumInLibrary = Boolean(menuAlbumId) && albums.some((a) => a.id === menuAlbumId);
+  const menuArtistId = contextMenu?.artistId || null;
+  const menuArtist = contextMenu?.artist || followedArtists.find((a) => a.id === menuArtistId) || null;
+  const artistFollowed = Boolean(menuArtistId) && followedArtists.some((a) => a.id === menuArtistId);
+
+  // What "Add to playlist" adds: the song, or every song of the album
   const handleAddToPlaylist = async (playlistId) => {
-    if (!token || !contextMenu.track) return;
+    if (!token || (!contextMenu.track && !menuAlbumId)) return;
     const playlistName = playlists.find(p => p.id === playlistId)?.name || 'playlist';
-    const trackName = contextMenu.track.name;
+    const what = contextMenu.track ? `"${contextMenu.track.name}"` : `"${menuAlbum?.name || 'the album'}"`;
+    closeMenu();
     try {
-      await addTracksToPlaylist(token, playlistId, [contextMenu.track.uri]);
-      closeMenu();
-      toast(`Added "${trackName}" to ${playlistName}`, { tone: 'success' });
+      const uris = contextMenu.track ? [contextMenu.track.uri] : await fetchAlbumTrackUris(token, menuAlbumId);
+      for (let i = 0; i < uris.length; i += 100) await addTracksToPlaylist(token, playlistId, uris.slice(i, i + 100));
+      toast(`Added ${what} to ${playlistName}`, { tone: 'success' });
     } catch (err) {
       console.error(err);
       toast(`Couldn't add to ${playlistName}`, { tone: 'error' });
     }
   };
+
+  // The heart, from the menu: unknown state is looked up first, as the heart itself does
+  const trackId = contextMenu?.track?.id || idFromUri(contextMenu?.track?.uri, 'track');
+  const trackLiked = trackId ? likedTracks[trackId] : undefined;
+  const handleLikeToggle = async () => {
+    if (!token || !trackId) return;
+    closeMenu();
+    let current = trackLiked === true;
+    if (trackLiked === undefined) {
+      try { current = Boolean((await checkTracksLiked(token, [trackId]))[trackId]); } catch { return; }
+    }
+    setLikedTracks({ [trackId]: !current });
+    try {
+      await toggleTrackLike(token, trackId, current);
+      toast(current ? 'Removed from Liked Songs' : 'Saved to Liked Songs', { tone: current ? 'info' : 'success' });
+    } catch (err) {
+      console.error(err);
+      setLikedTracks({ [trackId]: current });
+      toast("Couldn't change Liked Songs", { tone: 'error' });
+    }
+  };
+
+  const handlePlayContext = (uri) => {
+    if (!token) return;
+    closeMenu();
+    playOn((deviceId) => playContext(token, deviceId, uri));
+  };
+
+  // Spotify's queue takes one song per request; an album goes in song by song
+  const handleQueueAlbum = async () => {
+    if (!token || !menuAlbumId) return;
+    closeMenu();
+    try {
+      const uris = await fetchAlbumTrackUris(token, menuAlbumId);
+      await playOn(async (deviceId) => { for (const uri of uris) await addToQueue(token, deviceId, uri); }, { quiet: true });
+      triggerQueueRefresh();
+      toast(`Added ${uris.length} song${uris.length === 1 ? '' : 's'} to the queue`, { tone: 'success' });
+    } catch (err) {
+      console.error(err);
+      toast("Couldn't add the album to the queue", { tone: 'error' });
+    }
+  };
+
+  const handleSaveAlbum = async () => {
+    if (!token || !menuAlbumId) return;
+    closeMenu();
+    try {
+      await saveAlbumToLibrary(token, menuAlbumId);
+      const album = menuAlbum || (await fetchAlbumsByIds(token, [menuAlbumId]))[0];
+      if (album) setAlbums([...useUserStore.getState().albums, { id: album.id, name: album.name, images: album.images, artists: album.artists, type: 'album', total_tracks: album.total_tracks }]);
+      toast(`Saved "${album?.name || 'album'}" to your library`, { tone: 'success' });
+    } catch (err) {
+      console.error(err);
+      toast("Couldn't save the album", { tone: 'error' });
+    }
+  };
+
+  // Someone else's playlist: saving it is following it, and it appears in the library
+  const handleSavePlaylist = async () => {
+    if (!token || !contextMenu?.playlistId) return;
+    const id = contextMenu.playlistId;
+    closeMenu();
+    try {
+      await followPlaylist(token, id);
+      const summary = await fetchPlaylistSummary(token, id).catch(() => null);
+      if (summary) setPlaylists([...useUserStore.getState().playlists, summary]);
+      toast(`Saved "${summary?.name || 'playlist'}" to your library`, { tone: 'success' });
+    } catch (err) {
+      console.error(err);
+      toast("Couldn't save the playlist", { tone: 'error' });
+    }
+  };
+  const handleUnfollowPlaylist = async () => {
+    if (!token || !menuPlaylist) return;
+    const removed = menuPlaylist;
+    closeMenu();
+    try {
+      await unfollowPlaylist(token, removed.id);
+      setPlaylists(useUserStore.getState().playlists.filter((p) => p.id !== removed.id));
+      toast(`Removed "${removed.name}" from your library`, {
+        action: { label: 'Undo', onClick: async () => {
+          try { await followPlaylist(token, removed.id); setPlaylists([...useUserStore.getState().playlists, removed]); }
+          catch { toast("Couldn't put the playlist back", { tone: 'error' }); }
+        } }
+      });
+    } catch (err) {
+      console.error(err);
+      toast("Couldn't remove the playlist", { tone: 'error' });
+    }
+  };
+
+  const handleFollowArtist = async () => {
+    if (!token || !menuArtistId) return;
+    const name = menuArtist?.name || 'artist';
+    closeMenu();
+    try {
+      if (artistFollowed) {
+        await unfollowArtists(token, [menuArtistId]);
+        removeFollowedArtist(menuArtistId);
+        toast(`Unfollowed ${name}`, { action: { label: 'Undo', onClick: async () => { try { await followArtists(token, [menuArtistId]); if (menuArtist) addFollowedArtist(menuArtist); } catch { toast("Couldn't follow again", { tone: 'error' }); } } } });
+      } else {
+        await followArtists(token, [menuArtistId]);
+        if (menuArtist) addFollowedArtist(menuArtist);
+        toast(`Following ${name}`, { tone: 'success' });
+      }
+    } catch (err) {
+      console.error(err);
+      toast(artistFollowed ? "Couldn't unfollow" : "Couldn't follow", { tone: 'error' });
+    }
+  };
+
+  const share = (type, id, name) => { closeMenu(); shareSpotifyLink(type, id, name); };
 
   const handleRemoveFromPlaylist = async () => {
     if (!token || !contextMenu.track || !contextMenu.sourcePlaylistId) return;
@@ -425,6 +569,88 @@ export default function ContextMenu() {
     else toast(`Pinned ${name} to Home`);
   };
 
+  const addToPlaylistMenu = (
+      <div
+        className="relative"
+        onMouseEnter={() => { if (!isMobile) setShowPlaylistMenu(true); }}
+        onMouseLeave={() => { if (!isMobile) setShowPlaylistMenu(false); }}
+      >
+        <button
+          // Click as well as hover, so it works on touch screens
+          onClick={() => setShowPlaylistMenu(v => !v)}
+          className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-between transition-colors"
+        >
+          <div className="flex items-center space-x-3">
+            <Plus className="w-4 h-4 text-neutral-400" />
+            <span>Add to Playlist</span>
+          </div>
+          {showPlaylistMenu && isMobile ? <ChevronDown className="w-4 h-4 text-neutral-500" /> : <ChevronRight className="w-4 h-4 text-neutral-500" />}
+        </button>
+
+        {/* Desktop: a flyout beside the menu. Phone: the list unfolds inside the sheet. */}
+        {showPlaylistMenu && (
+          <div className={isMobile ? 'w-full' : `absolute top-0 z-50 ${flipSubmenu ? 'right-full pr-2 -mr-2' : 'left-full pl-2 -ml-2'}`}>
+            <div
+              style={isMobile ? undefined : { maxHeight: submenuMaxHeight }}
+              className={isMobile
+                ? 'w-full max-h-[45dvh] bg-black/30 border-y border-white/5 py-2 overflow-y-auto'
+                : 'w-64 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-2 overflow-y-auto custom-scrollbar'}
+            >
+              {unfolderedPlaylists.map(pl => (
+                <button
+                  key={pl.id}
+                  onClick={() => handleAddToPlaylist(pl.id)}
+                  className="w-full text-left px-4 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 truncate transition-colors"
+                >
+                  {pl.name}
+                </button>
+              ))}
+
+              {flattenFolderTree(customFolders).map(({ folder, path }) => {
+                const folderPls = userPlaylists.filter(p => folder.playlistIds.includes(p.id));
+                if (folderPls.length === 0) return null;
+                const isOpen = openFolderIds.has(folder.id);
+
+                return (
+                  <div key={folder.id} className="mt-1 pt-1 border-t border-white/5">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleFolderOpen(folder.id); }}
+                      aria-expanded={isOpen}
+                      title={path.join(' › ')}
+                      className="w-full px-4 py-2 flex items-center justify-between text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                    >
+                      <span className="flex items-center min-w-0">
+                        <Folder className={`w-3.5 h-3.5 mr-2 shrink-0 ${isOpen ? 'text-[var(--brand-mid)]' : 'text-neutral-500'}`} />
+                        {/* Nested folders show their path; the accordion itself stays one level deep */}
+                        <span className="truncate font-medium">{path.join(' › ')}</span>
+                      </span>
+                      <span className="flex items-center gap-2 shrink-0 ml-2">
+                        <span className="text-[10px] font-bold text-neutral-500 tabular-nums">{folderPls.length}</span>
+                        {isOpen
+                          ? <ChevronDown className="w-3.5 h-3.5 text-neutral-500" />
+                          : <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />}
+                      </span>
+                    </button>
+
+                    {isOpen && folderPls.map(pl => (
+                      <button
+                        key={pl.id}
+                        onClick={() => handleAddToPlaylist(pl.id)}
+                        className="w-full text-left px-4 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 truncate transition-colors pl-9"
+                      >
+                        {pl.name}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+  );
+
   return createPortal(
     <>
       {/* The document click-outside handler closes the menu when this is tapped */}
@@ -487,6 +713,9 @@ export default function ContextMenu() {
             <ListPlus className="w-4 h-4 text-neutral-400" />
             <span>Add to Queue</span>
           </button>
+          {trackId && (
+            <MenuItem icon={Heart} label={trackLiked === true ? 'Remove from Liked Songs' : 'Save to Liked Songs'} onClick={handleLikeToggle} iconClass={trackLiked === true ? 'fill-[var(--brand-mid)] text-[var(--brand-mid)]' : ''} />
+          )}
 
           {/* Navigation lives here rather than on names inside rows, which stole taps on phones.
               Tracks come from the Web API (ids) or the SDK (uris only), so resolve both. */}
@@ -528,90 +757,21 @@ export default function ContextMenu() {
             </button>
           )}
 
-          <div
-            className="relative"
-            onMouseEnter={() => { if (!isMobile) setShowPlaylistMenu(true); }}
-            onMouseLeave={() => { if (!isMobile) setShowPlaylistMenu(false); }}
-          >
-            <button
-              // Click as well as hover, so it works on touch screens
-              onClick={() => setShowPlaylistMenu(v => !v)}
-              className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-between transition-colors"
-            >
-              <div className="flex items-center space-x-3">
-                <Plus className="w-4 h-4 text-neutral-400" />
-                <span>Add to Playlist</span>
-              </div>
-              {showPlaylistMenu && isMobile ? <ChevronDown className="w-4 h-4 text-neutral-500" /> : <ChevronRight className="w-4 h-4 text-neutral-500" />}
-            </button>
-
-            {/* Desktop: a flyout beside the menu. Phone: the list unfolds inside the sheet. */}
-            {showPlaylistMenu && (
-              <div className={isMobile ? 'w-full' : `absolute top-0 z-50 ${flipSubmenu ? 'right-full pr-2 -mr-2' : 'left-full pl-2 -ml-2'}`}>
-                <div
-                  style={isMobile ? undefined : { maxHeight: submenuMaxHeight }}
-                  className={isMobile
-                    ? 'w-full max-h-[45dvh] bg-black/30 border-y border-white/5 py-2 overflow-y-auto'
-                    : 'w-64 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-2 overflow-y-auto custom-scrollbar'}
-                >
-                  {unfolderedPlaylists.map(pl => (
-                    <button
-                      key={pl.id}
-                      onClick={() => handleAddToPlaylist(pl.id)}
-                      className="w-full text-left px-4 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 truncate transition-colors"
-                    >
-                      {pl.name}
-                    </button>
-                  ))}
-
-                  {flattenFolderTree(customFolders).map(({ folder, path }) => {
-                    const folderPls = userPlaylists.filter(p => folder.playlistIds.includes(p.id));
-                    if (folderPls.length === 0) return null;
-                    const isOpen = openFolderIds.has(folder.id);
-
-                    return (
-                      <div key={folder.id} className="mt-1 pt-1 border-t border-white/5">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); toggleFolderOpen(folder.id); }}
-                          aria-expanded={isOpen}
-                          title={path.join(' › ')}
-                          className="w-full px-4 py-2 flex items-center justify-between text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
-                        >
-                          <span className="flex items-center min-w-0">
-                            <Folder className={`w-3.5 h-3.5 mr-2 shrink-0 ${isOpen ? 'text-[var(--brand-mid)]' : 'text-neutral-500'}`} />
-                            {/* Nested folders show their path; the accordion itself stays one level deep */}
-                            <span className="truncate font-medium">{path.join(' › ')}</span>
-                          </span>
-                          <span className="flex items-center gap-2 shrink-0 ml-2">
-                            <span className="text-[10px] font-bold text-neutral-500 tabular-nums">{folderPls.length}</span>
-                            {isOpen
-                              ? <ChevronDown className="w-3.5 h-3.5 text-neutral-500" />
-                              : <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />}
-                          </span>
-                        </button>
-
-                        {isOpen && folderPls.map(pl => (
-                          <button
-                            key={pl.id}
-                            onClick={() => handleAddToPlaylist(pl.id)}
-                            className="w-full text-left px-4 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 truncate transition-colors pl-9"
-                          >
-                            {pl.name}
-                          </button>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
+          {addToPlaylistMenu}
+          {trackId && <MenuItem icon={Share2} label="Share" onClick={() => share('track', trackId, contextMenu.track?.name)} />}
         </>
       )}
 
       {(contextMenu?.type === 'playlist' || contextMenu?.playlistId) && (
         <>
+          <MenuItem icon={Play} label="Play" onClick={() => handlePlayContext(`spotify:playlist:${contextMenu.playlistId}`)} />
+          {/* Yours: edit and delete. Someone else's: save it to the library, or take it out again */}
+          {ownsMenuPlaylist && (
+            <MenuItem icon={Pencil} label="Edit details" onClick={() => { closeMenu(); requestEditPlaylist(contextMenu.playlistId); navigateToPlaylist(contextMenu.playlistId); }} />
+          )}
+          {!ownsMenuPlaylist && !menuPlaylist && <MenuItem icon={BookmarkPlus} label="Save to your library" onClick={handleSavePlaylist} />}
+          {!ownsMenuPlaylist && menuPlaylist && <MenuItem icon={BookmarkMinus} label="Remove from your library" onClick={handleUnfollowPlaylist} />}
+          <MenuItem icon={Share2} label="Share" onClick={() => share('playlist', contextMenu.playlistId, menuPlaylist?.name)} />
           {/* Only a playlist you own can be deleted. Offering it on others' used to end in a
               confirm that did nothing, and read "undefined" for playlists not in the library. */}
           {ownsMenuPlaylist && (
@@ -649,13 +809,24 @@ export default function ContextMenu() {
 
       {(contextMenu?.type === 'album' || contextMenu?.albumId) && (
         <>
-          <button
-            onClick={handleRemoveAlbum}
-            className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
-          >
-            <Trash2 className="w-4 h-4 text-red-400" />
-            <span>Remove from Library</span>
-          </button>
+          <MenuItem icon={Play} label="Play" onClick={() => handlePlayContext(`spotify:album:${menuAlbumId}`)} />
+          <MenuItem icon={ListPlus} label="Add to Queue" onClick={handleQueueAlbum} />
+          {addToPlaylistMenu}
+          {(menuAlbum?.artists || []).filter((a) => a?.id).slice(0, 3).map((a) => (
+            <MenuItem key={a.id} icon={User} label={`Go to ${a.name}`} onClick={() => { closeMenu(); navigateToArtist(a.id); }} />
+          ))}
+          {albumInLibrary ? (
+            <button
+              onClick={handleRemoveAlbum}
+              className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+            >
+              <Trash2 className="w-4 h-4 text-red-400" />
+              <span>Remove from Library</span>
+            </button>
+          ) : (
+            <MenuItem icon={BookmarkPlus} label="Save to your library" onClick={handleSaveAlbum} />
+          )}
+          <MenuItem icon={Share2} label="Share" onClick={() => share('album', menuAlbumId, menuAlbum?.name)} />
 
           {contextMenu?.parentFolderId && (
             <button
@@ -677,6 +848,15 @@ export default function ContextMenu() {
             onPick={(folderId) => { addPlaylistToFolder(folderId, contextMenu.albumId); closeMenu(); }}
             footer={newFolderEntry(contextMenu.albumId)}
           />
+        </>
+      )}
+
+      {contextMenu?.type === 'artist' && menuArtistId && (
+        <>
+          <MenuItem icon={Play} label="Play" onClick={() => handlePlayContext(`spotify:artist:${menuArtistId}`)} />
+          <MenuItem icon={artistFollowed ? UserCheck : UserPlus} label={artistFollowed ? 'Unfollow' : 'Follow'} onClick={handleFollowArtist} iconClass={artistFollowed ? 'text-[var(--brand-mid)]' : ''} />
+          {!contextMenu.onArtistPage && <MenuItem icon={User} label="Go to artist" onClick={() => { closeMenu(); navigateToArtist(menuArtistId); }} />}
+          <MenuItem icon={Share2} label="Share" onClick={() => share('artist', menuArtistId, menuArtist?.name)} />
         </>
       )}
 

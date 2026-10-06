@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { UserPlus, UserMinus, UserCheck, Loader2, ExternalLink } from 'lucide-react';
+import { UserPlus, UserMinus, UserCheck, Loader2, ExternalLink, Share2 } from 'lucide-react';
+import { shareSpotifyLink } from '../../services/share';
 import { useUserStore } from '../../store/userStore';
 import { useSlice } from '../../store/selectors';
 import { useUserProfilesStore } from '../../store/userProfilesStore';
@@ -99,8 +100,8 @@ export default function UserView() {
             {user.followers?.total != null ? `${user.followers.total.toLocaleString()} followers` : ''}
             {current.playlists.length ? ` • ${current.playlists.length} public playlist${current.playlists.length === 1 ? '' : 's'}` : ''}
           </p>
-          {!isMe && (
-            <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {!isMe && (<>
               <button
                 type="button"
                 onClick={toggleFollow}
@@ -134,8 +135,15 @@ export default function UserView() {
               >
                 <ExternalLink className="w-4 h-4" /> Open in Spotify
               </a>
-            </div>
-          )}
+            </>)}
+            <button
+              type="button"
+              onClick={() => shareSpotifyLink('user', currentUserId, name)}
+              className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-white transition-colors"
+            >
+              <Share2 className="w-4 h-4" /> Share
+            </button>
+          </div>
           {current.followError && <p className="text-xs text-amber-300 mt-3 max-w-md">{current.followError}</p>}
         </div>
       </div>

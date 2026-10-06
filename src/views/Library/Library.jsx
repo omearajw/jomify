@@ -8,6 +8,7 @@ import { SkeletonCards } from '../../components/Skeleton';
 import PlaylistFormDialog from '../../components/PlaylistFormDialog';
 import FolderFormDialog from '../../components/FolderFormDialog';
 import { getUnfolderedItems, descendantIds, descendantItemIds, folderPath, isDescendant, byOrder } from '../../utils/library';
+import { getRecentlyPlayed, lastPlayedByContext } from '../../services/recentlyPlayed';
 import { rowButtonProps } from '../../utils/a11y';
 import { useSlice } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
@@ -115,6 +116,27 @@ function ItemCard({
   );
 }
 
+// An artist you follow: round art, name, the artist menu
+function ArtistCard({ artist, onOpen, onMenu }) {
+  return (
+    <div
+      onClick={() => onOpen(artist.id)}
+      {...rowButtonProps(() => onOpen(artist.id))}
+      onContextMenu={onMenu}
+      className="p-4 rounded-xl bg-neutral-800/40 hover:bg-neutral-800 transition-all duration-300 cursor-pointer group shadow-lg flex flex-col h-full relative"
+    >
+      <button type="button" onClick={onMenu} className="absolute top-6 right-6 z-10 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity backdrop-blur-md" aria-label={`Options for ${artist.name}`}>
+        <MoreVertical className="w-4 h-4" />
+      </button>
+      <div className="relative aspect-square w-full mb-4 rounded-full overflow-hidden bg-neutral-800 flex items-center justify-center shadow-md shrink-0 pointer-events-none">
+        {artist.images?.length > 0 ? <img src={artUrl(artist.images, 300)} draggable="false" alt={artist.name} loading="lazy" decoding="async" className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300" /> : <span className="text-3xl">🎤</span>}
+      </div>
+      <h3 className="font-bold text-sm text-white truncate mb-1 pointer-events-none">{artist.name}</h3>
+      <p className="text-xs text-neutral-400 truncate mt-auto pointer-events-none">Artist</p>
+    </div>
+  );
+}
+
 function ManageCard({ item, action, onClick }) {
   return (
     <div onClick={onClick} className={`p-4 rounded-xl transition-all duration-300 cursor-pointer group shadow-lg border border-transparent flex flex-col h-full ${action === 'add' ? 'bg-neutral-800/20 hover:border-[#f91362]/50 hover:bg-[var(--brand-mid)]/15' : 'bg-neutral-800/40 hover:border-red-500/50 hover:bg-red-500/10'}`}>
@@ -133,16 +155,30 @@ const subfolderLabel = (count) => (count ? ` · ${count} folder${count === 1 ? '
 const itemLabel = (count) => `${count} item${count === 1 ? '' : 's'}`;
 
 const SORT_OPTIONS = [
+  { id: 'recent', label: 'Recently played' },
   { id: 'spotify', label: 'Spotify order' },
   { id: 'az', label: 'A to Z' },
   { id: 'za', label: 'Z to A' },
   { id: 'owner', label: 'By owner' }
 ];
+const FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'playlists', label: 'Playlists' },
+  { id: 'albums', label: 'Albums' },
+  { id: 'artists', label: 'Artists' },
+  { id: 'folders', label: 'Folders' }
+];
 const ownerOf = (item) => (item.type === 'album' ? (item.artists?.map(a => a.name).join(', ') || '') : (item.owner?.display_name || ''));
-function sortItems(items, mode) {
+// `lastPlayed` maps a context uri to the time it was last played, from Spotify's recently-played
+// feed: only the last 50 plays, so most things fall back to Spotify's order behind them
+function sortItems(items, mode, lastPlayed = null) {
   if (mode === 'spotify') return items;
   const byName = (a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
   const sorted = [...items];
+  if (mode === 'recent') {
+    const at = (item) => lastPlayed?.get(`spotify:${item.type === 'album' ? 'album' : item.type === 'artist' ? 'artist' : 'playlist'}:${item.id}`) || 0;
+    return sorted.map((item, i) => ({ item, i, t: at(item) })).sort((a, b) => (b.t - a.t) || (a.i - b.i)).map((x) => x.item);
+  }
   if (mode === 'az') sorted.sort(byName);
   else if (mode === 'za') sorted.sort((a, b) => byName(b, a));
   else if (mode === 'owner') sorted.sort((a, b) => ownerOf(a).localeCompare(ownerOf(b), undefined, { sensitivity: 'base' }) || byName(a, b));
@@ -246,14 +282,28 @@ export default function Library() {
     customFolders, addPlaylistToFolder, removePlaylistFromFolder, deleteFolder, deletePlaylist, createFolder,
     draggedItem, setDraggedItem, moveFolder, reorderPlaylistInFolder,
     libraryGridSize, setLibraryGridSize, librarySort, setLibrarySort, setContextMenu, activeFolderId, setActiveFolderId,
-    manageFolderId, clearManageRequest, removeMissingFolderItems
+    manageFolderId, clearManageRequest, removeMissingFolderItems,
+    followedArtists, libraryFilter, setLibraryFilter, navigateToArtist
   } = useSlice(useUserStore, [
     'token', 'profile', 'playlists', 'albums', 'setPlaylists', 'setCurrentView', 'setActivePlaylistId', 'navigateToPlaylist', 'navigateToAlbum',
     'customFolders', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'deleteFolder', 'deletePlaylist', 'createFolder',
     'draggedItem', 'setDraggedItem', 'moveFolder', 'reorderPlaylistInFolder',
     'libraryGridSize', 'setLibraryGridSize', 'librarySort', 'setLibrarySort', 'setContextMenu', 'activeFolderId', 'setActiveFolderId',
-    'manageFolderId', 'clearManageRequest', 'removeMissingFolderItems'
+    'manageFolderId', 'clearManageRequest', 'removeMissingFolderItems',
+    'followedArtists', 'libraryFilter', 'setLibraryFilter', 'navigateToArtist'
   ]);
+
+  // Recently played, for that sort order; fetched when it is chosen
+  const [lastPlayed, setLastPlayed] = useState(null);
+  useEffect(() => {
+    if (librarySort !== 'recent' || !token) return undefined;
+    let cancelled = false;
+    getRecentlyPlayed(token, profile?.id || '')
+      .then((items) => { if (!cancelled) setLastPlayed(lastPlayedByContext(items)); })
+      .catch((err) => console.debug('[library] recently played unavailable:', err?.message || err));
+    return () => { cancelled = true; };
+  }, [librarySort, token, profile?.id]);
+  const show = (kind) => libraryFilter === 'all' || libraryFilter === kind;
 
   const [loading, setLoading] = useState(playlists.length === 0);
   const [loadError, setLoadError] = useState('');
@@ -479,7 +529,7 @@ export default function Library() {
     return 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6';
   };
 
-  const handleCreatePlaylist = async ({ name, description, imageFile }) => {
+  const handleCreatePlaylist = async ({ name, description, imageFile, isPublic = false, collaborative = false }) => {
     if (!token || !profile?.id) return;
     setIsSubmittingPlaylist(true);
 
@@ -487,8 +537,8 @@ export default function Library() {
       const newPlaylist = await createPlaylist(token, profile.id, {
         name,
         description,
-        public: false,
-        collaborative: false
+        public: isPublic,
+        collaborative
       });
 
       if (imageFile) {
@@ -561,7 +611,7 @@ export default function Library() {
   const gridItems = [];
 
   if (!activeFolder) {
-    gridItems.push(
+    if (show('playlists')) gridItems.push(
       <div key="liked-songs" onClick={() => setCurrentView('liked-songs')} className={`bg-brand-gradient ${libraryGridSize === 'small' ? 'p-2.5' : 'p-4'} rounded-xl hover:scale-[1.02] transition-all duration-300 cursor-pointer group shadow-lg flex flex-col justify-end aspect-square relative overflow-hidden`}>
         <div className={`absolute ${libraryGridSize === 'small' ? 'top-2.5 left-2.5' : 'top-4 left-4'}`}><Heart className={`${libraryGridSize === 'small' ? 'w-5 h-5' : 'w-8 h-8'} fill-white text-white shadow-sm`} /></div>
         <h3 className={`font-bold text-white leading-tight tracking-tighter ${libraryGridSize === 'small' ? 'text-sm' : 'text-2xl mb-1'}`}>Liked Songs</h3>
@@ -569,7 +619,7 @@ export default function Library() {
       </div>
     );
 
-    childrenOf(null).forEach((folder) => {
+    if (show('folders')) childrenOf(null).forEach((folder) => {
       gridItems.push(
         expandedFolders.includes(folder.id)
           ? <FolderPanel key={`expanded-${folder.id}`} folder={folder} ctx={folderCtx} />
@@ -577,8 +627,11 @@ export default function Library() {
       );
     });
 
-    sortItems(unfolderedPlaylists.filter(pl => pl.owner?.id !== 'spotify'), librarySort).forEach((pl) => gridItems.push(<ItemCard key={pl.id} item={pl} {...itemCardProps} />));
-    sortItems(unfolderedAlbums, librarySort).forEach((album) => gridItems.push(<ItemCard key={album.id} item={album} {...itemCardProps} />));
+    if (show('playlists')) sortItems(unfolderedPlaylists.filter(pl => pl.owner?.id !== 'spotify'), librarySort, lastPlayed).forEach((pl) => gridItems.push(<ItemCard key={pl.id} item={pl} {...itemCardProps} />));
+    if (show('albums')) sortItems(unfolderedAlbums, librarySort, lastPlayed).forEach((album) => gridItems.push(<ItemCard key={album.id} item={album} {...itemCardProps} />));
+    if (show('artists')) sortItems(followedArtists.map((a) => ({ ...a, type: 'artist' })), librarySort, lastPlayed).forEach((artist) => gridItems.push(
+      <ArtistCard key={`artist-${artist.id}`} artist={artist} onOpen={navigateToArtist} onMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'artist', x: e.pageX, y: e.pageY, artistId: artist.id, artist }); }} />
+    ));
   }
 
   // Search covers everything, foldered or not, plus folder names; results replace the grid
@@ -798,6 +851,22 @@ export default function Library() {
             </label>
             <SizingControls libraryGridSize={libraryGridSize} setLibraryGridSize={setLibraryGridSize} className="sm:hidden" />
             </div>
+          </div>
+
+          {/* Which kinds to show, as Spotify's chips at the top of Library */}
+          <div className="flex flex-wrap items-center gap-2 mb-6" role="radiogroup" aria-label="Show">
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                role="radio"
+                aria-checked={libraryFilter === f.id}
+                onClick={() => setLibraryFilter(f.id)}
+                className={`px-3.5 py-1.5 rounded-full text-sm font-semibold transition-colors ${libraryFilter === f.id ? 'bg-white text-black' : 'bg-white/5 border border-white/10 text-neutral-300 hover:bg-white/10'}`}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
 
           {trimmedQuery ? (

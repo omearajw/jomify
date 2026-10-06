@@ -475,6 +475,7 @@ export const useUserStore = create(
         profile: null,
         playlists: [],
         albums: [],
+        followedArtists: [],
         currentView: 'home',
         viewHistory: [],
         activeFolderId: null,
@@ -579,6 +580,20 @@ export const useUserStore = create(
           currentView: view
         };
       }),
+
+      // Artists you follow, loaded at start like playlists and albums; kept current as you follow
+      followedArtists: [],
+      setFollowedArtists: (artists) => set({ followedArtists: uniqueById(artists || []) }),
+      addFollowedArtist: (artist) => set((state) => (artist?.id && !state.followedArtists.some((a) => a.id === artist.id)
+        ? { followedArtists: [...state.followedArtists, artist] } : {})),
+      removeFollowedArtist: (artistId) => set((state) => ({ followedArtists: state.followedArtists.filter((a) => a.id !== artistId) })),
+      // Which kinds the Library shows: 'all' | 'playlists' | 'albums' | 'artists' | 'folders'
+      libraryFilter: 'all',
+      setLibraryFilter: (libraryFilter) => set({ libraryFilter }),
+      // "Edit details" from a menu elsewhere: the playlist page opens its dialog on arrival
+      editPlaylistRequest: null,
+      requestEditPlaylist: (playlistId) => set({ editPlaylistRequest: playlistId }),
+      clearEditPlaylistRequest: () => set({ editPlaylistRequest: null }),
 
       // Home's turn banner asks for the workspace; the Seven page opens it on arrival and clears this
       workspaceRequest: null,

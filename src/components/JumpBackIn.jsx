@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Play } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { useSlice } from '../store/selectors';
-import { fetchRecentlyPlayed, fetchAlbumsByIds, fetchArtistsByIds, fetchPlaylistSummary, playContext } from '../services/spotify/api';
+import { fetchAlbumsByIds, fetchArtistsByIds, fetchPlaylistSummary, playContext } from '../services/spotify/api';
+import { getRecentlyPlayed } from '../services/recentlyPlayed';
 import { playOn } from '../services/spotify/playbackController';
 import { artUrl } from '../utils/images';
 import { rowButtonProps } from '../utils/a11y';
@@ -17,8 +18,8 @@ let cache = null; // { userId, entries, at }
 // Spotify's recently-played feed lists tracks with the context they were played from. One card
 // per context, most recent first: the playlist, album or artist you were in, not the song.
 async function buildEntries(token) {
-  const items = await fetchRecentlyPlayed(token, 50);
-  const { playlists, albums } = useUserStore.getState();
+  const { playlists, albums, profile } = useUserStore.getState();
+  const items = await getRecentlyPlayed(token, profile?.id || '');
   const playlistById = new Map(playlists.map(p => [p.id, p]));
   const albumById = new Map((albums || []).map(a => [a.id, a]));
 

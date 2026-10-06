@@ -4,9 +4,12 @@ import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
 import { playOn } from '../../services/spotify/playbackController';
 import MoreButton, { CardMoreButton } from '../../components/MoreButton';
-import { playUris, checkTracksLiked, spotifyFetch } from '../../services/spotify/api';
+import { playUris, checkTracksLiked, spotifyFetch, fetchArtistAlbums, followArtists, unfollowArtists, checkFollowingArtists, playContext } from '../../services/spotify/api';
+import { loadAllLikedSongs, likedSongsLoaded, likedSongsByArtist } from '../../services/likedLibrary';
+import { toast } from '../../store/toastStore';
+import { shareSpotifyLink } from '../../services/share';
 import { formatTime } from '../../utils/formatTime';
-import { Play } from 'lucide-react';
+import { Play, UserPlus, UserCheck, Loader2, Share2, Heart } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import { SkeletonHeader, SkeletonRows, SkeletonCards } from '../../components/Skeleton';
 import { rowButtonProps } from '../../utils/a11y';
@@ -21,11 +24,22 @@ const describeFailure = (err, status) => {
 };
 
 export default function Artist() {
-  const { token, setLikedTracks, currentArtistId, setContextMenu, navigateToAlbum } = useSlice(useUserStore, ['token', 'setLikedTracks', 'currentArtistId', 'setContextMenu', 'navigateToAlbum']);
+  const { token, setLikedTracks, currentArtistId, setContextMenu, navigateToAlbum, followedArtists, addFollowedArtist, removeFollowedArtist, profile } = useSlice(useUserStore, ['token', 'setLikedTracks', 'currentArtistId', 'setContextMenu', 'navigateToAlbum', 'followedArtists', 'addFollowedArtist', 'removeFollowedArtist', 'profile']);
   const { currentPlayingTrack } = usePlaybackSummary();
   const [artist, setArtist] = useState(null);
   const [topTracks, setTopTracks] = useState([]);
   const [albums, setAlbums] = useState([]);
+  // Spotify's four discography groups; albums and singles load with the page, the other two
+  // when their tab is chosen
+  const [groups, setGroups] = useState({ appears_on: null, compilation: null });
+  const [tab, setTab] = useState('album');
+  // Your liked songs by this artist: every liked song has to be read once for that, so it
+  // waits for a tap, shows progress, and is instant afterwards
+  const [likedHere, setLikedHere] = useState(() => {
+    const all = likedSongsLoaded(profile?.id || '');
+    return all ? likedSongsByArtist(all, currentArtistId) : null;
+  });
+  const [likedProgress, setLikedProgress] = useState(null); // { have, total }
   // Each part lands on its own, so the header is up while the discography pages in
   const [loading, setLoading] = useState({ artist: true, tracks: true, albums: true });
   const [error, setError] = useState('');
@@ -48,6 +62,9 @@ export default function Artist() {
           setArtist(null);
           setTopTracks([]);
           setAlbums([]);
+          setGroups({ appears_on: null, compilation: null });
+          setTab('album');
+          setLikedHere(null);
         }
         shownId.current = currentArtistId;
         const headers = { Authorization: `Bearer ${token}` };
@@ -110,6 +127,75 @@ export default function Artist() {
     return () => { cancelled = true; };
   }, [token, currentArtistId, setLikedTracks, attempt]);
 
+  const loadGroup = (group) => {
+    if (!token || !currentArtistId || groups[group] !== null) return;
+    setGroups((g) => ({ ...g, [group]: 'loading' }));
+    fetchArtistAlbums(token, currentArtistId, group)
+      .then((list) => setGroups((g) => ({ ...g, [group]: list })))
+      .catch(() => setGroups((g) => ({ ...g, [group]: [] })));
+  };
+  const pickTab = (next) => { setTab(next); if (next === 'appears_on' || next === 'compilation') loadGroup(next); };
+  const albumsOnly = albums.filter((a) => a.album_type === 'album' || (!a.album_type && a.total_tracks > 6));
+  const singles = albums.filter((a) => a.album_type === 'single' || (!a.album_type && a.total_tracks <= 6));
+  const shownAlbums = tab === 'album' ? albumsOnly : tab === 'single' ? singles : (Array.isArray(groups[tab]) ? groups[tab] : []);
+  const tabLoading = tab !== 'album' && tab !== 'single' && groups[tab] === 'loading';
+
+  // Following: the library knows; a fresh check when the page opens keeps it honest
+  const isFollowed = followedArtists.some((a) => a.id === currentArtistId);
+  const [followBusy, setFollowBusy] = useState(false);
+  useEffect(() => {
+    if (!token || !currentArtistId || !artist) return undefined;
+    let cancelled = false;
+    checkFollowingArtists(token, [currentArtistId]).then(([yes]) => {
+      if (cancelled) return;
+      if (yes && !useUserStore.getState().followedArtists.some((a) => a.id === currentArtistId)) addFollowedArtist(artist);
+      if (!yes && useUserStore.getState().followedArtists.some((a) => a.id === currentArtistId)) removeFollowedArtist(currentArtistId);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [token, currentArtistId, artist, addFollowedArtist, removeFollowedArtist]);
+  const toggleFollow = async () => {
+    if (!token || !artist || followBusy) return;
+    setFollowBusy(true);
+    try {
+      if (isFollowed) {
+        await unfollowArtists(token, [artist.id]);
+        removeFollowedArtist(artist.id);
+        toast(`Unfollowed ${artist.name}`, { action: { label: 'Undo', onClick: async () => { try { await followArtists(token, [artist.id]); addFollowedArtist(artist); } catch { toast("Couldn't follow again", { tone: 'error' }); } } } });
+      } else {
+        await followArtists(token, [artist.id]);
+        addFollowedArtist(artist);
+        toast(`Following ${artist.name}`, { tone: 'success' });
+      }
+    } catch (err) {
+      console.error(err);
+      toast(isFollowed ? "Couldn't unfollow" : "Couldn't follow", { tone: 'error' });
+    } finally {
+      setFollowBusy(false);
+    }
+  };
+  const openArtistMenu = (e) => {
+    e.preventDefault();
+    setContextMenu({ type: 'artist', x: e.pageX, y: e.pageY, artistId: currentArtistId, artist, onArtistPage: true });
+  };
+
+  const loadLikedHere = async () => {
+    if (!token) return;
+    setLikedProgress({ have: 0, total: 0 });
+    try {
+      const all = await loadAllLikedSongs(token, profile?.id || '', (have, total) => setLikedProgress({ have, total }));
+      setLikedHere(likedSongsByArtist(all, currentArtistId));
+    } catch (err) {
+      toast(err?.message === 'RATE_LIMITED' ? 'Spotify is rate-limiting requests; try again in a moment' : "Couldn't read your liked songs", { tone: 'error' });
+    } finally {
+      setLikedProgress(null);
+    }
+  };
+  const playLikedHere = (index) => {
+    const uris = (likedHere || []).map((t) => t.uri).filter(Boolean);
+    if (!token || !uris.length) return;
+    playOn((deviceId) => playUris(token, deviceId, uris.slice(0, 100), Math.min(index, 99)), { track: likedHere[index] });
+  };
+
   // The clicked row and then the rest of the popular tracks, in the order shown. A single URI
   // used to stop dead after one song.
   const handleTrackPlay = (trackUri) => {
@@ -161,6 +247,30 @@ export default function Artist() {
               {artist.followers.total.toLocaleString()} followers
             </p>
           )}
+          <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-3 md:mb-4">
+            <button
+              type="button"
+              onClick={() => playOn((deviceId) => playContext(token, deviceId, `spotify:artist:${artist.id}`))}
+              aria-label={`Play ${artist.name}`}
+              className="w-11 h-11 md:w-12 md:h-12 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-xl shrink-0"
+            >
+              <Play className="w-5 h-5 fill-current ml-0.5" />
+            </button>
+            <button
+              type="button"
+              onClick={toggleFollow}
+              disabled={followBusy}
+              aria-pressed={isFollowed}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all disabled:opacity-60 ${isFollowed ? 'bg-white/10 border border-white/15 text-white hover:bg-white/15' : 'border border-white/20 text-white hover:bg-white/10'}`}
+            >
+              {followBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : isFollowed ? <UserCheck className="w-4 h-4 text-[var(--brand-mid)]" /> : <UserPlus className="w-4 h-4" />}
+              {isFollowed ? 'Following' : 'Follow'}
+            </button>
+            <button type="button" onClick={() => shareSpotifyLink('artist', artist.id, artist.name)} aria-label="Share" title="Share" className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-neutral-300 hover:text-white hover:bg-white/10 transition-colors">
+              <Share2 className="w-4 h-4" />
+            </button>
+            <MoreButton onOpen={openArtistMenu} label={`Options for ${artist.name}`} className="!flex" />
+          </div>
           {artist.genres?.length > 0 && (
             <div className="flex gap-2 flex-wrap">
               {artist.genres.slice(0, 5).map((genre) => (
@@ -218,7 +328,59 @@ export default function Artist() {
         </div>
       )}
 
-      {/* Albums */}
+      {/* Your liked songs by this artist: Spotify doesn't offer it, so it is Jomify's own */}
+      {!loading.tracks && (
+        <div className="mb-12">
+          <div className="flex items-center justify-between gap-4 mb-3 md:mb-6">
+            <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2"><Heart className="w-5 h-5 fill-[var(--brand-mid)] text-[var(--brand-mid)]" /> Your liked songs by {artist.name}</h2>
+            {likedHere && likedHere.length > 0 && (
+              <button type="button" onClick={() => playLikedHere(0)} className="text-sm font-bold text-neutral-300 hover:text-white">Play all {likedHere.length}</button>
+            )}
+          </div>
+          {likedHere === null ? (
+            likedProgress ? (
+              <p className="text-sm text-neutral-400 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Reading your liked songs… {likedProgress.total ? `${likedProgress.have.toLocaleString()} of ${likedProgress.total.toLocaleString()}` : ''}</p>
+            ) : (
+              <button type="button" onClick={loadLikedHere} className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/5">
+                Find them
+                <span className="block text-xs font-normal text-neutral-500">Reads your whole Liked Songs once this session</span>
+              </button>
+            )
+          ) : likedHere.length === 0 ? (
+            <p className="text-sm text-neutral-500">None yet.</p>
+          ) : (
+            <div className="flex flex-col space-y-1">
+              {likedHere.slice(0, 50).map((track, index) => (
+                <div
+                  key={track.id}
+                  onClick={() => playLikedHere(index)}
+                  {...rowButtonProps(() => playLikedHere(index))}
+                  onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track }); }}
+                  className="flex items-center justify-between px-4 py-2.5 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center space-x-4 truncate pr-4">
+                    <div className="w-10 h-10 bg-neutral-800 rounded flex-shrink-0 overflow-hidden">
+                      {track.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 48)} alt="" width="40" height="40" loading="lazy" decoding="async" className="w-full h-full object-cover" />}
+                    </div>
+                    <div className="truncate">
+                      <p className={`font-medium truncate ${isSameTrack(track, currentPlayingTrack) ? 'text-brand-gradient' : 'text-white'}`}>{track.name}</p>
+                      <p className="text-neutral-400 text-xs truncate">{track.album?.name}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <LikeButton trackId={track.id} />
+                    <span className="hidden md:inline text-neutral-400 text-xs w-8 text-right">{formatTime(track.duration_ms)}</span>
+                    <MoreButton onOpen={(e) => setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track })} />
+                  </div>
+                </div>
+              ))}
+              {likedHere.length > 50 && <p className="px-4 py-2 text-xs text-neutral-500">{likedHere.length - 50} more</p>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Discography */}
       {loading.albums && !loading.tracks && (
         <div>
           <h2 className="text-2xl font-bold text-white mb-6">Albums</h2>
@@ -227,21 +389,39 @@ export default function Artist() {
       )}
       {albums.length > 0 && (
         <div>
-          <h2 className="text-2xl font-bold text-white mb-6">Albums</h2>
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            <h2 className="text-2xl font-bold text-white mr-2">Discography</h2>
+            {[['album', 'Albums', albumsOnly.length], ['single', 'Singles and EPs', singles.length], ['appears_on', 'Appears on', null], ['compilation', 'Compilations', null]].map(([id, label, count]) => (
+              (count === null || count > 0) && (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === id}
+                  onClick={() => pickTab(id)}
+                  className={`px-3.5 py-1.5 rounded-full text-sm font-semibold transition-colors ${tab === id ? 'bg-white text-black' : 'bg-white/5 border border-white/10 text-neutral-300 hover:bg-white/10'}`}
+                >
+                  {label}{count ? ` ${count}` : ''}
+                </button>
+              )
+            ))}
+          </div>
+          {tabLoading && <SkeletonCards count={5} gridClass="grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" />}
+          {!tabLoading && shownAlbums.length === 0 && <p className="text-sm text-neutral-500">Nothing in this group.</p>}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {albums.map((album) => (
+            {shownAlbums.map((album) => (
               <div 
                 key={album.id}
                 onClick={() => navigateToAlbum(album.id)}
                 {...rowButtonProps(() => navigateToAlbum(album.id))}
-                onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id }); }}
+                onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id, album }); }}
                 className="bg-neutral-800/30 p-4 rounded-xl cursor-pointer hover:bg-neutral-800/60 transition-colors group"
               >
                 <div className="relative aspect-square bg-neutral-700 rounded-md mb-3 overflow-hidden shadow-md">
                   {album.images?.[0]?.url && (
                     <img src={artUrl(album.images, 300)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   )}
-                  <CardMoreButton label={`Options for ${album.name}`} onOpen={(e) => setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id })} />
+                  <CardMoreButton label={`Options for ${album.name}`} onOpen={(e) => setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: album.id, album })} />
                 </div>
                 <p className="text-white text-sm font-bold truncate w-full">{album.name}</p>
                 <p className="text-neutral-400 text-xs truncate w-full mt-0.5">{album.release_date?.split('-')[0]}</p>
