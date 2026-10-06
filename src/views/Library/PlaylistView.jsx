@@ -744,6 +744,15 @@ export default function PlaylistView() {
   // Reveal the next page of rows when the sentinel below the list scrolls near the viewport
   const myId = useUserStore((s) => s.profile?.id);
   const ownsPlaylist = Boolean(myId && (playlist?.owner?.id === myId || playlist?.collaborative));
+  // Who has added to a collaborative playlist, most songs first
+  const collaboratorIds = useMemo(() => {
+    const counts = new Map();
+    for (const item of playlist?.tracks?.items || []) {
+      const id = item?.added_by?.id;
+      if (id) counts.set(id, (counts.get(id) || 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+  }, [playlist]);
 
   // Find in playlist: rows keep their index into sortedTracks, which play and reorder rely on
   const [find, setFind] = useState('');
@@ -911,6 +920,18 @@ export default function PlaylistView() {
               )}
             </p>
             <h1 className="text-2xl md:text-5xl lg:text-7xl font-extrabold text-white tracking-tighter mb-1 md:mb-4 break-words line-clamp-2 md:line-clamp-none">{view.name}</h1>
+            {isCollaborative && collaboratorIds.length > 0 && (
+              <div className="flex items-center gap-2 mb-2" aria-label="Collaborators">
+                <div className="flex -space-x-2">
+                  {collaboratorIds.slice(0, 6).map((id) => (
+                    <UserChip key={id} userId={id} fallbackName={collaborators[id]?.display_name || id} size="sm" showName={false} className="ring-2 ring-black rounded-full" />
+                  ))}
+                </div>
+                <span className="text-xs text-neutral-400">
+                  {collaboratorIds.length === 1 ? collaborators[collaboratorIds[0]]?.display_name || collaboratorIds[0] : `${collaboratorIds.length} people`}{collaboratorIds.length > 6 ? ` · +${collaboratorIds.length - 6}` : ''}
+                </span>
+              </div>
+            )}
             <p className="text-neutral-400 text-sm font-medium">
               {fromSpotifyText(view.description) && <span className="mr-2 hidden md:inline">{fromSpotifyText(view.description)} •</span>}
               {isCollaborative && <span className="md:hidden">Collaborative • </span>}

@@ -9,5 +9,11 @@
     "api/tags.js": {
       "maxDuration": 30
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/((?!api/|assets/|icons/|sw\\.js|manifest\\.webmanifest|registerSW\\.js|workbox-).*)",
+      "destination": "/index.html"
+    }
+  ]
 }

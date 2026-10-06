@@ -145,6 +145,10 @@ export default function UserView() {
             </button>
           </div>
           {current.followError && <p className="text-xs text-amber-300 mt-3 max-w-md">{current.followError}</p>}
+          {(user.partial || current.playlists?.partial) && (
+            <p className="text-xs text-amber-300 mt-3 max-w-md">Spotify no longer shares other people's profiles with apps like Jomify; this is what Jomify already knew{current.playlists?.partial ? ', and only the playlists of theirs in your library' : ''}.</p>
+          )}
+          {isMe && <p className="text-xs text-neutral-500 mt-3">This is you, as others see you.</p>}
         </div>
       </div>
 

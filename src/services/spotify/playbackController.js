@@ -340,10 +340,11 @@ async function afterContextEnded(ended, newState) {
       if (!playlistId) return;
       const tracks = await fetchPlaylistTrackArtists(t, playlistId);
       const own = new Set(tracks.map((x) => x.id));
-      const artistIds = [...new Set(tracks.flatMap((x) => x.artists.map((a) => a.id)))].sort(() => Math.random() - 0.5).slice(0, 8);
+      const names = new Map(tracks.flatMap((x) => x.artists.map((a) => [a.id, a.name])));
+      const artistIds = [...names.keys()].sort(() => Math.random() - 0.5).slice(0, 8);
       const pool = [];
       for (const id of artistIds) {
-        const top = await fetchArtistTopTracks(t, id);
+        const top = await fetchArtistTopTracks(t, id, names.get(id));
         pool.push(...top.filter((x) => x?.uri && !own.has(x.id)).map((x) => x.uri));
       }
       const uris = [...new Set(pool)].sort(() => Math.random() - 0.5).slice(0, 60);

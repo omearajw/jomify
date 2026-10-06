@@ -16,6 +16,10 @@ export function newEndpointRefused(label) {
   const at = refused.get(label);
   return Boolean(at) && Date.now() - at < REFUSED_FOR_MS;
 }
+export function markNewEndpointRefused(label, status) {
+  refused.set(label, Date.now());
+  log('api', `endpoint refused with ${status}; using what stands in for it for an hour`, label);
+}
 
 // `requestNew` and `requestOld` each return a fetch Response. The old one is only used when the
 // new one is refused; a rate limit or a server error on the new one is returned as is.

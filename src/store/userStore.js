@@ -608,6 +608,10 @@ export const useUserStore = create(
       sevensCheckNonce: 0,
       bumpSevensCheck: () => set((state) => ({ sevensCheckNonce: state.sevensCheckNonce + 1 })),
 
+      // What the Search page is searching for, so the address can carry it (/search?q=…)
+      browseQuery: '',
+      setBrowseQuery: (browseQuery) => set((state) => (state.browseQuery === browseQuery ? {} : { browseQuery })),
+
       // The keyboard shortcuts sheet ("?")
       isShortcutsOpen: false,
       setShortcutsOpen: (isShortcutsOpen) => set({ isShortcutsOpen }),
@@ -659,6 +663,23 @@ export const useUserStore = create(
         };
       }),
       
+      // The browser's Back or Forward landed on one of our entries: show that frame. Back pops
+      // the in-app history to match; Forward pushes the page being left, so the in-app Back
+      // button still has somewhere to go.
+      applyFrame: (frame, direction) => set((state) => {
+        const landing = {
+          currentView: frame.view || 'home',
+          activePlaylistId: frame.playlistId ?? null,
+          currentArtistId: frame.artistId ?? null,
+          currentAlbumId: frame.albumId ?? null,
+          activeFolderId: frame.folderId ?? null,
+          currentUserId: frame.userId ?? null
+        };
+        if (direction === 'back') return { ...landing, viewHistory: state.viewHistory.slice(0, -1) };
+        if (direction === 'forward') return { ...landing, viewHistory: pushHistory(state) };
+        return landing;
+      }),
+
       goBack: () => set((state) => {
         if (state.viewHistory.length === 0) return {};
         const newHistory = [...state.viewHistory];

@@ -100,6 +100,9 @@ export default function Browse() {
   // the result set can exceed the sessionStorage quota, and an uncaught QuotaExceededError
   // thrown inside an effect unmounts the whole tree.
   useEffect(() => { safeSessionSet('jomify_browse_query', query); }, [query]);
+  // The address carries the search (/search?q=…)
+  const setBrowseQuery = useUserStore((s) => s.setBrowseQuery);
+  useEffect(() => { setBrowseQuery(query.trim()); }, [query, setBrowseQuery]);
   useEffect(() => {
     if (!results) { safeSessionRemove('jomify_browse_results'); return; }
     const json = JSON.stringify(results);

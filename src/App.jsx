@@ -14,6 +14,7 @@ import Library from './views/Library/Library';
 import PlaylistView from './views/Library/PlaylistView';
 import { startPlaybackController, playOn } from './services/spotify/playbackController';
 import { installHistorySync, syncSheetWithHistory } from './pwa/historySync';
+import { pathToFrame } from './pwa/routes';
 import { isMobileViewport, useIsMobile } from './hooks/useMediaQuery';
 import Artist from './views/Artist/Artist';
 import Album from './views/Album/Album';
@@ -43,10 +44,21 @@ const LEGACY_SEVEN_PLAYLIST_IDS = ['5kJPA0nczW9zoQs7jcQ5ok', '2KmKTCZFO9wofPRwqJ
 // Coming back to the app after this long rechecks whose turn it is in each Seven
 const SEVENS_RECHECK_MS = 5 * 60 * 1000;
 
-// Where the app opens: the page you were on (persisted), or Home / Library by preference
+// Where the app opens: a link to a page wins; otherwise the page you were on (persisted), or
+// Home / Library by preference
 {
-  const startup = useUserStore.getState().playbackSettings?.startupPage;
-  if (startup === 'home' || startup === 'library') useUserStore.setState({ currentView: startup, viewHistory: [] });
+  const linked = typeof window !== 'undefined' ? pathToFrame(window.location.pathname, window.location.search) : null;
+  if (linked && window.location.pathname !== '/') {
+    useUserStore.setState({
+      currentView: linked.view, activePlaylistId: linked.playlistId, currentArtistId: linked.artistId,
+      currentAlbumId: linked.albumId, activeFolderId: linked.folderId, currentUserId: linked.userId,
+      browseQuery: linked.query || '', viewHistory: []
+    });
+    if (linked.view === 'browse' && linked.query) { try { sessionStorage.setItem('jomify_browse_query', linked.query); } catch { /* fine */ } }
+  } else {
+    const startup = useUserStore.getState().playbackSettings?.startupPage;
+    if (startup === 'home' || startup === 'library') useUserStore.setState({ currentView: startup, viewHistory: [] });
+  }
 }
 
 function App() {
@@ -167,9 +179,12 @@ function App() {
 
   // Mirror in-app navigation and open sheets into browser history so a phone's back button
   // walks back through the app instead of leaving it. Installed after the OAuth replaceState
-  // above has run, since the token only exists once that is done.
+  // above has run, since the token only exists once that is done. Keyed on being signed in,
+  // not on the token itself: the hourly renewal used to reinstall the mirror and forget the
+  // stack, so Back stopped working an hour in.
+  const signedIn = Boolean(token);
   useEffect(() => {
-    if (!token) return;
+    if (!signedIn) return;
     const stop = installHistorySync();
     const { setNowPlayingOpen, setQueueOpen, setDevicePickerOpen, setContextMenu } = useUserStore.getState();
     const unsubscribes = [
@@ -180,7 +195,7 @@ function App() {
       syncSheetWithHistory((s) => Boolean(s.contextMenu), () => setContextMenu(null), { tag: 'menu', when: isMobileViewport })
     ];
     return () => { unsubscribes.forEach((fn) => fn()); stop(); };
-  }, [token]);
+  }, [signedIn]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -458,17 +473,20 @@ function App() {
 
                 {/* 1. Header & Stats Drawer Toggle */}
                 <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6 mb-8 md:mb-12 w-full">
-                  {profile.images?.length > 0 ? (
-                    <img 
-                      src={profile.images[0].url} 
-                      alt="Profile Avatar" 
-                      className="w-24 h-24 md:w-48 md:h-48 rounded-full shadow-2xl shadow-black/50"
-                    />
-                  ) : (
-                    <div className="w-24 h-24 md:w-48 md:h-48 rounded-full bg-neutral-800 flex items-center justify-center text-4xl md:text-6xl shadow-2xl">
-                      🎧
-                    </div>
-                  )}
+                  {/* Your own profile page, as Spotify has from its header */}
+                  <button type="button" onClick={() => navigateToUser(profile.id)} aria-label="Your profile" title="Your profile" className="shrink-0 rounded-full hover:scale-[1.02] transition-transform">
+                    {profile.images?.length > 0 ? (
+                      <img 
+                        src={profile.images[0].url} 
+                        alt="" 
+                        className="w-24 h-24 md:w-48 md:h-48 rounded-full shadow-2xl shadow-black/50 object-cover"
+                      />
+                    ) : (
+                      <div className="w-24 h-24 md:w-48 md:h-48 rounded-full bg-neutral-800 flex items-center justify-center text-4xl md:text-6xl shadow-2xl">
+                        🎧
+                      </div>
+                    )}
+                  </button>
                   <div>
                     <p className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-1">Profile</p>
                     <h1 className="text-3xl md:text-7xl font-extrabold text-white tracking-tighter mb-4 break-words">{profile.display_name}</h1>

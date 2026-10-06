@@ -4,7 +4,7 @@ import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
 import { playOn, setShuffle } from '../../services/spotify/playbackController';
 import MoreButton, { CardMoreButton } from '../../components/MoreButton';
-import { playUris, checkTracksLiked, spotifyFetch, fetchArtistAlbums, followArtists, unfollowArtists, checkFollowingArtists, playContext, fetchAlbumTrackUris } from '../../services/spotify/api';
+import { playUris, checkTracksLiked, spotifyFetch, fetchArtistAlbums, followArtists, unfollowArtists, checkFollowingArtists, playContext, fetchAlbumTrackUris, fetchArtistTopTracks } from '../../services/spotify/api';
 import { loadAllLikedSongs, likedSongsLoaded, likedSongsByArtist } from '../../services/likedLibrary';
 import { toast } from '../../store/toastStore';
 import { shareSpotifyLink } from '../../services/share';
@@ -84,9 +84,8 @@ export default function Artist() {
         setArtist(artistData);
         setLoading((l) => ({ ...l, artist: false }));
 
-        // Top tracks in the listener's own market, not a hardcoded US one
-        const tracksRes = await spotifyFetch(`https://api.spotify.com/v1/artists/${currentArtistId}/top-tracks?market=from_token`, { headers });
-        const tracksData = tracksRes.ok ? await tracksRes.json() : { tracks: [] };
+        // Popular tracks, or what stands in for them once Spotify withdraws the endpoint
+        const tracksData = { tracks: await fetchArtistTopTracks(token, currentArtistId, artistData.name) };
         if (cancelled) return;
         setTopTracks(tracksData.tracks || []);
         setLoading((l) => ({ ...l, tracks: false }));

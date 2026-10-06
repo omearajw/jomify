@@ -4,7 +4,7 @@ import { timeoutSignal, REQUEST_TIMEOUT_MS } from './http';
 import { log } from '../debugLog';
 import { toSpotifyDescription } from '../../utils/strings';
 import {
-  API, withFallback, playlistItemsUrl, swapItemsPath, isPlaylistItemsUrl, bothPlaylistFields, bothPageFields,
+  API, withFallback, newEndpointRefused, markNewEndpointRefused, playlistItemsUrl, swapItemsPath, isPlaylistItemsUrl, bothPlaylistFields, bothPageFields,
   normalizePage, normalizePlaylist,
   LIBRARY_BATCH, trackUri, albumUri, userUri, playlistUri, artistUri, libraryUrl, libraryContainsUrl
 } from './compat';
@@ -706,28 +706,55 @@ export async function fetchSevenTrackMeta(token, playlistId) {
   return items;
 }
 
+// Another person's profile. Deprecated with nothing in its place; when it goes, what the app
+// already knows about them (a friend's saved name and picture, a collaborator's profile in the
+// cache, the owner on one of their playlists) stands in, marked `partial`.
 export async function fetchSpotifyUser(token, userId) {
   const response = await spotifyFetch(`https://api.spotify.com/v1/users/${encodeURIComponent(userId)}`, {
     method: "GET",
     headers: { Authorization: `Bearer ${token}` }
   });
+  if (response.ok) return await response.json();
+  if (response.status === 404 || response.status === 410 || response.status === 403) {
+    const known = knownUser(userId);
+    if (known) return known;
+  }
+  const err = new Error("Failed to fetch Spotify user");
+  err.status = response.status;
+  throw err;
+}
 
-  if (!response.ok) throw new Error("Failed to fetch Spotify user");
-  return await response.json();
+function knownUser(userId) {
+  const { friends, playlists } = useUserStore.getState();
+  const friend = (friends || []).find((f) => f.id === userId);
+  if (friend) return { id: userId, display_name: friend.name, images: friend.image ? [{ url: friend.image }] : [], partial: true };
+  const owned = (playlists || []).find((p) => p.owner?.id === userId);
+  if (owned) return { id: userId, display_name: owned.owner.display_name || userId, images: [], partial: true };
+  return null;
 }
 
 // --- Other people: public playlists and following --------------------------------------------
 // Spotify has no endpoint that lists the users you follow and no user search, so a friends list
 // is built by hand from profile links; these are the calls a friend's page needs.
 
+// Someone's public playlists. Deprecated with nothing in its place; when it goes, the ones of
+// theirs already in your library are shown, with `partial` so the page can say so.
 export async function fetchUserPublicPlaylists(token, userId) {
   const items = [];
   let url = `https://api.spotify.com/v1/users/${encodeURIComponent(userId)}/playlists?limit=50`;
   while (url) {
     const response = await spotifyFetch(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) throw statusError("Failed to fetch the user's playlists", response);
+    if (!response.ok) {
+      if ([403, 404, 410].includes(response.status) && items.length === 0) {
+        const mine = useUserStore.getState().playlists.filter((p) => p.owner?.id === userId);
+        const list = mine.map(normalizePlaylist);
+        list.partial = true;
+        return list;
+      }
+      throw statusError("Failed to fetch the user's playlists", response);
+    }
     const page = await response.json();
-    items.push(...(page.items || []).filter(Boolean));
+    items.push(...(page.items || []).filter(Boolean).map(normalizePlaylist));
     url = page.next;
   }
   return items;
@@ -786,11 +813,21 @@ async function setFollowingArtists(token, ids, method) {
 export const followArtists = (token, ids) => setFollowingArtists(token, ids, 'PUT');
 export const unfollowArtists = (token, ids) => setFollowingArtists(token, ids, 'DELETE');
 
-// An artist's popular tracks; deprecated with nothing in its place, so a refusal is an empty list
-export async function fetchArtistTopTracks(token, artistId) {
-  const response = await spotifyFetch(`${API}/artists/${encodeURIComponent(artistId)}/top-tracks?market=from_token`, { method: 'GET', headers: auth(token) });
+// An artist's popular tracks. Deprecated with nothing in its place; when it goes, search stands
+// in: results come back most popular first, so a search for the artist's own songs is the
+// nearest thing to the list Spotify used to give (ten at most, the search page size).
+export async function fetchArtistTopTracks(token, artistId, artistName = '') {
+  if (!newEndpointRefused('artist top tracks')) {
+    const response = await spotifyFetch(`${API}/artists/${encodeURIComponent(artistId)}/top-tracks?market=from_token`, { method: 'GET', headers: auth(token) });
+    if (response.ok) return (await response.json()).tracks || [];
+    if (![400, 403, 404, 410, 501].includes(response.status)) return [];
+    markNewEndpointRefused('artist top tracks', response.status);
+  }
+  if (!artistName) return [];
+  const response = await spotifyFetch(`${API}/search?q=${encodeURIComponent(`artist:"${artistName}"`)}&type=track&limit=10`, { method: 'GET', headers: auth(token) });
   if (!response.ok) return [];
-  return (await response.json()).tracks || [];
+  const tracks = (await response.json()).tracks?.items || [];
+  return tracks.filter((t) => (t?.artists || []).some((a) => a.id === artistId));
 }
 
 // One of Spotify's discography groups (album, single, appears_on, compilation), every page
