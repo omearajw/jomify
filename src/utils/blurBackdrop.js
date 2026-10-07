@@ -34,7 +34,7 @@ async function loadArt(url) {
   } catch (first) {
     try {
       const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`, { cause: first });
       return await createImageBitmap(await res.blob());
     } catch (second) {
       throw new Error(`${first.message}; fetch: ${second?.message || second}`, { cause: second });
