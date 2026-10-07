@@ -1,6 +1,6 @@
 // Projection mapping maths: the warp that puts a rectangle of content onto a four-cornered
 // patch of wall. Run with `node scripts/homography-cases.mjs`.
-import { solveHomography, applyHomography, homographyToMatrix3d, isConvexQuad, quadBounds } from '../src/utils/homography.js';
+import { solveHomography, applyHomography, homographyToMatrix3d, isConvexQuad, quadBounds, invertHomography, pointInQuad } from '../src/utils/homography.js';
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -65,6 +65,27 @@ check('a quad with no area is not', !isConvexQuad([[0, 0], [1, 0], [2, 0], [3, 0
   check('a long title is smaller than a short one', long < short && long > 40);
   check('a very long title in a small box still fits three lines', epic >= 6 && epic * 1.05 * 3 <= 120 + 1);
   check('never below the floor', fitFontSize('x'.repeat(5000), 10, 10, 1) >= 6);
+}
+
+// --- inverse and hit-testing ---------------------------------------------------------------
+{
+  const dst = [[100, 80], [520, 40], [560, 400], [60, 360]];
+  const H = solveHomography(300, 200, dst);
+  const inv = invertHomography(H);
+  check('inverse exists', Boolean(inv));
+  let ok = true;
+  for (const [x, y] of [[0, 0], [300, 0], [300, 200], [0, 200], [150, 100], [37, 181]]) {
+    const [X, Y] = applyHomography(H, x, y);
+    const [bx, by] = applyHomography(inv, X, Y);
+    if (!near(bx, x, 1e-4) || !near(by, y, 1e-4)) ok = false;
+  }
+  check('inverse takes screen points back to the rectangle', ok);
+  const centre = applyHomography(H, 150, 100);
+  check('centre of the rectangle lands inside the quad', pointInQuad(dst, centre[0], centre[1]));
+  check('a point outside is outside', !pointInQuad(dst, 10, 10) && !pointInQuad(dst, 600, 420));
+  check('a corner counts as inside', pointInQuad(dst, 100, 80));
+  check('degenerate quad: nothing inside', !pointInQuad([[0, 0], [1, 1], [2, 2], [3, 3]], 1, 1));
+  check('singular matrix has no inverse', invertHomography([1, 2, 3, 2, 4, 6, 0, 0, 1]) === null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

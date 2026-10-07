@@ -95,3 +95,39 @@ export function quadBounds(corners) {
   const top = Math.min(...ys);
   return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
 }
+
+// The inverse, for going the other way: from a point on the screen back to where it sits on the
+// flat rectangle the wall was drawn from. Null when the matrix has no inverse.
+export function invertHomography(H) {
+  if (!H) return null;
+  const [a, b, c, d, e, f, g, h, i] = H;
+  const A = e * i - f * h;
+  const B = -(d * i - f * g);
+  const C = d * h - e * g;
+  const det = a * A + b * B + c * C;
+  if (Math.abs(det) < 1e-12) return null;
+  const inv = [
+    A, -(b * i - c * h), b * f - c * e,
+    B, a * i - c * g, -(a * f - c * d),
+    C, -(a * h - b * g), a * e - b * d
+  ].map((n) => n / det);
+  // Normalise so the last entry is 1, the form applyHomography expects
+  const k = inv[8];
+  return Math.abs(k) < 1e-12 ? inv : inv.map((n) => n / k);
+}
+
+// Whether a point lies inside a convex quad (corners in order round the shape)
+export function pointInQuad(corners, x, y) {
+  if (!isConvexQuad(corners)) return false;
+  let sign = 0;
+  for (let k = 0; k < 4; k++) {
+    const [x0, y0] = corners[k];
+    const [x1, y1] = corners[(k + 1) % 4];
+    const cross = (x1 - x0) * (y - y0) - (y1 - y0) * (x - x0);
+    if (Math.abs(cross) < 1e-9) continue;
+    const s = Math.sign(cross);
+    if (sign === 0) sign = s;
+    else if (s !== sign) return false;
+  }
+  return true;
+}
