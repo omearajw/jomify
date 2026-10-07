@@ -20,6 +20,7 @@
     "test:homography": "node scripts/homography-cases.mjs",
     "test:compat": "node scripts/compat-cases.mjs",
     "test:routes": "node scripts/routes-cases.mjs",
+    "test:party": "node scripts/party-cases.mjs",
     "preview": "vite preview",
     "build-app": "vite build && electron-builder -w"
   },
