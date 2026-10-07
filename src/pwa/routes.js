@@ -2,7 +2,7 @@
 // functions translate a view frame to a path and a path back to a frame, so the browser's
 // address bar, Back and Forward, reloads and shared links all agree with the store.
 
-const VIEW_PATHS = { home: '/', browse: '/search', library: '/library', sevens: '/sevens', friends: '/friends', 'liked-songs': '/liked', lyrics: '/lyrics' };
+const VIEW_PATHS = { home: '/', browse: '/search', library: '/library', sevens: '/sevens', friends: '/friends', 'liked-songs': '/liked', lyrics: '/lyrics', party: '/party' };
 const PATH_VIEWS = Object.fromEntries(Object.entries(VIEW_PATHS).map(([v, p]) => [p, v]));
 
 export function frameToPath(frame, extras = {}) {

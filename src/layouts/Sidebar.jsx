@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Home, Library, Search, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus, FolderPlus, Users, UserPlus, Heart } from 'lucide-react';
+import { Home, Library, Search, Folder, ChevronRight, ChevronDown, ChevronLeft, Plus, FolderPlus, Users, UserPlus, Heart, PartyPopper } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { addTracksToPlaylist, createPlaylist, uploadPlaylistCoverImage } from '../services/spotify/api';
 import PlaylistFormDialog from '../components/PlaylistFormDialog';
@@ -389,6 +389,7 @@ export default function Sidebar() {
     { id: 'library', label: 'Your Library', icon: Library },
     { id: 'sevens', label: 'Sevens', icon: Users },
     { id: 'friends', label: 'Friends', icon: UserPlus },
+    { id: 'party', label: 'Party', icon: PartyPopper },
   ];
   // Which entry is lit. Pages that aren't entries themselves (a playlist, an album, a person)
   // light the section they belong to; an artist lights wherever you came from.

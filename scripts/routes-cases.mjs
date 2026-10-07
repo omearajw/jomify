@@ -7,7 +7,7 @@ check('playlist path', frameToPath(f('playlist', { playlistId: 'p1' })) === '/pl
 check('folder path', frameToPath(f('library', { folderId: 'f 1' })) === '/library/folder/f%201');
 check('search with query', frameToPath(f('browse'), { query: 'tame impala' }) === '/search?q=tame%20impala');
 check('liked songs', frameToPath(f('liked-songs')) === '/liked');
-for (const [view, extra] of [['home'], ['library'], ['sevens'], ['friends'], ['liked-songs'], ['playlist', { playlistId: 'abc' }], ['album', { albumId: 'x1' }], ['artist', { artistId: 'a' }], ['user', { userId: "j.o'meara" }], ['library', { folderId: 'f1' }]]) {
+for (const [view, extra] of [['home'], ['library'], ['sevens'], ['friends'], ['party'], ['liked-songs'], ['playlist', { playlistId: 'abc' }], ['album', { albumId: 'x1' }], ['artist', { artistId: 'a' }], ['user', { userId: "j.o'meara" }], ['library', { folderId: 'f1' }]]) {
   const frame = f(view, extra);
   const back = pathToFrame(frameToPath(frame));
   check(`${view} round-trips`, sameFrame(frame, back));

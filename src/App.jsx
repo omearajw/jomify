@@ -16,6 +16,7 @@ import { startPlaybackController, playOn } from './services/spotify/playbackCont
 import { installHistorySync, syncSheetWithHistory } from './pwa/historySync';
 import { pathToFrame } from './pwa/routes';
 import { hydrateLibraryFromCache, startLibraryCache } from './services/libraryCache';
+import { resumePartyIfAny } from './party/conductor';
 import { isMobileViewport, useIsMobile } from './hooks/useMediaQuery';
 import Artist from './views/Artist/Artist';
 import Album from './views/Album/Album';
@@ -30,6 +31,7 @@ const Browse = lazy(() => import('./views/Browse/Browse'));
 const SevensSettings = lazy(() => import('./views/Sevens/SevensSettings'));
 const Friends = lazy(() => import('./views/Friends/Friends'));
 const UserView = lazy(() => import('./views/User/UserView'));
+const PartyMode = lazy(() => import('./views/Party/PartyMode'));
 
 const ViewFallback = () => <p className="text-neutral-400 animate-pulse text-lg mt-8">Loading…</p>;
 import { childrenOf } from './utils/library';
@@ -202,6 +204,9 @@ function App() {
     ];
     return () => { unsubscribes.forEach((fn) => fn()); stop(); };
   }, [signedIn]);
+
+  // A party survives a reload: the phone that hosts it picks the baton back up
+  useEffect(() => { if (signedIn) resumePartyIfAny(); }, [signedIn]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -752,6 +757,7 @@ function App() {
               {currentView === 'sevens' && <SevensSettings />}
               {currentView === 'friends' && <Friends />}
               {currentView === 'user' && <UserView />}
+              {currentView === 'party' && <PartyMode />}
             </Suspense>
           </>
         ) : (
