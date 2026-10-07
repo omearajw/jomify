@@ -9,6 +9,7 @@ import { useSlice } from '../../store/selectors';
 import { getBlurredBackdrop } from '../../utils/blurBackdrop';
 import { togglePlay, next as nextTrack, previous as previousTrack, seek, setVolume as setPlaybackVolume } from '../../services/spotify/playbackController';
 import Projection from './Projection';
+import { initialLite, measureFrames, rememberLite, zenEffectsSetting, SLOW_FRAME_MS } from './zenEffects';
 
 // Lines this far from the active one get the animated depth-of-field treatment; the rest are
 // plain elements with a static style, so a 200-line song doesn't run 200 spring animations
@@ -16,7 +17,7 @@ const ANIMATED_LINE_RADIUS = 10;
 
 export default function ZenMode() {
   const { isZenMode, toggleZenMode, savedVolume, setSavedVolume } = useSlice(useUserStore, ['isZenMode', 'toggleZenMode', 'savedVolume', 'setSavedVolume']);
-  const { player, playbackState, activeDevice, isLocalActive, remoteVolume } = useSlice(usePlayerStore, ['player', 'playbackState', 'activeDevice', 'isLocalActive', 'remoteVolume']);
+  const { playbackState, activeDevice, isLocalActive, remoteVolume } = useSlice(usePlayerStore, ['playbackState', 'activeDevice', 'isLocalActive', 'remoteVolume']);
 
   const [prevVolume, setPrevVolume] = useState(50);
   const [isActive, setIsActive] = useState(true);
@@ -25,6 +26,10 @@ export default function ZenMode() {
   const [backdropReady, setBackdropReady] = useState(false);
   // { art, url } so a stale blur for the previous track is never shown: derived below by art url
   const [backdrop, setBackdrop] = useState(null);
+  // The lighter scene: same picture, without the blended layers, blurred text and perpetual
+  // motion that a machine without a working GPU cannot keep up with. Chosen in Settings, or
+  // measured here on the first seconds and remembered for this device.
+  const [lite, setLite] = useState(initialLite);
 
   // Projection mapping onto a wall: hidden behind a small button and the P key
   const [projecting, setProjecting] = useState(false);
@@ -103,7 +108,21 @@ export default function ZenMode() {
     if (albumArtUrl) getBlurredBackdrop(albumArtUrl).then((url) => { if (!cancelled) setBackdrop({ art: albumArtUrl, url }); });
     return () => { cancelled = true; };
   }, [albumArtUrl]);
+
   const backdropUrl = backdrop?.art === albumArtUrl ? backdrop.url : null;
+
+  // Measure the full scene once it is up; a slow result switches to lite for good on this device
+  useEffect(() => {
+    if (!backdropReady || !backdropUrl || lite || zenEffectsSetting() !== 'auto') return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      measureFrames().then((mean) => {
+        if (cancelled || mean === null) return;
+        if (mean > SLOW_FRAME_MS) { rememberLite(true); setLite(true); }
+      });
+    }, 800);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [backdropReady, backdropUrl, lite]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -152,7 +171,6 @@ export default function ZenMode() {
     if (!showLyrics) return;
 
     let animationFrameId;
-    let cancelled = false;
     let lastTime = performance.now();
     let currentPos = playbackState?.position || 0;
 
@@ -166,22 +184,16 @@ export default function ZenMode() {
       setActiveIndex(prev => (prev !== idx ? idx : prev));
     };
 
-    const startClock = async () => {
+    const startClock = () => {
+      // The store already holds the last position the player reported and when; advancing that
+      // to now is as accurate as asking the SDK again and costs no round trip, so the clock
+      // never pauses while a reply is awaited
       const live = usePlayerStore.getState();
-      if (live.isLocalActive && player) {
-        const state = await player.getCurrentState();
-        if (!cancelled && state) {
-          currentPos = state.position;
-          progressRef.current = currentPos;
-          lastTime = performance.now();
-        }
-      } else if (live.playbackState && !live.playbackState.paused) {
-        // Remote playback: advance the last poll to now instead of asking a player that isn't playing
-        currentPos = live.playbackState.position + (Date.now() - live.positionAt);
+      if (live.playbackState) {
+        currentPos = live.playbackState.position + (live.playbackState.paused ? 0 : Date.now() - live.positionAt);
         progressRef.current = currentPos;
+        lastTime = performance.now();
       }
-
-      if (cancelled) return;
 
       // Snap to the correct line right away instead of waiting for the
       // first animation frame (or the next natural playbackState tick).
@@ -204,10 +216,9 @@ export default function ZenMode() {
     startClock();
 
     return () => {
-      cancelled = true;
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
-  }, [playbackState, player, showLyrics, trackId, syncedLyrics]);
+  }, [playbackState, showLyrics, trackId, syncedLyrics]);
 
   // --- RESET SCROLL & LINE REFS ON TRACK CHANGE ---
   // Without this, switching songs while the panel is open leaves the
@@ -279,7 +290,7 @@ export default function ZenMode() {
     return (
       <div 
         ref={scrollRef}
-        style={{ 
+        style={lite ? undefined : { 
           maskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)',
           WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)'
         }}
@@ -299,7 +310,7 @@ export default function ZenMode() {
                 className="relative flex flex-col items-center justify-center min-h-[4.5rem] cursor-pointer group px-4 py-2"
               >
                 {/* Hyper-Intense Cinematic Spotlight Glow Behind Active Line */}
-                {isLineActive && (
+                {isLineActive && !lite && (
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[var(--brand-mid)]/40 to-transparent opacity-75 blur-3xl pointer-events-none -z-10 animate-pulse" />
                 )}
 
@@ -309,20 +320,22 @@ export default function ZenMode() {
                   // Depth-of-field: lines further from the active one rack
                   // out of focus, like a camera pulling focus between them.
                   const distance = Math.abs(i - activeIndex);
-                  const depthBlur = isLineActive ? 0 : Math.min(1.5 + distance * 0.9, 6);
+                  const depthBlur = isLineActive || lite ? 0 : Math.min(1.5 + distance * 0.9, 6);
                   const depthOpacity = isLineActive
                     ? 1
                     : Math.max((isPast ? 0.15 : 0.3) - distance * 0.04, isPast ? 0.08 : 0.12);
                   const lineClass = `text-2xl md:text-4xl lg:text-5xl font-black tracking-tighter leading-relaxed pb-1 transition-colors duration-200 origin-center group-hover:scale-105 group-hover:opacity-100 group-hover:blur-none ${
                     isLineActive
-                      ? 'text-white drop-shadow-[0_0_20px_rgba(255,255,255,1)] drop-shadow-[0_0_40px_rgba(255,255,255,0.8)] drop-shadow-[0_0_80px_rgba(249,19,98,0.6)]'
+                      ? (lite ? 'text-white [text-shadow:0_0_18px_rgba(255,255,255,0.75)]' : 'text-white drop-shadow-[0_0_20px_rgba(255,255,255,1)] drop-shadow-[0_0_40px_rgba(255,255,255,0.8)] drop-shadow-[0_0_80px_rgba(249,19,98,0.6)]')
                       : 'text-neutral-400'
                   }`;
 
                   // Far-off lines are static; only the neighbourhood of the active line animates
+                  // Far-off lines are nearly invisible already; a blur filter on each of them was a
+                  // separate layer to rasterise for no visible gain
                   if (activeIndex >= 0 && distance > ANIMATED_LINE_RADIUS) {
                     return (
-                      <p className={lineClass} style={{ opacity: depthOpacity, transform: 'scale(0.92)', filter: `blur(${depthBlur}px)` }}>
+                      <p className={lineClass} style={{ opacity: depthOpacity, transform: 'scale(0.92)' }}>
                         {line.text}
                       </p>
                     );
@@ -334,7 +347,7 @@ export default function ZenMode() {
                       animate={{
                         opacity: depthOpacity,
                         scale: isLineActive ? 1.08 : 0.92,
-                        filter: `blur(${depthBlur}px)`,
+                        ...(lite ? {} : { filter: `blur(${depthBlur}px)` }),
                       }}
                       transition={{ type: "spring", stiffness: 300, damping: 22, mass: 0.5 }}
                       className={lineClass}
@@ -354,7 +367,7 @@ export default function ZenMode() {
   const renderEditorialLayout = () => {
     return (
       <div 
-        style={{ 
+        style={lite ? undefined : { 
           maskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)',
           WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)'
         }}
@@ -422,11 +435,11 @@ export default function ZenMode() {
               <>
                 {/* A 48px pre-blurred copy of the art, stretched: same wash, no per-frame blur */}
                 <div
-                  className="absolute inset-0 bg-cover bg-center opacity-40 scale-125 animate-[pulse_12s_ease-in-out_infinite] will-change-transform"
+                  className={`absolute inset-0 bg-cover bg-center opacity-40 scale-125 ${lite ? '' : 'animate-[pulse_12s_ease-in-out_infinite] will-change-transform'}`}
                   style={{ backgroundImage: `url(${backdropUrl})` }}
                 />
                 <div
-                  className="absolute inset-0 bg-cover bg-center opacity-35 scale-150 origin-[45%_55%] animate-[spin_90s_linear_infinite] will-change-transform"
+                  className={`absolute inset-0 bg-cover bg-center opacity-35 scale-150 origin-[45%_55%] ${lite ? 'rotate-12' : 'animate-[spin_90s_linear_infinite] will-change-transform'}`}
                   style={{ backgroundImage: `url(${backdropUrl})` }}
                 />
               </>
@@ -441,38 +454,38 @@ export default function ZenMode() {
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/90" />
             
             {/* ENHANCED DIRTY LENS / ANAMORPHIC FILM GRAIN & HEAVY VIGNETTE */}
-            <div className="absolute inset-0 bg-noise opacity-[0.08] mix-blend-overlay pointer-events-none" />
+            <div className={`absolute inset-0 bg-noise pointer-events-none ${lite ? 'opacity-[0.04]' : 'opacity-[0.08] mix-blend-overlay'}`} />
             <div className="absolute inset-0 bg-radial-vignette opacity-95 pointer-events-none" />
             <div 
               className="absolute inset-0 pointer-events-none"
               style={{ background: 'radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.55) 100%)' }}
             />
-            <div className="absolute inset-0 bg-gradient-to-tr from-[var(--brand-mid)]/10 via-transparent to-blue-500/5 mix-blend-color-dodge pointer-events-none" />
+            <div className={`absolute inset-0 bg-gradient-to-tr from-[var(--brand-mid)]/10 via-transparent to-blue-500/5 pointer-events-none ${lite ? '' : 'mix-blend-color-dodge'}`} />
 
             {/* Film grain — self-contained inline noise, jittering like real 35mm dirt. A CSS
                 transform keyframe (compositor only) rather than a blended layer re-composited
                 every frame */}
-            <div
+            {!lite && <div
               className="absolute -inset-[10%] pointer-events-none opacity-[0.07] animate-grain will-change-transform"
               style={{
                 backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
                 backgroundSize: '180px 180px',
               }}
-            />
+            />}
 
             {/* Anamorphic light leak / lens flare sweep: softness from wide gradient stops, not a filter */}
-            <motion.div
+            {!lite && <motion.div
               className="absolute inset-y-0 -left-1/3 w-2/3 pointer-events-none mix-blend-screen opacity-[0.12] will-change-transform"
               style={{
                 background: 'linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.35) 46%, var(--brand-mid) 52%, transparent 72%)',
               }}
               animate={{ x: ['-10%', '160%'] }}
               transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut', repeatDelay: 6 }}
-            />
+            />}
 
             {/* Dust / smudge specks for a lived-in lens */}
             <div
-              className="absolute inset-0 pointer-events-none opacity-[0.08] mix-blend-screen"
+              className={`absolute inset-0 pointer-events-none ${lite ? 'opacity-[0.06]' : 'opacity-[0.08] mix-blend-screen'}`}
               style={{
                 backgroundImage: `
                   radial-gradient(circle at 18% 24%, rgba(255,255,255,0.9) 0px, transparent 2px),
@@ -486,7 +499,7 @@ export default function ZenMode() {
 
             {/* Chromatic fringe at the extreme edges */}
             <div
-              className="absolute inset-0 pointer-events-none mix-blend-screen opacity-[0.35]"
+              className={`absolute inset-0 pointer-events-none ${lite ? 'opacity-[0.25]' : 'mix-blend-screen opacity-[0.35]'}`}
               style={{
                 background: 'radial-gradient(ellipse at center, transparent 60%, rgba(255,60,90,0.08) 85%, transparent 100%), radial-gradient(ellipse at center, transparent 62%, rgba(60,180,255,0.08) 88%, transparent 100%)',
               }}
@@ -516,9 +529,9 @@ export default function ZenMode() {
                 <AnimatePresence mode="popLayout">
                   <motion.div
                     key={trackId}
-                    initial={{ opacity: 0, y: 22, filter: 'blur(10px)' }}
-                    animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                    exit={{ opacity: 0, y: -16, filter: 'blur(10px)', transition: { duration: 0.4, ease: 'easeIn' } }}
+                    initial={lite ? { opacity: 0, y: 22 } : { opacity: 0, y: 22, filter: 'blur(10px)' }}
+                    animate={lite ? { opacity: 1, y: 0 } : { opacity: 1, y: 0, filter: 'blur(0px)' }}
+                    exit={lite ? { opacity: 0, y: -16, transition: { duration: 0.25 } } : { opacity: 0, y: -16, filter: 'blur(10px)', transition: { duration: 0.4, ease: 'easeIn' } }}
                     transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
                     className="flex flex-col items-center w-full"
                   >
@@ -550,9 +563,9 @@ export default function ZenMode() {
               <AnimatePresence>
                 {showLyrics && (
                   <motion.div
-                    initial={{ opacity: 0, x: 40, filter: "blur(12px)" }}
-                    animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                    exit={{ opacity: 0, x: 20, filter: "blur(12px)" }}
+                    initial={lite ? { opacity: 0, x: 40 } : { opacity: 0, x: 40, filter: "blur(12px)" }}
+                    animate={lite ? { opacity: 1, x: 0 } : { opacity: 1, x: 0, filter: "blur(0px)" }}
+                    exit={lite ? { opacity: 0, x: 20 } : { opacity: 0, x: 20, filter: "blur(12px)" }}
                     transition={{ duration: 0.6, ease: "easeOut" }}
                     className="w-full lg:w-7/12 h-full flex flex-col items-center justify-center py-12 lg:py-24"
                   >
