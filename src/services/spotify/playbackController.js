@@ -1046,11 +1046,29 @@ export function togglePlay() {
   lastIntentAt = Date.now();
   activateLocalPlayer();
   const sdk = localSdk();
-  log('transport', player().playbackState?.paused ? 'play' : 'pause', sdk ? 'this browser' : 'remote device');
-  if (sdk) return sdk.togglePlay().catch(console.error);
   const paused = player().playbackState?.paused ?? true;
+  log('transport', paused ? 'play' : 'pause', sdk ? 'this browser' : 'remote device');
+  if (sdk) {
+    const asked = lastIntentAt;
+    const result = sdk.togglePlay().catch(console.error);
+    if (paused) setTimeout(() => verifyLocalResume(asked), LOCAL_RESUME_CHECK_MS);
+    return result;
+  }
   if (paused) return resumeRemote();
   return remote(pausePlayback, () => patchState({ paused: true }));
+}
+
+// The player's own resume does nothing on a context that has never started: at launch this
+// browser is made the device with the last song paused at 0:00, and Play then sat silent while
+// Skip worked. Asking Spotify to start playback on this device through the Web API does work.
+const LOCAL_RESUME_CHECK_MS = 1500;
+function verifyLocalResume(asked) {
+  if (lastIntentAt !== asked) return; // something else has been asked for since
+  const s = player();
+  const t = token();
+  if (!t || !s.isLocalActive || !s.deviceId || !s.playbackState?.paused) return;
+  log('playback', "this browser's player did not start on its own; asking Spotify to start it here");
+  resumePlayback(t, s.deviceId).then(confirmPlayback).catch(handlePlaybackError);
 }
 
 // Play on the device Spotify says has the music. At launch that is often a Jomify on another
