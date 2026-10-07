@@ -80,6 +80,8 @@ async function feedNext(reason) {
   } catch (err) { log('party', 'could not take the next song', err.message); return null; }
   if (!item) return null;
   fed = { item, at: Date.now() };
+  // Show it straight away rather than after the next heartbeat
+  usePartyStore.setState((s) => ({ upNext: item, queue: s.queue.filter((i) => i.id !== item.id) }));
   try {
     await addToQueue(t, player().activeDevice?.id || null, item.uri);
     log('party', `queued ${item.name} for ${item.guestName}`, reason);
