@@ -17,6 +17,8 @@ function saveGuest(guest) {
 const newGuestId = () => `g${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 const ordinal = (n) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) ? 0 : Math.min(n % 10, 4) === 4 ? 0 : (n % 10) > 3 ? 0 : n % 10]}`;
 const spotifyUrl = (item) => { const id = item?.id || (item?.uri || '').split(':').pop(); return id ? `https://open.spotify.com/track/${id}` : null; };
+// A request as it will look once the server confirms it, shown before it does
+const guessRequest = (track, guest) => ({ id: `tmp-${Date.now()}`, ...track, guestId: guest.id, guestName: guest.name, at: Date.now(), votes: 0 });
 const fmt = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
 
 export default function GuestParty({ code }) {
@@ -85,10 +87,9 @@ export default function GuestParty({ code }) {
     if (!guest || busyUri) return;
     buzz();
     setBusyUri(track.uri);
-    const tempId = `tmp-${Date.now()}`;
     const before = state;
-    const guess = { id: tempId, ...track, guestId: guest.id, guestName: guest.name, at: Date.now(), votes: 0 };
-    setState((s) => s && ({ ...s, queue: [...s.queue, guess], mine: { ...s.mine, [tempId]: s.queue.length + 1 } }));
+    const guess = guessRequest(track, guest);
+    setState((s) => s && ({ ...s, queue: [...s.queue, guess], mine: { ...s.mine, [guess.id]: s.queue.length + 1 } }));
     say(`Adding ${track.name}…`, 'success');
     pending.current += 1;
     try {
