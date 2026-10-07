@@ -450,13 +450,15 @@ export default function ZenMode() {
           >
             {backdropUrl ? (
               <>
-                {/* A 48px pre-blurred copy of the art, stretched: same wash, no per-frame blur */}
+                {/* A pre-blurred, edge-feathered copy of the art, stretched: same wash, no per-frame
+                    blur, and no edge to see however it turns. The layers are larger than the screen
+                    so the feather sits beyond the corners. */}
                 <div
-                  className={`absolute inset-0 bg-cover bg-center opacity-40 scale-125 ${lite ? '' : 'animate-[pulse_12s_ease-in-out_infinite] will-change-transform'}`}
+                  className={`absolute -inset-[30%] bg-contain bg-center bg-no-repeat opacity-60 ${lite ? '' : 'animate-[pulse_12s_ease-in-out_infinite] will-change-transform'}`}
                   style={{ backgroundImage: `url(${backdropUrl})` }}
                 />
                 <div
-                  className={`absolute inset-0 bg-cover bg-center opacity-35 scale-150 origin-[45%_55%] ${lite ? 'rotate-12' : 'animate-[spin_90s_linear_infinite] will-change-transform'}`}
+                  className={`absolute -inset-[45%] bg-contain bg-no-repeat opacity-50 ${lite ? 'rotate-12 bg-[position:40%_55%]' : 'bg-[position:38%_58%] animate-[spin_90s_linear_infinite] will-change-transform'}`}
                   style={{ backgroundImage: `url(${backdropUrl})` }}
                 />
               </>
@@ -464,7 +466,7 @@ export default function ZenMode() {
               // No CORS on the image: one modest CSS blur on a small box, scaled up, rather than
               // two full-viewport 150px blurs
               <div
-                className="absolute left-1/2 top-1/2 w-[60vmax] h-[60vmax] -translate-x-1/2 -translate-y-1/2 scale-[2] bg-cover bg-center opacity-40 blur-[40px] saturate-[2] animate-[pulse_12s_ease-in-out_infinite] will-change-transform"
+                className="absolute left-1/2 top-1/2 w-[60vmax] h-[60vmax] -translate-x-1/2 -translate-y-1/2 scale-[2] bg-cover bg-center opacity-40 blur-[40px] [mask-image:radial-gradient(closest-side,black_40%,transparent_100%)] saturate-[2] animate-[pulse_12s_ease-in-out_infinite] will-change-transform"
                 style={{ backgroundImage: `url(${albumArtUrl})` }}
               />
             )}
