@@ -254,10 +254,10 @@ function Wall({ wall, items, track, vw, vh, editing, mode, selectedWallId, selec
                     tabIndex={-1}
                     aria-label={`${WIDGETS[item.widget]?.label} on ${wall.name}`}
                     onPointerDown={(e) => { e.stopPropagation(); onSelectItem(item.id, wall.id); onDragItem(e, item, wall); }}
-                    className={`absolute border-2 ${itemSelected ? 'border-[var(--brand-mid)] bg-[var(--brand-mid)]/10' : 'border-white/40 border-dashed hover:border-white/80'}`}
+                    className={`absolute border-2 ${itemSelected ? 'border-[var(--brand-mid)]' : 'border-white/40 border-dashed hover:border-white/80'}`}
                     style={{ ...px(r), cursor: 'move', touchAction: 'none' }}
                   >
-                    <span className="absolute left-1 top-1 text-[10px] font-bold uppercase tracking-widest text-white/80 bg-black/50 rounded px-1 pointer-events-none">{WIDGETS[item.widget]?.label}</span>
+                    <span className="absolute left-1 top-1 text-[10px] font-bold uppercase tracking-widest text-white/70 pointer-events-none">{WIDGETS[item.widget]?.label}</span>
                     {itemSelected && (
                       <button
                         type="button"
@@ -284,10 +284,12 @@ function Wall({ wall, items, track, vw, vh, editing, mode, selectedWallId, selec
         <svg className="absolute inset-0 w-full h-full overflow-visible" style={{ pointerEvents: 'none' }} aria-hidden="true">
           <polygon
             points={corners.map((p) => p.join(',')).join(' ')}
-            fill={dropTarget ? 'rgba(249,19,98,0.25)' : wallSelected ? 'rgba(249,19,98,0.1)' : 'rgba(255,255,255,0.04)'}
-            stroke={convex ? (wallSelected || dropTarget ? 'var(--brand-mid)' : 'rgba(255,255,255,0.5)') : 'rgba(248,113,113,0.9)'}
-            strokeWidth={wallSelected ? 2 : 1}
-            strokeDasharray={convex ? undefined : '6 4'}
+            // No fill, ever: a tinted wall is a lit panel on the projector. Outlines only, and the
+            // polygon still catches the pointer through its transparent interior.
+            fill="rgba(0,0,0,0.001)"
+            stroke={convex ? (dropTarget ? 'var(--brand-mid)' : wallSelected ? 'var(--brand-mid)' : 'rgba(255,255,255,0.45)') : 'rgba(248,113,113,0.9)'}
+            strokeWidth={dropTarget ? 3 : wallSelected ? 2 : 1}
+            strokeDasharray={!convex ? '6 4' : dropTarget ? '10 6' : undefined}
             style={{ pointerEvents: mode === 'walls' ? 'all' : 'none', cursor: 'move' }}
             onPointerDown={(e) => { onSelectWall(wall.id); onDragWall(e, wall); }}
           />
