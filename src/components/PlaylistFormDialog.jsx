@@ -68,7 +68,7 @@ function PlaylistFormDialogBody({
       className="fixed inset-0 z-[10000] flex items-center justify-center px-4 py-6 bg-black/70 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onCancel?.(); }}
     >
-      <div role="dialog" aria-modal="true" aria-labelledby="playlist-dialog-title" className="w-full max-w-lg rounded-3xl bg-neutral-950 border border-white/10 shadow-2xl overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-labelledby="playlist-dialog-title" className="w-full max-w-lg max-h-[calc(100dvh-3rem)] flex flex-col rounded-3xl bg-neutral-950 border border-white/10 shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
           <div>
             <h2 id="playlist-dialog-title" className="text-xl font-bold text-white">{title}</h2>
@@ -79,7 +79,7 @@ function PlaylistFormDialogBody({
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="p-6 space-y-5 flex-1 min-h-0 overflow-y-auto">
           <div>
             <label htmlFor="playlist-name" className="block text-sm font-semibold text-neutral-300 mb-2">Playlist name</label>
             <input
