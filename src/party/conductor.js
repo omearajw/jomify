@@ -63,7 +63,9 @@ export async function heartbeat() {
   heartbeatInFlight = true;
   try {
     const u = useUserStore.getState();
-    const res = await hostApi.op(code, { op: 'heartbeat', deviceId: party().deviceId, token: u.token, tokenExpiresAt: u.tokenExpiresAt, nowPlaying: snapshot() });
+    // The device the music comes out of wins the conductor lock, so the laptop that stays on all
+    // night conducts even when the phone opened the party first
+    const res = await hostApi.op(code, { op: 'heartbeat', deviceId: party().deviceId, playsHere: Boolean(player().isLocalActive), token: u.token, tokenExpiresAt: u.tokenExpiresAt, nowPlaying: snapshot() });
     party().applyState(res);
   } catch (err) {
     if (err?.status === 404) { log('party', 'the party has ended', err.message); stopConductor(); party().clear(); return; }

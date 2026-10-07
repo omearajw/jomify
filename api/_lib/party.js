@@ -27,6 +27,9 @@ export const K = {
   nowPlaying: (code) => `jomify:party:v1:${code}:np`,
   guests: (code) => `jomify:party:v1:${code}:guests`,
   conductor: (code) => `jomify:party:v1:${code}:cond`,
+  votes: (code, id) => `jomify:party:v1:${code}:v:${id}`,
+  guestVotes: (code, guestId) => `jomify:party:v1:${code}:gv:${guestId}`,
+  heartbeat: (code) => `jomify:party:v1:${code}:hb`,
   rate: (code, guestId, kind) => `jomify:party:v1:${code}:rl:${kind}:${guestId}`,
   hostParty: (hostId) => `jomify:party:v1:host:${hostId}`
 };
@@ -57,6 +60,49 @@ export async function readQueue(code) {
   return (raw || []).map(parse).filter(Boolean);
 }
 
+// The queue with the room's votes counted onto each item
+export async function readQueueWithVotes(code) {
+  const queue = await readQueue(code);
+  if (queue.length === 0) return queue;
+  const counts = await Promise.all(queue.map((item) => redis().scard(K.votes(code, item.id))));
+  return queue.map((item, i) => ({ ...item, votes: Number(counts[i]) || 0 }));
+}
+
+// A guest's vote on someone else's request; voting again takes it back
+export async function toggleVote(code, guestId, id) {
+  const queue = await readQueue(code);
+  const item = queue.find((i) => i.id === id);
+  if (!item) throw new PartyError(404, 'That song is no longer waiting');
+  if (item.guestId === guestId) throw new PartyError(403, "You can't vote for your own request");
+  const r = redis();
+  const added = await r.sadd(K.votes(code, id), guestId);
+  if (added) {
+    await r.sadd(K.guestVotes(code, guestId), id);
+    await r.expire(K.votes(code, id), PARTY_TTL_SECONDS);
+    await r.expire(K.guestVotes(code, guestId), PARTY_TTL_SECONDS);
+    return true;
+  }
+  await r.srem(K.votes(code, id), guestId);
+  await r.srem(K.guestVotes(code, guestId), id);
+  return false;
+}
+
+export async function votedBy(code, guestId) {
+  const ids = await redis().smembers(K.guestVotes(code, guestId));
+  return ids || [];
+}
+
+// The heartbeat says the host is here; a token alone can outlive a dead phone by an hour
+export const HOST_AWAY_AFTER_MS = 30000;
+export async function noteHeartbeat(code) {
+  await redis().set(K.heartbeat(code), String(Date.now()), { ex: PARTY_TTL_SECONDS });
+}
+export async function hostIsAway(code) {
+  const [token, last] = await Promise.all([redis().get(K.token(code)), redis().get(K.heartbeat(code))]);
+  if (!token) return true;
+  return !last || Date.now() - Number(last) > HOST_AWAY_AFTER_MS;
+}
+
 export async function readHistory(code, count = 30) {
   const raw = await redis().lrange(K.history(code), 0, count - 1);
   return (raw || []).map(parse).filter(Boolean);
@@ -69,7 +115,7 @@ export async function readGuests(code) {
 
 // Everyone's names on the items, and the order they will play in
 export async function orderedQueue(code) {
-  return orderQueue(await readQueue(code));
+  return orderQueue(await readQueueWithVotes(code));
 }
 
 export async function assertNotRateLimited(code, guestId, kind, limitPerMinute) {
@@ -164,7 +210,9 @@ export async function takeNext(code) {
     const ordered = await orderedQueue(code);
     const item = ordered[0];
     if (!item) return null;
-    const removed = await redis().lrem(K.queue(code), 1, stringify(item));
+    const stored = { ...item };
+    delete stored.votes; // votes are counted on read, never stored on the item
+    const removed = await redis().lrem(K.queue(code), 1, stringify(stored));
     if (!removed) continue; // withdrawn between the read and the take; pick again
     const fed = { item, at: Date.now() };
     await redis().set(K.fed(code), stringify(fed), { ex: PARTY_TTL_SECONDS });
@@ -189,12 +237,16 @@ export async function returnFed(code) {
   return fed.item;
 }
 
-// One device plays conductor; the others just show the party. Whoever renews the lock keeps it.
-export async function claimConductor(code, deviceId) {
+// One device plays conductor; the others just show the party. The device the music actually
+// comes out of wins the lock from one that is only controlling, since it is the one that will
+// stay on all night; otherwise whoever renews the lock keeps it.
+export async function claimConductor(code, deviceId, { playsHere = false } = {}) {
   const key = K.conductor(code);
-  const current = await redis().get(key);
-  if (current && String(current) !== deviceId) return false;
-  await redis().set(key, deviceId, { ex: CONDUCTOR_TTL_SECONDS });
+  const raw = await redis().get(key);
+  const current = raw ? (typeof raw === 'string' && raw.startsWith('{') ? JSON.parse(raw) : parse(raw)) : null;
+  const holder = current && typeof current === 'object' ? current : current ? { id: String(current), playsHere: false } : null;
+  if (holder && holder.id !== deviceId && (holder.playsHere || !playsHere)) return false;
+  await redis().set(key, JSON.stringify({ id: deviceId, playsHere: Boolean(playsHere) }), { ex: CONDUCTOR_TTL_SECONDS });
   return true;
 }
 

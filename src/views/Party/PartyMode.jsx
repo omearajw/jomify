@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, SkipForward, Volume2, Search, Plus, X, Pin, Link2, Check, PauseCircle, PlayCircle, Users, Loader2, PartyPopper, Smartphone } from 'lucide-react';
+import { Play, Pause, SkipForward, Volume2, Search, Plus, X, Pin, Link2, Check, PauseCircle, PlayCircle, Users, Loader2, PartyPopper, Smartphone, QrCode, ChevronUp } from 'lucide-react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { usePartyStore } from '../../store/partyStore';
@@ -10,6 +10,15 @@ import { togglePlay, setVolume, playOn, setShuffle } from '../../services/spotif
 import { searchSpotify, playContext } from '../../services/spotify/api';
 import { artUrl } from '../../utils/images';
 import { toast } from '../../store/toastStore';
+import qrcode from 'qrcode-generator';
+
+// The join link as a QR code, drawn once per code
+function qrSvg(text) {
+  const qr = qrcode(0, 'M');
+  qr.addData(text);
+  qr.make();
+  return qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+}
 
 // The host's phone at a party: the few controls that matter, made huge, and the queue the room
 // is building. Playback can be on this phone or anywhere else Spotify is; it all goes through
@@ -56,6 +65,7 @@ export default function PartyMode() {
   const [copied, setCopied] = useState(false);
   const [endArmed, setEndArmed] = useState(false);
   const [showPlaylists, setShowPlaylists] = useState(false);
+  const [showQr, setShowQr] = useState(false);
   const searchTimer = useRef(null);
 
   const own = playlists.filter((p) => p.owner?.id === profile?.id || p.collaborative);
@@ -149,9 +159,16 @@ export default function PartyMode() {
           <p className="text-sm text-neutral-400 truncate">{partyLink(code).replace(/^https?:\/\//, '')}</p>
         </div>
         <button type="button" onClick={copyLink} className="rounded-full border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white flex items-center gap-2 hover:bg-white/15">{copied ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />} {copied ? 'Copied' : 'Share link'}</button>
+        <button type="button" onClick={() => setShowQr((v) => !v)} aria-pressed={showQr} className="rounded-full border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white flex items-center gap-2 hover:bg-white/15"><QrCode className="w-4 h-4" /> QR</button>
         <button type="button" onClick={end} className={`rounded-full px-4 py-3 text-sm font-bold flex items-center gap-2 ${endArmed ? 'bg-red-500 text-white' : 'border border-white/15 text-neutral-300 hover:bg-white/10'}`}>{endArmed ? 'Tap again to end' : 'End party'}</button>
       </header>
 
+      {showQr && (
+        <button type="button" onClick={() => setShowQr(false)} aria-label="Hide the QR code" className="self-center rounded-3xl bg-white p-4 shadow-2xl">
+          <div className="w-56 h-56 md:w-72 md:h-72 [&>svg]:w-full [&>svg]:h-full" dangerouslySetInnerHTML={{ __html: qrSvg(partyLink(code)) }} />
+          <p className="text-center text-black font-mono font-extrabold tracking-[0.3em] mt-2">{code}</p>
+        </button>
+      )}
       {error && <p className="rounded-2xl bg-amber-500/15 border border-amber-400/30 px-4 py-3 text-sm text-amber-200">{error}</p>}
       {!conductor && <p className="rounded-2xl bg-white/10 px-4 py-3 text-sm text-neutral-200 flex items-center gap-2"><Smartphone className="w-4 h-4" /> Another of your devices is running the party; this one is along for the ride.</p>}
       {hostAway && conductor && <p className="rounded-2xl bg-amber-500/15 border border-amber-400/30 px-4 py-3 text-sm text-amber-200">Guests can't search until the next heartbeat lands.</p>}
@@ -235,6 +252,7 @@ export default function PartyMode() {
                 <span className="w-6 text-right text-neutral-500 tabular-nums font-semibold">{n + 1}</span>
                 {i.image ? <img src={i.image} alt="" className="w-10 h-10 rounded-lg object-cover" /> : <div className="w-10 h-10 rounded-lg bg-white/10" />}
                 <span className="min-w-0 flex-1"><span className="block font-semibold text-white truncate">{i.name}</span><span className="block text-xs text-neutral-400 truncate">{i.artists} · {i.guestName}</span></span>
+                {i.votes > 0 && <span className="text-xs font-bold text-[var(--brand-mid)] flex items-center gap-0.5 tabular-nums"><ChevronUp className="w-4 h-4" />{i.votes}</span>}
                 <button type="button" onClick={() => op({ op: 'pin', id: i.id, pinned: !i.pinnedAt })} aria-label={i.pinnedAt ? 'Unpin' : 'Play next'} aria-pressed={Boolean(i.pinnedAt)} className={`p-2 rounded-full ${i.pinnedAt ? 'text-[var(--brand-mid)]' : 'text-neutral-400 hover:text-white'}`}><Pin className="w-5 h-5" /></button>
                 <button type="button" onClick={() => op({ op: 'remove', id: i.id })} aria-label={`Remove ${i.name}`} className="p-2 rounded-full text-neutral-400 hover:text-white"><X className="w-5 h-5" /></button>
               </li>

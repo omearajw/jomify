@@ -4,7 +4,7 @@ import { redis, RedisConfigError } from '../_lib/redis.js';
 import {
   K, PARTY_TTL_SECONDS, PartyError, parse, normalizeCode, readParty, writeParty, readQueue, readHistory, readGuests,
   orderedQueue, assertNotRateLimited, searchAsHost, addRequest, removeItem, pinItem, takeNext, markPlayed, returnFed,
-  claimConductor, endParty, publicParty, sendError
+  claimConductor, endParty, publicParty, sendError, toggleVote, votedBy, noteHeartbeat, hostIsAway
 } from '../_lib/party.js';
 import { positionsFor } from '../../src/party/order.js';
 
@@ -15,10 +15,10 @@ const GUEST_ID = /^[A-Za-z0-9_-]{6,64}$/;
 
 async function readState(code, party, guestId) {
   const r = redis();
-  const [queue, np, fed, history, guests] = await Promise.all([
-    orderedQueue(code), parse(await r.get(K.nowPlaying(code))), parse(await r.get(K.fed(code))), readHistory(code, 10), readGuests(code)
+  const [queue, np, fed, history, guests, hostAway, voted] = await Promise.all([
+    orderedQueue(code), parse(await r.get(K.nowPlaying(code))), parse(await r.get(K.fed(code))), readHistory(code, 10), readGuests(code),
+    hostIsAway(code), guestId ? votedBy(code, guestId) : []
   ]);
-  const hostAway = !(await r.get(K.token(code)));
   return {
     party: publicParty(party),
     nowPlaying: np,
@@ -27,6 +27,7 @@ async function readState(code, party, guestId) {
     history,
     guestCount: Object.keys(guests).length,
     mine: guestId ? positionsFor(queue, guestId) : {},
+    voted,
     hostAway,
     serverTime: Date.now()
   };
@@ -84,6 +85,13 @@ export default async function handler(req, res) {
         res.status(201).json({ item, position: state.mine[item.id] || null, ...state });
         return;
       }
+      case 'vote': {
+        if (!guestId) throw new PartyError(400, 'A guest id is required');
+        await assertNotRateLimited(code, guestId, 'vote', 30);
+        const cast = await toggleVote(code, guestId, String(body.id || ''));
+        res.status(200).json({ cast, ...(await readState(code, party, guestId)) });
+        return;
+      }
       case 'withdraw': {
         if (!guestId) throw new PartyError(400, 'A guest id is required');
         const queue = await readQueue(code);
@@ -101,7 +109,8 @@ export default async function handler(req, res) {
           await r.set(K.token(code), body.token, { ex: ttl });
         }
         if (body.nowPlaying !== undefined) await r.set(K.nowPlaying(code), JSON.stringify(body.nowPlaying), { ex: 120 });
-        const conductor = body.deviceId ? await claimConductor(code, String(body.deviceId).slice(0, 64)) : false;
+        const conductor = body.deviceId ? await claimConductor(code, String(body.deviceId).slice(0, 64), { playsHere: Boolean(body.playsHere) }) : false;
+        await noteHeartbeat(code);
         await r.expire(K.party(code), PARTY_TTL_SECONDS);
         await r.expire(K.hostParty(party.hostId), PARTY_TTL_SECONDS);
         res.status(200).json({ conductor, ...(await readState(code, party, 'host')) });

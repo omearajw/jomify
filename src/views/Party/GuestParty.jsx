@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Music2, Search, Plus, Check, Loader2, X, PauseCircle, WifiOff } from 'lucide-react';
+import { Music2, Search, Plus, Check, Loader2, X, PauseCircle, WifiOff, ChevronUp, ExternalLink } from 'lucide-react';
 import { guestApi } from '../../party/client';
 
 // A guest's phone at a party: no account, just the code. Pick a name, see what is playing, find a
@@ -16,6 +16,7 @@ function saveGuest(guest) {
 }
 const newGuestId = () => `g${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 const ordinal = (n) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) ? 0 : Math.min(n % 10, 4) === 4 ? 0 : (n % 10) > 3 ? 0 : n % 10]}`;
+const spotifyUrl = (item) => { const id = item?.id || (item?.uri || '').split(':').pop(); return id ? `https://open.spotify.com/track/${id}` : null; };
 const fmt = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
 
 export default function GuestParty({ code }) {
@@ -91,6 +92,11 @@ export default function GuestParty({ code }) {
     }
   };
 
+  const vote = async (item) => {
+    if (!guest) return;
+    try { setState(await guestApi.op(code, { op: 'vote', guestId: guest.id, id: item.id })); } catch (err) { say(err?.message || "Couldn't vote", 'error'); }
+  };
+
   const withdraw = async (item) => {
     if (!guest) return;
     try { setState(await guestApi.op(code, { op: 'withdraw', guestId: guest.id, id: item.id })); } catch (err) { say(err?.message || "Couldn't remove it", 'error'); }
@@ -124,8 +130,12 @@ export default function GuestParty({ code }) {
 
   const np = state?.nowPlaying;
   const mine = state?.mine || {};
+  const voted = new Set(state?.voted || []);
   const myItems = (state?.queue || []).filter((i) => mine[i.id]);
   const waiting = (state?.queue || []).length;
+  const history = state?.history || [];
+  // My song is on: the song playing is one I requested and it has been handed over (not merely a coincidence of the playlist)
+  const myTurn = np && !np.paused && history.some((h) => h.uri === np.uri && h.guestId === guest.id);
 
   return shell(<>
     <header className="flex items-center justify-between">
@@ -139,14 +149,16 @@ export default function GuestParty({ code }) {
     {state?.hostAway && <p className="flex items-center gap-2 rounded-2xl bg-amber-500/15 border border-amber-400/30 px-4 py-3 text-sm text-amber-200"><WifiOff className="w-4 h-4" /> The host's Jomify is away. Requests still land; searching comes back when it does.</p>}
     {state?.party?.paused && <p className="flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-3 text-sm text-neutral-200"><PauseCircle className="w-4 h-4" /> The host has paused requests for now.</p>}
 
-    <section className="rounded-3xl bg-white/5 border border-white/10 p-4 flex items-center gap-4">
+    {myTurn && <p role="status" className="rounded-2xl bg-brand-gradient px-4 py-3 text-sm font-bold text-white shadow-brand-glow animate-fade-in">🎉 Your song is playing!</p>}
+    <section className={`rounded-3xl border p-4 flex items-center gap-4 ${myTurn ? 'bg-white/10 border-[var(--brand-mid)]' : 'bg-white/5 border-white/10'}`}>
       {np?.image ? <img src={np.image} alt="" className="w-20 h-20 rounded-2xl object-cover shadow-xl" /> : <div className="w-20 h-20 rounded-2xl bg-white/10 flex items-center justify-center"><Music2 className="w-8 h-8 text-neutral-400" /></div>}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">{np ? (np.paused ? 'Paused' : 'Now playing') : 'Waiting for music'}</p>
         <p className="font-bold text-lg truncate">{np?.name || '…'}</p>
         <p className="text-neutral-400 truncate">{np?.artists || ''}</p>
         {state?.upNext && <p className="text-xs text-neutral-500 mt-1 truncate">Next: {state.upNext.name} · {state.upNext.guestName}</p>}
       </div>
+      {spotifyUrl(np) && <a href={spotifyUrl(np)} target="_blank" rel="noreferrer" aria-label="Open in Spotify" className="p-2 text-neutral-400 hover:text-white shrink-0"><ExternalLink className="w-5 h-5" /></a>}
     </section>
 
     <section className="flex flex-col gap-3">
@@ -198,15 +210,36 @@ export default function GuestParty({ code }) {
       ) : (
         <ol className="flex flex-col gap-1.5">
           {(state?.queue || []).slice(0, 12).map((i, n) => (
-            <li key={i.id} className="flex items-center gap-3 px-1 py-1.5 text-sm">
+            <li key={i.id} className="flex items-center gap-2 px-1 py-1.5 text-sm">
               <span className="w-5 text-right text-neutral-500 tabular-nums">{n + 1}</span>
               <span className="min-w-0 flex-1 truncate"><span className="font-semibold">{i.name}</span> <span className="text-neutral-500">· {i.artists}</span></span>
               <span className="text-xs text-neutral-400 shrink-0 flex items-center gap-1">{mine[i.id] ? <Check className="w-3 h-3" /> : null}{i.guestName}</span>
+              {mine[i.id] ? (
+                <span className="w-14 text-right text-xs text-neutral-500 tabular-nums shrink-0">{i.votes ? `▲ ${i.votes}` : ''}</span>
+              ) : (
+                <button type="button" onClick={() => vote(i)} aria-pressed={voted.has(i.id)} aria-label={`${voted.has(i.id) ? 'Take back your vote for' : 'Vote for'} ${i.name}`} className={`w-14 shrink-0 flex items-center justify-end gap-0.5 rounded-full px-2 py-1 text-xs font-bold tabular-nums ${voted.has(i.id) ? 'bg-brand-gradient text-white' : 'bg-white/10 text-neutral-300 active:bg-white/20'}`}><ChevronUp className="w-4 h-4" />{i.votes || 0}</button>
+              )}
             </li>
           ))}
           {waiting > 12 && <li className="text-xs text-neutral-500 pl-9">and {waiting - 12} more</li>}
         </ol>
       )}
+      {waiting > 0 && <p className="text-xs text-neutral-500 mt-2">Everyone's first request plays before anyone's second. Votes settle the order within a round.</p>}
     </section>
+
+    {history.length > 0 && (
+      <section>
+        <h2 className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">Played</h2>
+        <ul className="flex flex-col gap-1.5">
+          {history.map((h) => (
+            <li key={`${h.id}-${h.playedAt}`} className="flex items-center gap-2 px-1 py-1.5 text-sm">
+              <span className="min-w-0 flex-1 truncate"><span className="font-semibold">{h.name}</span> <span className="text-neutral-500">· {h.artists}</span></span>
+              <span className="text-xs text-neutral-400 shrink-0">{h.guestName}</span>
+              {spotifyUrl(h) && <a href={spotifyUrl(h)} target="_blank" rel="noreferrer" aria-label={`Open ${h.name} in Spotify`} className="p-1.5 text-neutral-400 hover:text-white shrink-0"><ExternalLink className="w-4 h-4" /></a>}
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
   </>);
 }

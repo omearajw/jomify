@@ -16,6 +16,8 @@ check('within a round the earlier request wins', names(orderQueue([it('b1', 'B',
 check('pins go first, in pin order', names(orderQueue([it('a1', 'A', 1), it('a2', 'A', 2, { pinnedAt: 20 }), it('b1', 'B', 3, { pinnedAt: 10 })])) === 'b1,a2,a1');
 check('positions are 1-based and per guest', JSON.stringify(positionsFor(orderQueue([it('a1', 'A', 1), it('b1', 'B', 2), it('a2', 'A', 3)]), 'A')) === '{"a1":1,"a2":3}');
 check('empty queue', orderQueue([]).length === 0);
+check('rounds follow request time, not list position', names(orderQueue([it('a2', 'A', 2), it('a1', 'A', 1), it('b1', 'B', 3)])) === 'a1,b1,a2');
+check('votes reorder within a round only', names(orderQueue([it('a1', 'A', 1), it('b1', 'B', 2, { votes: 3 }), it('a2', 'A', 3, { votes: 9 })])) === 'b1,a1,a2');
 
 // ---- fake redis ---------------------------------------------------------------------------------
 // The Upstash client turns every call into an HTTP command (often batched into a pipeline), so
@@ -23,6 +25,7 @@ check('empty queue', orderQueue([]).length === 0);
 const store = new Map();
 const lists = new Map();
 const hashes = new Map();
+const sets = new Map();
 function exec([cmd, ...a]) {
   const c = String(cmd).toUpperCase();
   const k = a[0];
@@ -45,6 +48,10 @@ function exec([cmd, ...a]) {
     case 'LTRIM': { const l = lists.get(k) || []; lists.set(k, l.slice(Number(a[1]), Number(a[2]) + 1)); return 'OK'; }
     case 'HSET': { const h = hashes.get(k) || {}; for (let i = 1; i < a.length; i += 2) h[a[i]] = a[i + 1]; hashes.set(k, h); return 1; }
     case 'HGETALL': { const h = hashes.get(k); return h ? Object.entries(h).flat() : []; }
+    case 'SADD': { const set = sets.get(k) || new Set(); const before = set.size; a.slice(1).forEach((v) => set.add(v)); sets.set(k, set); return set.size - before; }
+    case 'SREM': { const set = sets.get(k); if (!set) return 0; const before = set.size; a.slice(1).forEach((v) => set.delete(v)); return before - set.size; }
+    case 'SCARD': return (sets.get(k) || new Set()).size;
+    case 'SMEMBERS': return [...(sets.get(k) || [])];
     default: throw new Error('fake redis: unsupported ' + c);
   }
 }
@@ -124,12 +131,32 @@ for (let i = 0; i < 8; i++) await inParty(code, { op: 'request', guestId: g1, tr
 check('per-guest cap holds', (await inParty(code, { op: 'request', guestId: g1, track: track('too-many') })).status === 429);
 check('request rate limit', (await inParty(code, { op: 'request', guestId: g1, track: track('rl') })).status === 429);
 
+section('votes');
+const g3 = 'guest-cccccc';
+await inParty(code, { op: 'join', guestId: g3, name: 'Cal' });
+const own = (await state(code, g1)).body.queue.find((i) => i.guestId === g1);
+check("can't vote for your own", (await inParty(code, { op: 'vote', guestId: g1, id: own.id })).status === 403);
+// b1 (Ben's first) sits behind a1 (Amy's first) in round one; Cal's vote lifts it
+const theirs = (await state(code)).body.queue.find((i) => i.uri === 'spotify:track:b1');
+const idx = async (uri) => (await state(code)).body.queue.findIndex((i) => i.uri === uri);
+check('before the vote Amy is first', (await idx('spotify:track:a1')) < (await idx('spotify:track:b1')));
+const v1 = await inParty(code, { op: 'vote', guestId: g3, id: theirs.id });
+check('a vote counts and is remembered for the voter', v1.body.cast === true && v1.body.queue.find((i) => i.id === theirs.id).votes === 1 && (await state(code, g3)).body.voted.includes(theirs.id));
+check('votes reorder within the round', (await idx('spotify:track:b1')) < (await idx('spotify:track:a1')));
+check('but never across rounds', (await idx('spotify:track:a1')) < (await idx('spotify:track:a2')) && (await idx('spotify:track:b1')) < (await idx('spotify:track:a2')));
+check('voting again takes it back', (await inParty(code, { op: 'vote', guestId: g3, id: theirs.id })).body.cast === false && (await idx('spotify:track:a1')) < (await idx('spotify:track:b1')));
+check('unknown song', (await inParty(code, { op: 'vote', guestId: g3, id: 'nope' })).status === 404);
+
 section('host controls');
 check('guest cannot run host ops', (await inParty(code, { op: 'next', guestId: g1 })).status === 401);
 check('another account cannot either', (await inParty(code, { op: 'next' }, 'other-token')).status === 403);
 const hb = await inParty(code, { op: 'heartbeat', deviceId: 'phone', token: 'host-token', tokenExpiresAt: Date.now() + 3600e3, nowPlaying: { name: 'Now', uri: 'spotify:track:np' } }, 'host-token');
 check('heartbeat claims the conductor and stores now playing', hb.body.conductor === true && hb.body.nowPlaying.name === 'Now');
+check('host is not away after a heartbeat', hb.body.hostAway === false);
 check('a second device does not get the conductor', (await inParty(code, { op: 'heartbeat', deviceId: 'laptop' }, 'host-token')).body.conductor === false);
+check('the device playing the music takes the conductor from a controller', (await inParty(code, { op: 'heartbeat', deviceId: 'laptop', playsHere: true }, 'host-token')).body.conductor === true);
+check('and a controller cannot take it back', (await inParty(code, { op: 'heartbeat', deviceId: 'phone' }, 'host-token')).body.conductor === false);
+check('the laptop keeps it', (await inParty(code, { op: 'heartbeat', deviceId: 'laptop', playsHere: true }, 'host-token')).body.conductor === true);
 const added = await inParty(code, { op: 'add', track: track('h1'), playNext: true }, 'host-token');
 check('host play-next pins to the front', (await state(code)).body.queue[0].uri === 'spotify:track:h1' && added.status === 201);
 const n1 = await inParty(code, { op: 'next' }, 'host-token');
