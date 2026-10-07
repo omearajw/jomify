@@ -42,6 +42,24 @@ async function loadArt(url) {
   }
 }
 
+// A blur made of resampling alone: shrink the art hard, then grow it back in steps. Each step
+// smooths, and together they give a wide, even blur. Safari's canvas does not apply a blur()
+// filter here (the art came out sharp), and this works the same everywhere.
+function pyramidBlur(art) {
+  let src = art;
+  for (const size of [16, 32, 64, 128]) {
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const cx = c.getContext('2d');
+    cx.imageSmoothingEnabled = true;
+    cx.imageSmoothingQuality = 'high';
+    cx.drawImage(src, 0, 0, size, size);
+    src = c;
+  }
+  return src;
+}
+
 export function getBlurredBackdrop(url) {
   if (!url) return Promise.resolve(null);
   if (cache.has(url)) return Promise.resolve(cache.get(url));
@@ -55,9 +73,18 @@ export function getBlurredBackdrop(url) {
       canvas.height = SIZE;
       const ctx = canvas.getContext('2d');
       const inset = (SIZE - ART) / 2;
-      if ('filter' in ctx) ctx.filter = 'blur(14px) saturate(1.8)';
-      ctx.drawImage(art, inset, inset, ART, ART);
-      ctx.filter = 'none';
+      // The art sits inside a transparent margin and the whole canvas is blurred, so its edges
+      // dissolve into the margin before the feather; blurring the art alone left a square.
+      const base = document.createElement('canvas');
+      base.width = SIZE;
+      base.height = SIZE;
+      const bctx = base.getContext('2d');
+      // Saturation is a nicety where the canvas supports filters; the blur never depends on one
+      if ('filter' in bctx) bctx.filter = 'saturate(1.8)';
+      bctx.drawImage(art, inset, inset, ART, ART);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(pyramidBlur(base), 0, 0, SIZE, SIZE);
       // Feather: keep the middle, fade to nothing well before the canvas edge
       const fade = ctx.createRadialGradient(SIZE / 2, SIZE / 2, SIZE * 0.18, SIZE / 2, SIZE / 2, SIZE * 0.5);
       fade.addColorStop(0, 'rgba(0,0,0,1)');
