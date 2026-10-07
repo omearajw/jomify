@@ -31,6 +31,9 @@ export default function GuestParty({ code }) {
   const [busyUri, setBusyUri] = useState(null);
   const searchTimer = useRef(null);
   const noticeTimer = useRef(null);
+  // While a tap is being confirmed, a poll landing in between must not wipe the optimistic view
+  const pending = useRef(0);
+  const buzz = () => { try { navigator.vibrate?.(8); } catch { /* fine */ } };
 
   const say = (text, tone = 'info') => {
     clearTimeout(noticeTimer.current);
@@ -45,7 +48,7 @@ export default function GuestParty({ code }) {
     const load = async (join) => {
       try {
         const s = join ? await guestApi.op(code, { op: 'join', guestId: guest.id, name: guest.name }) : await guestApi.state(code, guest.id);
-        if (!cancelled) { setState(s); setGone(''); }
+        if (!cancelled && (join || pending.current === 0)) { setState(s); setGone(''); }
       } catch (err) {
         if (!cancelled && err?.status === 404) setGone(err.message);
       }
@@ -76,9 +79,18 @@ export default function GuestParty({ code }) {
   }, [query, code, guest]);
   const shownResults = query.trim().length < 2 ? null : results;
 
+  // Every tap shows its result at once and the server's answer replaces it; a refusal puts
+  // things back and says why
   const request = async (track) => {
     if (!guest || busyUri) return;
+    buzz();
     setBusyUri(track.uri);
+    const tempId = `tmp-${Date.now()}`;
+    const before = state;
+    const guess = { id: tempId, ...track, guestId: guest.id, guestName: guest.name, at: Date.now(), votes: 0 };
+    setState((s) => s && ({ ...s, queue: [...s.queue, guess], mine: { ...s.mine, [tempId]: s.queue.length + 1 } }));
+    say(`Adding ${track.name}…`, 'success');
+    pending.current += 1;
     try {
       const res = await guestApi.op(code, { op: 'request', guestId: guest.id, track });
       setState(res);
@@ -86,20 +98,35 @@ export default function GuestParty({ code }) {
       setQuery('');
       setResults(null);
     } catch (err) {
+      setState(before);
       say(err?.message || "Couldn't add that", 'error');
     } finally {
+      pending.current -= 1;
       setBusyUri(null);
     }
   };
 
   const vote = async (item) => {
     if (!guest) return;
-    try { setState(await guestApi.op(code, { op: 'vote', guestId: guest.id, id: item.id })); } catch (err) { say(err?.message || "Couldn't vote", 'error'); }
+    buzz();
+    const before = state;
+    const had = (state?.voted || []).includes(item.id);
+    setState((s) => s && ({
+      ...s,
+      voted: had ? s.voted.filter((id) => id !== item.id) : [...(s.voted || []), item.id],
+      queue: s.queue.map((i) => (i.id === item.id ? { ...i, votes: Math.max(0, (i.votes || 0) + (had ? -1 : 1)) } : i))
+    }));
+    pending.current += 1;
+    try { setState(await guestApi.op(code, { op: 'vote', guestId: guest.id, id: item.id })); } catch (err) { setState(before); say(err?.message || "Couldn't vote", 'error'); } finally { pending.current -= 1; }
   };
 
   const withdraw = async (item) => {
     if (!guest) return;
-    try { setState(await guestApi.op(code, { op: 'withdraw', guestId: guest.id, id: item.id })); } catch (err) { say(err?.message || "Couldn't remove it", 'error'); }
+    buzz();
+    const before = state;
+    setState((s) => s && ({ ...s, queue: s.queue.filter((i) => i.id !== item.id) }));
+    pending.current += 1;
+    try { setState(await guestApi.op(code, { op: 'withdraw', guestId: guest.id, id: item.id })); } catch (err) { setState(before); say(err?.message || "Couldn't remove it", 'error'); } finally { pending.current -= 1; }
   };
 
   const shell = (children) => (
@@ -180,7 +207,7 @@ export default function GuestParty({ code }) {
                   <span className="block font-semibold truncate">{t.name}</span>
                   <span className="block text-sm text-neutral-400 truncate">{t.artists}{t.durationMs ? ` · ${fmt(t.durationMs)}` : ''}</span>
                 </span>
-                {busyUri === t.uri ? <Loader2 className="w-6 h-6 animate-spin text-neutral-400" /> : <Plus className="w-7 h-7 text-[var(--brand-mid)]" />}
+                {busyUri === t.uri ? <Check className="w-7 h-7 text-[var(--brand-mid)]" /> : <Plus className="w-7 h-7 text-[var(--brand-mid)]" />}
               </button>
             </li>
           ))}
@@ -217,7 +244,7 @@ export default function GuestParty({ code }) {
               {mine[i.id] ? (
                 <span className="w-14 text-right text-xs text-neutral-500 tabular-nums shrink-0">{i.votes ? `▲ ${i.votes}` : ''}</span>
               ) : (
-                <button type="button" onClick={() => vote(i)} aria-pressed={voted.has(i.id)} aria-label={`${voted.has(i.id) ? 'Take back your vote for' : 'Vote for'} ${i.name}`} className={`w-14 shrink-0 flex items-center justify-end gap-0.5 rounded-full px-2 py-1 text-xs font-bold tabular-nums ${voted.has(i.id) ? 'bg-brand-gradient text-white' : 'bg-white/10 text-neutral-300 active:bg-white/20'}`}><ChevronUp className="w-4 h-4" />{i.votes || 0}</button>
+                <button type="button" onClick={() => vote(i)} aria-pressed={voted.has(i.id)} aria-label={`${voted.has(i.id) ? 'Take back your vote for' : 'Vote for'} ${i.name}`} className={`w-14 shrink-0 flex items-center justify-end gap-0.5 rounded-full px-2 py-1 text-xs font-bold tabular-nums transition-transform active:scale-90 ${voted.has(i.id) ? 'bg-brand-gradient text-white' : 'bg-white/10 text-neutral-300 active:bg-white/20'}`}><ChevronUp className="w-4 h-4" />{i.votes || 0}</button>
               )}
             </li>
           ))}

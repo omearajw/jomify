@@ -56,7 +56,7 @@ function Setup({ playlists, profile, onStart, busy }) {
 export default function PartyMode() {
   const { token, profile, playlists } = useSlice(useUserStore, ['token', 'profile', 'playlists']);
   const savedVolume = useUserStore((s) => s.savedVolume);
-  const { code, party, queue, upNext, history, guestCount, conductor, hostAway, error, applyState, setCode, clear } = useSlice(usePartyStore, ['code', 'party', 'queue', 'upNext', 'history', 'guestCount', 'conductor', 'hostAway', 'error', 'applyState', 'setCode', 'clear']);
+  const { code, party, queue, upNext, history, guestCount, conductor, hostAway, error, skipping, applyState, setCode, clear } = useSlice(usePartyStore, ['code', 'party', 'queue', 'upNext', 'history', 'guestCount', 'conductor', 'hostAway', 'error', 'skipping', 'applyState', 'setCode', 'clear']);
   const { currentPlayingTrack: track, isCurrentTrackPaused: paused } = usePlaybackSummary();
   const { isLocalActive, remoteVolume, activeDevice } = useSlice(usePlayerStore, ['isLocalActive', 'remoteVolume', 'activeDevice']);
   const [busy, setBusy] = useState(false);
@@ -189,8 +189,8 @@ export default function PartyMode() {
           <button type="button" onClick={() => { setHostPaused(!paused); togglePlay(); }} aria-label={paused ? 'Play' : 'Pause'} className="w-24 h-24 rounded-full bg-brand-gradient text-white flex items-center justify-center shadow-brand-glow active:scale-95 transition-transform">
             {paused ? <Play className="w-12 h-12 fill-current ml-1" /> : <Pause className="w-12 h-12 fill-current" />}
           </button>
-          <button type="button" onClick={() => { setHostPaused(false); skipWithParty(); }} aria-label="Skip" className="w-20 h-20 rounded-full bg-white/10 border border-white/15 text-white flex items-center justify-center active:scale-95 transition-transform">
-            <SkipForward className="w-10 h-10 fill-current" />
+          <button type="button" onClick={() => { setHostPaused(false); skipWithParty(); }} aria-label="Skip" aria-busy={skipping || undefined} disabled={skipping} className={`w-20 h-20 rounded-full border border-white/15 text-white flex items-center justify-center active:scale-95 transition-all ${skipping ? 'bg-white/20 scale-95' : 'bg-white/10'}`}>
+            {skipping ? <Loader2 className="w-9 h-9 animate-spin" /> : <SkipForward className="w-10 h-10 fill-current" />}
           </button>
         </div>
         <label className="flex items-center gap-4">

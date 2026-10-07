@@ -75,12 +75,20 @@ export async function heartbeat() {
   }
 }
 
-async function waitForQueued(t, uri) {
+// A relinked song (another market's copy) shows in the queue under a different uri with the
+// requested one in linked_from, so match either, or the wait ran its full course every time
+const sameSong = (x, uri) => x?.uri === uri || x?.linked_from?.uri === uri;
+// Development-mode apps no longer get linked_from, so a relinked copy is only recognisable by
+// what it is called; the artists are kept loose because the queue gives objects and the party
+// item a joined string
+const sameSongByName = (x, item) => Boolean(x && item && x.name && x.name === item.name && ((x.artists || []).map((a) => a.name).join(', ') === item.artists || !item.artists));
+const isItem = (x, item) => sameSong(x, item.uri) || sameSongByName(x, item);
+async function waitForQueued(t, item) {
   for (let i = 0; i < 8; i++) {
-    await new Promise((r) => setTimeout(r, i === 0 ? 300 : 500));
+    await new Promise((r) => setTimeout(r, 250));
     try {
       const q = await fetchQueue(t);
-      if ((q?.queue || []).some((x) => x?.uri === uri)) return true;
+      if ((q?.queue || []).some((x) => isItem(x, item))) return true;
     } catch { /* keep trying */ }
   }
   log('party', 'the queue never showed the song; skipping anyway');
@@ -104,7 +112,7 @@ async function feedNext(reason, { waitUntilQueued = false } = {}) {
     log('party', `queued ${item.name} for ${item.guestName}`, reason);
     // Spotify answers before the queue actually holds the song. A skip in that gap went to the
     // playlist's next track and the request played after it, so wait until the queue shows it.
-    if (waitUntilQueued) await waitForQueued(t, item.uri);
+    if (waitUntilQueued) await waitForQueued(t, item);
   } catch (err) {
     log('party', `Spotify refused ${item.name}`, err?.message);
     fed = null;
@@ -136,7 +144,7 @@ async function tick() {
 
   // A fed song heard playing is done with; one that never starts goes back
   if (fed) {
-    if (current === fed.item.uri) {
+    if (isItem(player().playbackState?.track_window?.current_track, fed.item)) {
       const done = fed; fed = null;
       hostApi.op(p.code, { op: 'played', id: done.item.id }).then((res) => party().applyState(res)).catch(() => {});
     } else if (now - fed.at > FED_TIMEOUT_MS) {
@@ -170,19 +178,31 @@ async function tick() {
 }
 
 // The party view's Skip: the next request goes in first so a skip lands on it, not on the playlist
+// One press, one skip. The wait for Spotify's queue made the first press look dead, so the
+// button shows it is working and a second press while it works is ignored, not queued up.
+let skipInFlight = false;
 export async function skipWithParty() {
-  const before = player().playbackState?.track_window?.current_track?.uri || null;
-  if (!fed && party().queue.length > 0) await feedNext('skip', { waitUntilQueued: true });
-  const wanted = fed?.item || null;
-  skipNext();
-  if (!wanted) return;
-  // Spotify sometimes lands on the playlist's next song despite the queue; one more skip reaches
-  // the request. Only when the song really changed to something else, never on a slow answer.
-  await new Promise((r) => setTimeout(r, 3000));
-  const now = player().playbackState?.track_window?.current_track?.uri || null;
-  if (fed?.item?.uri === wanted.uri && now && now !== before && now !== wanted.uri) {
-    log('party', `skip landed on the playlist, not ${wanted.name}; skipping once more`);
+  if (skipInFlight) return;
+  skipInFlight = true;
+  usePartyStore.setState({ skipping: true });
+  try {
+    const before = player().playbackState?.track_window?.current_track?.uri || null;
+    if (!fed && party().queue.length > 0) await feedNext('skip', { waitUntilQueued: true });
+    const wanted = fed?.item || null;
     skipNext();
+    if (!wanted) return;
+    // Spotify sometimes lands on the playlist's next song despite the queue; one more skip
+    // reaches the request. Only when the song really changed to something else, never on a
+    // slow answer.
+    await new Promise((r) => setTimeout(r, 2500));
+    const now = player().playbackState?.track_window?.current_track?.uri || null;
+    if (fed?.item?.uri === wanted.uri && now && now !== before && !isItem(player().playbackState?.track_window?.current_track, wanted)) {
+      log('party', `skip landed on the playlist, not ${wanted.name}; skipping once more`);
+      skipNext();
+    }
+  } finally {
+    skipInFlight = false;
+    usePartyStore.setState({ skipping: false });
   }
 }
 

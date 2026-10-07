@@ -16,6 +16,7 @@ export const usePartyStore = create(persist((set) => ({
   conductor: false,
   hostAway: false,
   lastHeartbeatAt: 0,
+  skipping: false,
   error: null,
   setCode: (code) => set({ code }),
   // Only the heartbeat says who conducts; other replies leave that alone
