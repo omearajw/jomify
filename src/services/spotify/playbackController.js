@@ -1049,7 +1049,45 @@ export function togglePlay() {
   log('transport', player().playbackState?.paused ? 'play' : 'pause', sdk ? 'this browser' : 'remote device');
   if (sdk) return sdk.togglePlay().catch(console.error);
   const paused = player().playbackState?.paused ?? true;
-  return remote(paused ? resumePlayback : pausePlayback, () => patchState({ paused: !paused }));
+  if (paused) return resumeRemote();
+  return remote(pausePlayback, () => patchState({ paused: true }));
+}
+
+// Play on the device Spotify says has the music. At launch that is often a Jomify on another
+// device that has since died, or a phone whose app is gone: Spotify still lists it, accepts the
+// play command and nothing happens, so the first song shown never played. Check a moment later
+// that it really started and, if not, carry on here on this browser's own player.
+const RESUME_CHECK_MS = 1800;
+async function resumeRemote() {
+  const t = token();
+  const s = player();
+  if (!t) return;
+  const target = s.activeDevice?.id || null;
+  const asked = lastIntentAt;
+  patchState({ paused: false });
+  try {
+    await resumePlayback(t, target);
+  } catch (err) {
+    if (err?.code === 'NO_ACTIVE_DEVICE' && canPlayHere()) return playHereInstead('Spotify had no device to play on');
+    handlePlaybackError(err);
+    refreshSoon();
+    return;
+  }
+  refreshSoon();
+  setTimeout(async () => {
+    if (lastIntentAt !== asked) return; // something else has been asked for since
+    const state = await refreshRemoteState();
+    const live = player();
+    if (state?.is_playing || live.isLocalActive) return;
+    if (canPlayHere()) playHereInstead(`${s.activeDevice?.name || 'the device'} did not start playing`);
+  }, RESUME_CHECK_MS);
+}
+const canPlayHere = () => { const s = player(); return Boolean(s.deviceId && s.sdkStatus === 'ready'); };
+function playHereInstead(why) {
+  const t = token();
+  const s = player();
+  log('playback', 'playing here instead', why);
+  return transferPlayback(t, s.deviceId, true).then(confirmPlayback).catch(handlePlaybackError);
 }
 
 export function next() {
