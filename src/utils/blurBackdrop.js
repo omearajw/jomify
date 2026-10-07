@@ -14,24 +14,31 @@ const SIZE = 256;          // the canvas
 const ART = 160;           // the art inside it, leaving room for the blur and the feather
 const cache = new Map();   // art url -> blob url (or null when the canvas tainted)
 
-// The art for the canvas is fetched, not loaded through an <img>: an image element asked for
-// with crossOrigin right after the player bar loaded the same URL without it can be handed the
-// bar's copy from the memory cache, which taints the canvas and the blur silently gives up.
-// A fetch has its own path; if even that fails, an <img> with a cache-busting query is tried.
+// The art for the canvas is loaded with crossOrigin from a URL the player bar never uses (a
+// query string the CDN ignores): an <img> asked for with crossOrigin right after the bar loaded
+// the same URL without it can be handed the bar's copy from the memory cache, which taints the
+// canvas and the blur silently gives up. A fetch of the plain URL is the fallback.
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.decoding = 'async';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('image failed to load'));
+    img.src = src;
+  });
+}
 async function loadArt(url) {
   try {
-    const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await createImageBitmap(await res.blob());
-  } catch (err) {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.decoding = 'async';
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error(`fetch: ${err?.message || err}; image: failed to load`));
-      img.src = `${url}${url.includes('?') ? '&' : '?'}zen=1`;
-    });
+    return await loadImage(`${url}${url.includes('?') ? '&' : '?'}zen=1`);
+  } catch (first) {
+    try {
+      const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await createImageBitmap(await res.blob());
+    } catch (second) {
+      throw new Error(`${first.message}; fetch: ${second?.message || second}`);
+    }
   }
 }
 
