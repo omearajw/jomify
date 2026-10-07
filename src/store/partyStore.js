@@ -18,10 +18,12 @@ export const usePartyStore = create(persist((set) => ({
   lastHeartbeatAt: 0,
   error: null,
   setCode: (code) => set({ code }),
-  applyState: (s) => set({
+  // Only the heartbeat says who conducts; other replies leave that alone
+  applyState: (s) => set((current) => ({
     party: s.party ?? null, queue: s.queue || [], upNext: s.upNext ?? null, history: s.history || [],
-    guestCount: s.guestCount || 0, conductor: Boolean(s.conductor), hostAway: Boolean(s.hostAway), lastHeartbeatAt: Date.now(), error: null
-  }),
+    guestCount: s.guestCount || 0, conductor: s.conductor === undefined ? current.conductor : Boolean(s.conductor),
+    hostAway: Boolean(s.hostAway), lastHeartbeatAt: Date.now(), error: null
+  })),
   setError: (error) => set({ error }),
   clear: () => set({ code: null, party: null, queue: [], upNext: null, history: [], guestCount: 0, conductor: false, hostAway: false, error: null })
 }), { name: 'jomify-party', partialize: (s) => ({ code: s.code, deviceId: s.deviceId }) }));
