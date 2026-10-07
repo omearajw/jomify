@@ -37,7 +37,7 @@ async function loadArt(url) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await createImageBitmap(await res.blob());
     } catch (second) {
-      throw new Error(`${first.message}; fetch: ${second?.message || second}`);
+      throw new Error(`${first.message}; fetch: ${second?.message || second}`, { cause: second });
     }
   }
 }
