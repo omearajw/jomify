@@ -2,7 +2,7 @@ import { usePartyStore } from '../store/partyStore';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { hostApi } from './client';
-import { addToQueue, playContext } from '../services/spotify/api';
+import { addToQueue, playContext, fetchQueue } from '../services/spotify/api';
 import { playOn, togglePlay, next as skipNext, setShuffle } from '../services/spotify/playbackController';
 import { log } from '../services/debugLog';
 
@@ -12,7 +12,8 @@ import { log } from '../services/debugLog';
 //
 // Only one of the host's devices conducts at a time (the lock); the rest just show the party.
 
-const HEARTBEAT_MS = 10000;
+const HEARTBEAT_MS = 8000;
+const CHANGE_PUSH_DELAY_MS = 400;  // a track change reaches guests after this, not the next heartbeat
 const TICK_MS = 1500;
 const FEED_AT_MS = 15000;        // hand over the next song with this much of the current one left
 const FED_TIMEOUT_MS = 90000;    // a fed song Spotify hasn't started by then goes back to the queue
@@ -29,6 +30,8 @@ let lastRestartAt = 0;
 let hostPaused = false;    // the host pressed pause in the party view; the watchdog stands down
 let wakeLock = null;
 let heartbeatInFlight = false;
+let unsubscribeChanges = null;
+let changeTimer = null;
 
 const party = () => usePartyStore.getState();
 const player = () => usePlayerStore.getState();
@@ -70,7 +73,19 @@ export async function heartbeat() {
   }
 }
 
-async function feedNext(reason) {
+async function waitForQueued(t, uri) {
+  for (let i = 0; i < 8; i++) {
+    await new Promise((r) => setTimeout(r, i === 0 ? 300 : 500));
+    try {
+      const q = await fetchQueue(t);
+      if ((q?.queue || []).some((x) => x?.uri === uri)) return true;
+    } catch { /* keep trying */ }
+  }
+  log('party', 'the queue never showed the song; skipping anyway');
+  return false;
+}
+
+async function feedNext(reason, { waitUntilQueued = false } = {}) {
   const code = party().code;
   const t = token();
   if (!code || !t || fed) return null;
@@ -85,6 +100,9 @@ async function feedNext(reason) {
   try {
     await addToQueue(t, player().activeDevice?.id || null, item.uri);
     log('party', `queued ${item.name} for ${item.guestName}`, reason);
+    // Spotify answers before the queue actually holds the song. A skip in that gap went to the
+    // playlist's next track and the request played after it, so wait until the queue shows it.
+    if (waitUntilQueued) await waitForQueued(t, item.uri);
   } catch (err) {
     log('party', `Spotify refused ${item.name}`, err?.message);
     fed = null;
@@ -151,8 +169,19 @@ async function tick() {
 
 // The party view's Skip: the next request goes in first so a skip lands on it, not on the playlist
 export async function skipWithParty() {
-  if (!fed && party().queue.length > 0) await feedNext('skip');
+  const before = player().playbackState?.track_window?.current_track?.uri || null;
+  if (!fed && party().queue.length > 0) await feedNext('skip', { waitUntilQueued: true });
+  const wanted = fed?.item || null;
   skipNext();
+  if (!wanted) return;
+  // Spotify sometimes lands on the playlist's next song despite the queue; one more skip reaches
+  // the request. Only when the song really changed to something else, never on a slow answer.
+  await new Promise((r) => setTimeout(r, 3000));
+  const now = player().playbackState?.track_window?.current_track?.uri || null;
+  if (fed?.item?.uri === wanted.uri && now && now !== before && now !== wanted.uri) {
+    log('party', `skip landed on the playlist, not ${wanted.name}; skipping once more`);
+    skipNext();
+  }
 }
 
 async function acquireWakeLock() {
@@ -165,6 +194,16 @@ export function startConductor() {
   fed = null; pausedSince = 0; silentSince = 0; hostPaused = false;
   timers = { hb: setInterval(heartbeat, HEARTBEAT_MS), tick: setInterval(() => { tick().catch(() => {}); }, TICK_MS) };
   heartbeat();
+  // Guests see a change of song straight away rather than at the next heartbeat
+  const keyOf = (s) => `${s.playbackState?.track_window?.current_track?.uri || ''}|${s.playbackState?.paused ? 1 : 0}`;
+  let lastKey = keyOf(player());
+  unsubscribeChanges = usePlayerStore.subscribe((s) => {
+    const key = keyOf(s);
+    if (key === lastKey) return;
+    lastKey = key;
+    clearTimeout(changeTimer);
+    changeTimer = setTimeout(heartbeat, CHANGE_PUSH_DELAY_MS);
+  });
   acquireWakeLock();
   document.addEventListener('visibilitychange', onVisible);
   log('party', 'conducting', party().code);
@@ -173,6 +212,7 @@ export function startConductor() {
 export function stopConductor() {
   if (!timers) return;
   clearInterval(timers.hb); clearInterval(timers.tick); timers = null;
+  unsubscribeChanges?.(); unsubscribeChanges = null; clearTimeout(changeTimer);
   document.removeEventListener('visibilitychange', onVisible);
   wakeLock?.release?.().catch(() => {}); wakeLock = null;
   log('party', 'stopped conducting');

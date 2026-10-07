@@ -6,7 +6,7 @@ import { guestApi } from '../../party/client';
 // song, tap to request it, and watch where it sits in the order.
 
 const GUEST_KEY = 'jomify_party_guest';
-const POLL_MS = 5000;
+const POLL_MS = 3000;
 
 function loadGuest() {
   try { return JSON.parse(localStorage.getItem(GUEST_KEY) || 'null'); } catch { return null; }
