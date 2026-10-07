@@ -11,6 +11,13 @@ import { togglePlay, next as nextTrack, previous as previousTrack, seek, setVolu
 import Projection from './Projection';
 import { initialLite, measureFrames, rememberLite, zenEffectsSetting, SLOW_FRAME_MS } from './zenEffects';
 
+// Real fullscreen on macOS moves the window to its own Space and blacks out every other monitor,
+// which is a high price for hiding a tab bar. Zen already fills the viewport, so on a Mac it
+// stays a normal window; the desktop app asks its wrapper for the screen without a Space.
+const IS_MAC = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent || '');
+const desktop = () => (typeof window !== 'undefined' ? window.jomifyDesktop : null);
+const usesRealFullscreen = () => !IS_MAC && !desktop()?.setZenFullscreen;
+
 // Lines this far from the active one get the animated depth-of-field treatment; the rest are
 // plain elements with a static style, so a 200-line song doesn't run 200 spring animations
 const ANIMATED_LINE_RADIUS = 10;
@@ -89,9 +96,18 @@ export default function ZenMode() {
     };
   }, []);
 
+  // Leaving is done in the cleanup: Zen unmounts the moment it closes, so an effect never sees
+  // isZenMode turn false
   useEffect(() => {
-    if (isZenMode) document.documentElement.requestFullscreen().catch(() => {});
-    else if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    if (!isZenMode) return undefined;
+    const wrapper = desktop();
+    if (wrapper?.setZenFullscreen) {
+      Promise.resolve(wrapper.setZenFullscreen(true)).catch(() => {});
+      return () => { Promise.resolve(wrapper.setZenFullscreen(false)).catch(() => {}); };
+    }
+    if (IS_MAC) return undefined;
+    document.documentElement.requestFullscreen().catch(() => {});
+    return () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); };
   }, [isZenMode]);
 
   // The component only exists while ZenMode is open, so this runs once per opening
@@ -125,6 +141,7 @@ export default function ZenMode() {
   }, [backdropReady, backdropUrl, lite]);
 
   useEffect(() => {
+    if (!usesRealFullscreen()) return undefined;
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement && isZenMode) toggleZenMode();
     };

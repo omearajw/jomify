@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const express = require('express');
 const path = require('path');
 
@@ -22,9 +22,20 @@ function createWindow() {
     height: 800,
     autoHideMenuBar: true, // Hides the ugly File/Edit/View menu
     backgroundColor: '#000000',
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs') },
   });
   mainWindow.loadURL(`http://${host}:${port}`);
 }
+
+// Zen mode's fullscreen. On macOS the real thing creates a Space and blacks out every other
+// monitor, so the window fills the screen the old-fashioned way instead; elsewhere real
+// fullscreen behaves and is used.
+ipcMain.handle('zen-fullscreen', (_event, on) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (process.platform === 'darwin') mainWindow.setSimpleFullScreen(on);
+  else mainWindow.setFullScreen(on);
+  return true;
+});
 
 app.whenReady().then(() => {
   const listener = server.listen(port, host, () => createWindow());

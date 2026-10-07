@@ -63,6 +63,7 @@
     "files": [
       "dist/**/*",
       "main.cjs",
+      "preload.cjs",
       "node_modules/**/*"
     ]
   }
