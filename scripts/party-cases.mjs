@@ -17,7 +17,15 @@ check('pins go first, in pin order', names(orderQueue([it('a1', 'A', 1), it('a2'
 check('positions are 1-based and per guest', JSON.stringify(positionsFor(orderQueue([it('a1', 'A', 1), it('b1', 'B', 2), it('a2', 'A', 3)]), 'A')) === '{"a1":1,"a2":3}');
 check('empty queue', orderQueue([]).length === 0);
 check('rounds follow request time, not list position', names(orderQueue([it('a2', 'A', 2), it('a1', 'A', 1), it('b1', 'B', 3)])) === 'a1,b1,a2');
-check('votes reorder within a round only', names(orderQueue([it('a1', 'A', 1), it('b1', 'B', 2, { votes: 3 }), it('a2', 'A', 3, { votes: 9 })])) === 'b1,a1,a2');
+check('one vote jumps the whole queue', names(orderQueue([it('a1', 'A', 1), it('b1', 'B', 2), it('a2', 'A', 3), it('c1', 'C', 4, { votes: 1 })])) === 'c1,a1,b1,a2');
+check('most votes first among voted songs', names(orderQueue([it('a1', 'A', 1), it('a2', 'A', 2, { votes: 1 }), it('b1', 'B', 3, { votes: 9 })])) === 'b1,a2,a1');
+check('a pile of 100 and a newcomer: the newcomer is second, the next newcomer third', (() => {
+  const pile = Array.from({ length: 100 }, (_, i) => it('a' + i, 'A', i));
+  const order = orderQueue([...pile, it('b1', 'B', 200), it('c1', 'C', 300)]).map((x) => x.id);
+  return order[0] === 'a0' && order[1] === 'b1' && order[2] === 'c1' && order[3] === 'a1';
+})());
+check('pins still beat votes', names(orderQueue([it('a1', 'A', 1, { votes: 5 }), it('b1', 'B', 2, { pinnedAt: 10 })])) === 'b1,a1');
+check('equal votes: whoever\'s turn comes first', names(orderQueue([it('a1', 'A', 1), it('a2', 'A', 2, { votes: 2 }), it('b1', 'B', 3, { votes: 2 })])) === 'b1,a2,a1');
 
 // ---- fake redis ---------------------------------------------------------------------------------
 // The Upstash client turns every call into an HTTP command (often batched into a pipeline), so
@@ -142,8 +150,7 @@ const idx = async (uri) => (await state(code)).body.queue.findIndex((i) => i.uri
 check('before the vote Amy is first', (await idx('spotify:track:a1')) < (await idx('spotify:track:b1')));
 const v1 = await inParty(code, { op: 'vote', guestId: g3, id: theirs.id });
 check('a vote counts and is remembered for the voter', v1.body.cast === true && v1.body.queue.find((i) => i.id === theirs.id).votes === 1 && (await state(code, g3)).body.voted.includes(theirs.id));
-check('votes reorder within the round', (await idx('spotify:track:b1')) < (await idx('spotify:track:a1')));
-check('but never across rounds', (await idx('spotify:track:a1')) < (await idx('spotify:track:a2')) && (await idx('spotify:track:b1')) < (await idx('spotify:track:a2')));
+check('a vote jumps the request to the front', (await idx('spotify:track:b1')) === 0);
 check('voting again takes it back', (await inParty(code, { op: 'vote', guestId: g3, id: theirs.id })).body.cast === false && (await idx('spotify:track:a1')) < (await idx('spotify:track:b1')));
 check('unknown song', (await inParty(code, { op: 'vote', guestId: g3, id: 'nope' })).status === 404);
 

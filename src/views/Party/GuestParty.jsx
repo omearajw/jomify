@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Music2, Search, Plus, Check, Loader2, X, PauseCircle, WifiOff, ChevronUp, ExternalLink } from 'lucide-react';
 import { guestApi } from '../../party/client';
+import { orderQueue, positionsFor } from '../../party/order';
 
 // A guest's phone at a party: no account, just the code. Pick a name, see what is playing, find a
 // song, tap to request it, and watch where it sits in the order.
@@ -17,6 +18,12 @@ function saveGuest(guest) {
 const newGuestId = () => `g${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 const ordinal = (n) => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) ? 0 : Math.min(n % 10, 4) === 4 ? 0 : (n % 10) > 3 ? 0 : n % 10]}`;
 const spotifyUrl = (item) => { const id = item?.id || (item?.uri || '').split(':').pop(); return id ? `https://open.spotify.com/track/${id}` : null; };
+// A queue changed on this phone before the server answers, put in play order with its positions
+const withOrder = (state, queue, guestId) => {
+  const ordered = orderQueue(queue);
+  return { ...state, queue: ordered, mine: positionsFor(ordered, guestId) };
+};
+
 // A request as it will look once the server confirms it, shown before it does
 const guessRequest = (track, guest) => ({ id: `tmp-${Date.now()}`, ...track, guestId: guest.id, guestName: guest.name, at: Date.now(), votes: 0 });
 const fmt = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
@@ -30,7 +37,7 @@ export default function GuestParty({ code }) {
   const [results, setResults] = useState(null);
   const [searching, setSearching] = useState(false);
   const [notice, setNotice] = useState(null); // { text, tone }
-  const [busyUri, setBusyUri] = useState(null);
+  const [busyUris, setBusyUris] = useState(() => new Set()); // requests on their way, one per song
   const searchTimer = useRef(null);
   const noticeTimer = useRef(null);
   // While a tap is being confirmed, a poll landing in between must not wipe the optimistic view
@@ -84,26 +91,26 @@ export default function GuestParty({ code }) {
   // Every tap shows its result at once and the server's answer replaces it; a refusal puts
   // things back and says why
   const request = async (track) => {
-    if (!guest || busyUri) return;
+    if (!guest || busyUris.has(track.uri)) return;
     buzz();
-    setBusyUri(track.uri);
-    const before = state;
+    setBusyUris((b) => new Set(b).add(track.uri));
     const guess = guessRequest(track, guest);
-    setState((s) => s && ({ ...s, queue: [...s.queue, guess], mine: { ...s.mine, [guess.id]: s.queue.length + 1 } }));
+    // Placed by the same rule the server uses, so the song shows where it will really play
+    setState((s) => s && withOrder(s, [...s.queue, guess], guest.id));
     say(`Adding ${track.name}…`, 'success');
     pending.current += 1;
     try {
       const res = await guestApi.op(code, { op: 'request', guestId: guest.id, track });
       setState(res);
+      // The search stays, so several songs can be picked from one set of results
       say(res.position === 1 ? `${track.name} is up next` : `${track.name} is ${ordinal(res.position)} in line`, 'success');
-      setQuery('');
-      setResults(null);
     } catch (err) {
-      setState(before);
+      // Only this song's guess comes out; another request made meanwhile stays
+      setState((s) => s && withOrder(s, s.queue.filter((i) => i.id !== guess.id), guest.id));
       say(err?.message || "Couldn't add that", 'error');
     } finally {
       pending.current -= 1;
-      setBusyUri(null);
+      setBusyUris((b) => { const next = new Set(b); next.delete(track.uri); return next; });
     }
   };
 
@@ -112,11 +119,10 @@ export default function GuestParty({ code }) {
     buzz();
     const before = state;
     const had = (state?.voted || []).includes(item.id);
-    setState((s) => s && ({
+    setState((s) => s && withOrder({
       ...s,
-      voted: had ? s.voted.filter((id) => id !== item.id) : [...(s.voted || []), item.id],
-      queue: s.queue.map((i) => (i.id === item.id ? { ...i, votes: Math.max(0, (i.votes || 0) + (had ? -1 : 1)) } : i))
-    }));
+      voted: had ? s.voted.filter((id) => id !== item.id) : [...(s.voted || []), item.id]
+    }, s.queue.map((i) => (i.id === item.id ? { ...i, votes: Math.max(0, (i.votes || 0) + (had ? -1 : 1)) } : i)), guest.id));
     pending.current += 1;
     try { setState(await guestApi.op(code, { op: 'vote', guestId: guest.id, id: item.id })); } catch (err) { setState(before); say(err?.message || "Couldn't vote", 'error'); } finally { pending.current -= 1; }
   };
@@ -131,7 +137,8 @@ export default function GuestParty({ code }) {
   };
 
   const shell = (children) => (
-    <div className="min-h-dvh bg-black text-white">
+    // The app's stylesheet holds the page body still for its own layout, so this page scrolls itself
+    <div className="fixed inset-0 overflow-y-auto overscroll-y-contain bg-black text-white">
       <div className="fixed inset-0 z-0 bg-aurora opacity-20" />
       <div className="relative z-10 max-w-lg mx-auto px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] flex flex-col gap-5">
         {children}
@@ -161,6 +168,7 @@ export default function GuestParty({ code }) {
   const voted = new Set(state?.voted || []);
   const myItems = (state?.queue || []).filter((i) => mine[i.id]);
   const waiting = (state?.queue || []).length;
+  const queuedUris = new Set([...(state?.queue || []).map((i) => i.uri), state?.upNext?.uri].filter(Boolean));
   const history = state?.history || [];
   // My song is on: the song playing is one I requested and it has been handed over (not merely a coincidence of the playlist)
   const myTurn = np && !np.paused && history.some((h) => h.uri === np.uri && h.guestId === guest.id);
@@ -200,18 +208,21 @@ export default function GuestParty({ code }) {
       {shownResults && shownResults.length === 0 && !searching && <p className="text-sm text-neutral-400">Nothing found.</p>}
       {shownResults && shownResults.length > 0 && (
         <ul className="flex flex-col gap-2">
-          {shownResults.map((t) => (
+          {shownResults.map((t) => {
+            const queued = busyUris.has(t.uri) || queuedUris.has(t.uri);
+            return (
             <li key={t.uri}>
-              <button type="button" onClick={() => request(t)} disabled={busyUri === t.uri} className="w-full flex items-center gap-3 rounded-2xl bg-white/5 active:bg-white/15 border border-white/10 p-3 text-left">
+              <button type="button" onClick={() => request(t)} disabled={queued} aria-label={queued ? `${t.name}, in the queue` : `Request ${t.name}`} className={`w-full flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors ${queued ? 'bg-white/[0.03] border-white/5' : 'bg-white/5 active:bg-white/15 border-white/10'}`}>
                 {t.image ? <img src={t.image} alt="" className="w-12 h-12 rounded-lg object-cover" /> : <div className="w-12 h-12 rounded-lg bg-white/10" />}
                 <span className="min-w-0 flex-1">
                   <span className="block font-semibold truncate">{t.name}</span>
-                  <span className="block text-sm text-neutral-400 truncate">{t.artists}{t.durationMs ? ` · ${fmt(t.durationMs)}` : ''}</span>
+                  <span className="block text-sm text-neutral-400 truncate">{queued ? 'In the queue' : `${t.artists}${t.durationMs ? ` · ${fmt(t.durationMs)}` : ''}`}</span>
                 </span>
-                {busyUri === t.uri ? <Check className="w-7 h-7 text-[var(--brand-mid)]" /> : <Plus className="w-7 h-7 text-[var(--brand-mid)]" />}
+                {queued ? <Check className="w-7 h-7 text-[var(--brand-mid)]" /> : <Plus className="w-7 h-7 text-[var(--brand-mid)]" />}
               </button>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </section>
@@ -252,7 +263,7 @@ export default function GuestParty({ code }) {
           {waiting > 12 && <li className="text-xs text-neutral-500 pl-9">and {waiting - 12} more</li>}
         </ol>
       )}
-      {waiting > 0 && <p className="text-xs text-neutral-500 mt-2">Everyone's first request plays before anyone's second. Votes settle the order within a round.</p>}
+      {waiting > 0 && <p className="text-xs text-neutral-500 mt-2">Upvoted songs jump the queue, most votes first. The rest take turns: everyone's first request plays before anyone's second.</p>}
     </section>
 
     {history.length > 0 && (

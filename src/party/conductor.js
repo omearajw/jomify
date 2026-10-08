@@ -22,7 +22,8 @@ const SILENCE_TOLERANCE_MS = 15000;
 const RESTART_COOLDOWN_MS = 60000;
 
 let timers = null;
-let fed = null;            // { item, at } handed to Spotify, awaiting its start
+let fed = null;
+let lastConfirmedId = null; // the last request fed elsewhere that this conductor confirmed            // { item, at } handed to Spotify, awaiting its start
 let pausedSince = 0;
 let silentSince = 0;
 let lastResumeAt = 0;
@@ -142,6 +143,14 @@ async function tick() {
   const current = state?.track_window?.current_track?.uri || null;
   const now = Date.now();
 
+  // A request another of the host's devices fed (a skip from the phone) is confirmed here, so it
+  // reaches the history and its guest is told
+  const currentTrack = player().playbackState?.track_window?.current_track;
+  if (!fed && p.upNext && p.upNext.id !== lastConfirmedId && isItem(currentTrack, p.upNext)) {
+    lastConfirmedId = p.upNext.id;
+    hostApi.op(p.code, { op: 'played', id: p.upNext.id }).then((res) => party().applyState(res)).catch(() => {});
+  }
+
   // A fed song heard playing is done with; one that never starts goes back
   if (fed) {
     if (isItem(player().playbackState?.track_window?.current_track, fed.item)) {
@@ -186,21 +195,28 @@ export async function skipWithParty() {
   skipInFlight = true;
   usePartyStore.setState({ skipping: true });
   try {
-    const before = player().playbackState?.track_window?.current_track?.uri || null;
     if (!fed && party().queue.length > 0) await feedNext('skip', { waitUntilQueued: true });
     const wanted = fed?.item || null;
     skipNext();
     if (!wanted) return;
-    // Spotify sometimes lands on the playlist's next song despite the queue; one more skip
-    // reaches the request. Only when the song really changed to something else, never on a
-    // slow answer.
+    // Spotify can land on the playlist's next song despite the queue. Only Spotify's own queue
+    // says so reliably: skip once more only when the request is still waiting at its front.
+    // Judging by what this device showed used to skip the request itself whenever its view lagged.
     await new Promise((r) => setTimeout(r, 2500));
-    const now = player().playbackState?.track_window?.current_track?.uri || null;
-    if (fed?.item?.uri === wanted.uri && now && now !== before && !isItem(player().playbackState?.track_window?.current_track, wanted)) {
-      log('party', `skip landed on the playlist, not ${wanted.name}; skipping once more`);
+    const t = token();
+    const q = t ? await fetchQueue(t).catch(() => null) : null;
+    if (!q) return;
+    if (isItem(q.currently_playing, wanted)) return;
+    if (isItem(q.queue?.[0], wanted)) {
+      log('party', `skip landed before ${wanted.name}; skipping once more`);
       skipNext();
+    } else {
+      log('party', `after the skip Spotify is playing ${q.currently_playing?.name || 'nothing'}, and ${wanted.name} is not next`);
     }
   } finally {
+    // Only the conductor follows a fed song to the end. On any other device it would linger and
+    // the next skip would feed nothing and then chase it with a second skip.
+    if (!party().conductor) fed = null;
     skipInFlight = false;
     usePartyStore.setState({ skipping: false });
   }
