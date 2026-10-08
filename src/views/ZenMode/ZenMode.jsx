@@ -9,6 +9,8 @@ import { useSlice } from '../../store/selectors';
 import { getBlurredBackdrop } from '../../utils/blurBackdrop';
 import { togglePlay, next as nextTrack, previous as previousTrack, seek, setVolume as setPlaybackVolume } from '../../services/spotify/playbackController';
 import Projection from './Projection';
+import { usePartyStore } from '../../store/partyStore';
+import { requestedBy } from '../../party/view';
 import { initialLite, measureFrames, rememberLite, zenEffectsSetting, SLOW_FRAME_MS } from './zenEffects';
 
 // Real fullscreen on macOS moves the window to its own Space and blacks out every other monitor,
@@ -63,6 +65,10 @@ export default function ZenMode() {
   const scrollRef = useRef(null);
 
   const currentTrack = playbackState?.track_window?.current_track;
+  // At a party, the guest who asked for this song
+  const partyHistory = usePartyStore((st) => st.history);
+  const partyUpNext = usePartyStore((st) => st.upNext);
+  const requestedByGuest = requestedBy(currentTrack, { history: partyHistory, upNext: partyUpNext });
   const isPaused = playbackState ? playbackState.paused : true;
   const albumArtUrl = currentTrack?.album?.images?.[0]?.url || '';
   const trackId = currentTrack?.id || 'empty';
@@ -573,6 +579,7 @@ export default function ZenMode() {
                       <h2 className={`font-semibold text-neutral-300 w-full break-words [text-wrap:balance] leading-snug px-4 drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)] ${showLyrics ? 'text-base md:text-lg' : 'text-lg md:text-2xl'}`}>
                         {currentTrack.artists.map(a => a.name).join(', ')}
                       </h2>
+                      {requestedByGuest && <p className={`mt-2 font-bold text-[var(--brand-mid)] drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)] ${showLyrics ? 'text-sm md:text-base' : 'text-base md:text-xl'}`}>Requested by {requestedByGuest}</p>}
                     </div>
                   </motion.div>
                 </AnimatePresence>

@@ -20,7 +20,11 @@ export const WIDGETS = {
   clock: { label: 'Clock', aspect: 3 },
   waveform: { label: 'Waveform', aspect: 3 },
   next: { label: 'Up next', aspect: 3 },
-  wash: { label: 'Colour wash', aspect: null }
+  wash: { label: 'Colour wash', aspect: null },
+  // During a party: the join code, who asked for this song, and the requests coming up
+  partyqr: { label: 'Party QR', aspect: 0.78 },
+  requestedby: { label: 'Requested by', aspect: 5 },
+  partyqueue: { label: 'Party queue', aspect: 1.8 }
 };
 
 const uid = () => Math.random().toString(36).slice(2, 9);

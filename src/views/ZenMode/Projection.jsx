@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Projector, Plus, Trash2, Download, Upload, Grid3x3, Check, X, Copy, Pencil, Image as ImageIcon, Type, Minus, Mic2, Clock, Activity, ListMusic, Paintbrush, ChevronsLeftRight, ChevronsUpDown } from 'lucide-react';
+import { Projector, Plus, Trash2, Download, Upload, Grid3x3, Check, X, Copy, Pencil, Image as ImageIcon, Type, Minus, Mic2, Clock, Activity, ListMusic, Paintbrush, ChevronsLeftRight, ChevronsUpDown, QrCode, UserRound, ListOrdered } from 'lucide-react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { useProgress } from '../../hooks/useProgress';
@@ -10,6 +10,9 @@ import { formatTime } from '../../utils/formatTime';
 import { solveHomography, homographyToMatrix3d, invertHomography, applyHomography, quadBounds, isConvexQuad, pointInQuad } from '../../utils/homography';
 import { fitFontSize } from '../../utils/fitText';
 import AudioWaveform from '../../components/AudioWaveform';
+import { usePartyStore } from '../../store/partyStore';
+import { partyLink } from '../../party/client';
+import { qrSvg, requestedBy } from '../../party/view';
 import {
   WIDGETS, loadProjectorState, saveProjectorState, newWall, newItem, dropRect, estimateAspect, cornerLayout, flatWallLayout,
   cloneLayout, exportLayout, parseLayoutFile
@@ -199,6 +202,56 @@ function WashWidget({ track, box }) {
   return <div className="absolute bg-cover bg-center opacity-70" style={{ ...px(box), backgroundImage: `url(${url})`, filter: wash?.art === art ? 'none' : 'blur(30px) saturate(2)' }} />;
 }
 
+// ---- party widgets: blank outside a party, except in the editor so they can be placed
+
+function PartyQrWidget({ box, editing, label }) {
+  const code = usePartyStore((s) => s.code);
+  if (!code) return editing ? <Placeholder box={box} label={`${label} (no party running)`} /> : null;
+  const side = Math.min(box.width, box.height * 0.78);
+  return (
+    <div className="absolute flex flex-col items-center justify-center text-white" style={px(box)}>
+      <div className="bg-white" style={{ width: side, height: side, padding: side * 0.06, borderRadius: side * 0.06 }}>
+        <div className="w-full h-full [&>svg]:w-full [&>svg]:h-full" dangerouslySetInnerHTML={{ __html: qrSvg(partyLink(code)) }} />
+      </div>
+      <p className="font-extrabold text-center leading-tight" style={{ fontSize: side * 0.09, marginTop: side * 0.05 }}>Scan to pick the music</p>
+      <p className="font-mono font-extrabold" style={{ fontSize: side * 0.12, letterSpacing: '0.3em' }}>{code}</p>
+    </div>
+  );
+}
+
+function RequestedByWidget({ track, box, editing, label }) {
+  const history = usePartyStore((s) => s.history);
+  const upNext = usePartyStore((s) => s.upNext);
+  const by = requestedBy(track, { history, upNext });
+  if (!by) return editing ? <Placeholder box={box} label={label} /> : null;
+  const text = `Requested by ${by}`;
+  return (
+    <div className="absolute flex items-center text-[var(--brand-mid)] font-extrabold" style={{ ...px(box), fontSize: fitFontSize(text, box.width, box.height * 0.8, 1) }}>
+      {text}
+    </div>
+  );
+}
+
+function PartyQueueWidget({ box, editing, label }) {
+  const code = usePartyStore((s) => s.code);
+  const queue = usePartyStore((s) => s.queue);
+  if (!code) return editing ? <Placeholder box={box} label={`${label} (no party running)`} /> : null;
+  const rows = queue.slice(0, 4);
+  const font = box.height / 7;
+  return (
+    <div className="absolute flex flex-col justify-center text-white" style={px(box)}>
+      <p className="uppercase tracking-[0.3em] text-white/40 font-bold" style={{ fontSize: font * 0.55 }}>Coming up</p>
+      {rows.length === 0 ? (
+        <p className="text-white/40 font-semibold" style={{ fontSize: font * 0.75 }}>Scan the code and pick a song</p>
+      ) : rows.map((i, n) => (
+        <p key={i.id} className="truncate font-semibold" style={{ fontSize: Math.min(n === 0 ? font : font * 0.8, fitFontSize(`${i.name} · ${i.guestName}`, box.width, font * 1.2, 1)) }}>
+          {i.name} <span className="text-white/50 font-medium">· {i.guestName}{i.votes > 0 ? ` ▲${i.votes}` : ''}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function Placeholder({ box, label }) {
   return (
     <div className="absolute flex items-center justify-center border border-dashed border-white/25 text-white/40 font-semibold" style={{ ...px(box), fontSize: Math.max(12, box.height * 0.12) }}>
@@ -209,11 +262,11 @@ function Placeholder({ box, label }) {
 
 const px = (box) => ({ left: box.left, top: box.top, width: box.width, height: box.height });
 
-const WIDGET_VIEW = { art: ArtWidget, title: TitleWidget, progress: ProgressWidget, lyrics: LyricsWidget, clock: ClockWidget, waveform: WaveformWidget, next: NextWidget, wash: WashWidget };
+const WIDGET_VIEW = { partyqr: PartyQrWidget, requestedby: RequestedByWidget, partyqueue: PartyQueueWidget, art: ArtWidget, title: TitleWidget, progress: ProgressWidget, lyrics: LyricsWidget, clock: ClockWidget, waveform: WaveformWidget, next: NextWidget, wash: WashWidget };
 
 // ---------------------------------------------------------------- a wall
 
-const WIDGET_ICON = { art: ImageIcon, title: Type, progress: Minus, lyrics: Mic2, clock: Clock, waveform: Activity, next: ListMusic, wash: Paintbrush };
+const WIDGET_ICON = { art: ImageIcon, title: Type, progress: Minus, lyrics: Mic2, clock: Clock, waveform: Activity, next: ListMusic, wash: Paintbrush, partyqr: QrCode, requestedby: UserRound, partyqueue: ListOrdered };
 
 // The wall's flat rectangle: as wide on screen as the quad, as tall as its shape says
 function wallRect(wall, vw, vh) {
@@ -247,7 +300,7 @@ function Wall({ wall, items, track, vw, vh, editing, mode, selectedWallId, selec
             const itemSelected = item.id === selectedItemId;
             return (
               <div key={item.id} className="contents">
-                <View track={track} box={box} options={item.options} label={WIDGETS[item.widget]?.label} />
+                <View track={track} box={box} options={item.options} label={WIDGETS[item.widget]?.label} editing={editing} />
                 {editing && mode === 'assets' && (
                   <div
                     role="button"

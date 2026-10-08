@@ -44,3 +44,6 @@ export const partyLink = (code) => {
   const origin = typeof location !== 'undefined' && location.hostname.endsWith('vercel.app') ? location.origin : 'https://jomify.vercel.app';
   return `${origin}/p/${code}`;
 };
+
+// The display for a screen on the wall: QR, now playing, what's next
+export const partyScreenLink = (code) => `${partyLink(code)}/screen`;

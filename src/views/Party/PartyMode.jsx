@@ -1,25 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, SkipForward, Volume2, Search, Plus, X, Pin, Link2, Check, PauseCircle, PlayCircle, Users, Loader2, PartyPopper, Smartphone, QrCode, ChevronUp, Ban } from 'lucide-react';
+import { Play, Pause, SkipForward, Volume2, Search, Plus, X, Pin, Link2, Check, PauseCircle, PlayCircle, Users, Loader2, PartyPopper, Smartphone, QrCode, ChevronUp, Ban, Monitor } from 'lucide-react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { usePartyStore } from '../../store/partyStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
-import { hostApi, partyLink } from '../../party/client';
+import { hostApi, partyLink, partyScreenLink } from '../../party/client';
 import { startConductor, stopConductor, heartbeat, skipWithParty, setHostPaused, isConducting } from '../../party/conductor';
 import { togglePlay, setVolume, playOn, setShuffle } from '../../services/spotify/playbackController';
 import { searchSpotify, playContext } from '../../services/spotify/api';
 import { artUrl } from '../../utils/images';
 import { toast } from '../../store/toastStore';
 import { RolePicker, SpeakerPicker, SpeakerBanner, PartyCheck } from './PartyTools';
-import qrcode from 'qrcode-generator';
-
-// The join link as a QR code, drawn once per code
-function qrSvg(text) {
-  const qr = qrcode(0, 'M');
-  qr.addData(text);
-  qr.make();
-  return qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
-}
+import { qrSvg, requestedBy } from '../../party/view';
 
 // The host's phone at a party: the few controls that matter, made huge, and the queue the room
 // is building. Playback can be on this phone or anywhere else Spotify is; it all goes through
@@ -150,8 +142,7 @@ export default function PartyMode() {
 
   if (!code) return <Setup playlists={choices} profile={profile} onStart={start} busy={busy} />;
 
-  const played = history[0];
-  const fromGuest = track && played && played.uri === track.uri ? played.guestName : (upNext && track && upNext.uri === track.uri ? upNext.guestName : null);
+  const fromGuest = requestedBy(track, { history, upNext });
 
   return (
     <div className="flex flex-col gap-5 animate-fade-in max-w-3xl pb-8">
@@ -162,6 +153,7 @@ export default function PartyMode() {
           <p className="text-sm text-neutral-400 truncate">{partyLink(code).replace(/^https?:\/\//, '')}</p>
         </div>
         <button type="button" onClick={copyLink} className="rounded-full border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white flex items-center gap-2 hover:bg-white/15">{copied ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />} {copied ? 'Copied' : 'Share link'}</button>
+        <a href={partyScreenLink(code)} target="_blank" rel="noreferrer" title="Open this on a TV or a spare screen: QR, now playing and what's next" className="rounded-full border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white flex items-center gap-2 hover:bg-white/15"><Monitor className="w-4 h-4" /> Wall screen</a>
         <button type="button" onClick={() => setShowQr((v) => !v)} aria-pressed={showQr} className="rounded-full border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white flex items-center gap-2 hover:bg-white/15"><QrCode className="w-4 h-4" /> QR</button>
         <button type="button" onClick={end} className={`rounded-full px-4 py-3 text-sm font-bold flex items-center gap-2 ${endArmed ? 'bg-red-500 text-white' : 'border border-white/15 text-neutral-300 hover:bg-white/10'}`}>{endArmed ? 'Tap again to end' : 'End party'}</button>
       </header>
