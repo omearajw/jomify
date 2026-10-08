@@ -57,7 +57,7 @@ export default function PlayerBar() {
   const isPaused = playbackState ? playbackState.paused : true;
   const durationMs = currentTrack ? playbackState.duration : 0;
   // Something to send commands to: this browser's player, or whatever device Spotify says is active
-  const canControl = Boolean(activeDevice) || sdkStatus === 'ready';
+  const canControl = Boolean(activeDevice) || sdkStatus === 'ready' || sdkStatus === 'reconnecting';
   const isRemote = Boolean(activeDevice) && !isLocalActive;
 
   // The slider shows this browser's own level, or the remote device's when one is playing

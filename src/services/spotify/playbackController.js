@@ -15,7 +15,7 @@ import {
   checkTracksLiked,
   fetchPlayerState, fetchDevices, transferPlayback, pausePlayback, resumePlayback,
   skipToNext, skipToPrevious, seekPlayback, setPlaybackVolume, setRepeatMode, toggleShuffleState,
-  playUris, playContext, fetchPlaylistTrackArtists, fetchArtistTopTracks
+  playUris, playContext, fetchPlaylistTrackArtists, fetchArtistTopTracks, startPlaybackAt
 } from './api';
 import { toSdkShape, toSdkTrack, resolveDeviceId, REPEAT_NAMES, describePlatform, playerNameFor, localDeviceLabel, sliderGain, startupGain } from './playbackAdapter';
 import { isMobileViewport } from '../../hooks/useMediaQuery';
@@ -41,6 +41,11 @@ const SDK_ALIVE_CHECK_MS = 30000;
 // devices, while this browser's own player was still registering with Spotify Connect. Wait for
 // it rather than asking a question the user cannot usefully answer.
 const SDK_WAIT_FOR_DEVICE_MS = 8000;
+// A player that believes it is connected but that Spotify has forgotten ignores connect(). After
+// a disconnect and a fresh connect it has this long to register before it is rebuilt from
+// scratch, and a play waiting on it waits for both.
+const SDK_RECONNECT_DEADLINE_MS = 8000;
+const SDK_RECOVER_WAIT_MS = 25000;
 // The player stops playing if it asks for a token and never gets one, so a slow renewal must
 // not mean silence: past this we hand over the token we already hold
 const SDK_TOKEN_DEADLINE_MS = 5000;
@@ -223,6 +228,9 @@ function schedulePoll(delay = pollInterval()) {
 // Assigned once the SDK exists. A page frozen in the background can miss its own drop, so
 // coming back to the app is the moment to make sure the player is still there.
 let reviveLocalPlayer = null;
+// Assigned once the SDK exists: disconnects and reconnects this browser's player, rebuilding it if
+// it does not come back. Plays that find it missing from Spotify Connect call it.
+let reconnectLocalPlayer = null;
 
 // A pause nobody asked for while the app is in the background is one of two things: the phone has
 // cut the network (battery saver does that to apps in the background) and the player has run out
@@ -413,6 +421,7 @@ function initLocalPlayer() {
   let sdkPlayer = null;
   let readyTimer = null;
   let reconnectTimer = null;
+  let rebuildTimer = null;
   let attempts = 0;
   let readyAt = 0;
   let readyCount = 0;
@@ -472,9 +481,38 @@ function initLocalPlayer() {
     console.warn('[playback] Web Playback SDK unavailable:', message);
   };
 
+  // The player is not on Spotify Connect any more. Until it comes back nothing may target its old
+  // device id: every play sent there was a 404 that opened the device picker.
+  const markGone = () => {
+    const s = player();
+    if (s.sdkStatus === 'ready') s.setSdkStatus('reconnecting');
+    if (s.isLocalActive) s.setIsLocalActive(false);
+  };
+  // Back on Connect the hard way. A player Spotify has forgotten still believes it is connected
+  // and ignores connect() (Safari after a long pause: "reconnecting" and then nothing), so it is
+  // disconnected first; if it still has not registered by the deadline, it is rebuilt.
+  const freshConnect = (why) => {
+    if (!sdkPlayer || permanentlyFailed) return;
+    if (rebuildTimer && player().sdkStatus === 'reconnecting') return; // already on it
+    log('sdk', 'reconnecting the player', why);
+    markGone();
+    clearTimeout(reconnectTimer);
+    clearTimeout(rebuildTimer);
+    try { sdkPlayer.disconnect(); } catch { /* already gone */ }
+    sdkPlayer.connect().catch(() => {});
+    rebuildTimer = setTimeout(() => {
+      rebuildTimer = null;
+      if (player().sdkStatus === 'ready') return;
+      log('sdk', 'the player did not come back after reconnecting; starting a new one');
+      try { sdkPlayer.disconnect(); } catch { /* already gone */ }
+      window.onSpotifyWebPlaybackSDKReady();
+    }, SDK_RECONNECT_DEADLINE_MS);
+  };
+  reconnectLocalPlayer = freshConnect;
+
   // Defined before the script is injected so the callback can never be missed
   window.onSpotifyWebPlaybackSDKReady = () => {
-    sdkPlayer = new window.Spotify.Player({
+    const instance = new window.Spotify.Player({
       name: PLAYER_NAME,
       // The SDK asks for a token whenever it needs to renew the stream. Handing it the stored
       // one meant handing it an expired one after an hour asleep, which Spotify answers with an
@@ -499,10 +537,16 @@ function initLocalPlayer() {
       // at full gain; the stored desktop setting used to make them quiet with no way to fix it
       volume: startupGain(useUserStore.getState().savedVolume, !isMobileViewport())
     });
+    sdkPlayer = instance;
+    // A replaced player can still have events in flight; only the current one is listened to
+    const current = () => instance === sdkPlayer;
 
     sdkPlayer.addListener('ready', async ({ device_id }) => {
+      if (!current()) return;
       clearTimeout(readyTimer);
       clearTimeout(reconnectTimer);
+      clearTimeout(rebuildTimer);
+      rebuildTimer = null;
       readyAt = Date.now();
       readyCount += 1;
       const previousReadyAt = lastReadyAt;
@@ -554,19 +598,22 @@ function initLocalPlayer() {
     });
 
     sdkPlayer.addListener('not_ready', () => {
+      if (!current()) return;
       const s = player();
       const was = s.playbackState;
       const song = was?.track_window?.current_track?.name;
       log('sdk', 'dropped off Spotify Connect', s.isLocalActive && was
         ? `while ${was.paused ? 'paused on' : 'playing'} ${song || '?'} at ${Math.round(interpolatedPosition() / 1000)}s${document.hidden ? ', in the background' : ''}`
         : `while not the device playing${document.hidden ? ', in the background' : ''}`);
-      if (s.isLocalActive) { s.setIsLocalActive(false); refreshSoon(); }
+      if (s.isLocalActive) refreshSoon();
+      markGone();
       // Keep the lock screen, paused, so its play button still reaches Jomify once it reconnects
       if (presence?.getAttribute('src')) setPresence('paused');
       reconnect();
     });
 
     sdkPlayer.addListener('player_state_changed', (state) => {
+      if (!current()) return;
       const s = player();
       const before = s.playbackState;
       if (!state && s.isLocalActive) log('playback', 'this browser stopped being the device playing');
@@ -678,13 +725,11 @@ function initLocalPlayer() {
         if (!id || Date.now() - lastAliveCheckAt < SDK_ALIVE_CHECK_MS) return;
         lastAliveCheckAt = Date.now();
         if ((await refreshDevices()).some(d => d.id === id)) { log('sdk', 'back in the app: player still on Spotify Connect'); return; }
-        log('sdk', 'back in the app: player had silently left Spotify Connect, reconnecting');
+        freshConnect('back in the app: it had silently left Spotify Connect');
       } else {
-        log('sdk', `back in the app: player was ${player().sdkStatus}, reconnecting`);
+        // The user is looking at the app, so connect now rather than waiting out a backoff
+        freshConnect(`back in the app: it was ${player().sdkStatus}`);
       }
-      // The user is looking at the app, so connect now rather than waiting out a backoff
-      clearTimeout(reconnectTimer);
-      sdkPlayer.connect().catch(() => {});
     };
 
     readyTimer = setTimeout(() => fail('the player did not become ready in time'), SDK_READY_TIMEOUT_MS);
@@ -955,7 +1000,14 @@ export async function playOn(play, { track, quiet = false } = {}) {
   // nothing for half a second reads as a button that did not work.
   if (!quiet) showTrackOptimistically(track);
 
-  let target = pickDevice();
+  // This browser's player is on its way back to Spotify Connect: it is the device the user is
+  // holding, so wait for it rather than send the music to whatever else happens to be listed
+  let target = resolveDeviceId(player());
+  if (!target && player().sdkStatus === 'reconnecting') {
+    log('playback', "waiting for this browser's player to come back");
+    target = await waitForLocalDevice(SDK_RECOVER_WAIT_MS);
+  }
+  if (!target) target = pickDevice();
   if (!target) {
     // The device list goes stale between plays; ask Spotify before bothering the user, since
     // the answer is often "there is only one, use that"
@@ -979,6 +1031,24 @@ export async function playOn(play, { track, quiet = false } = {}) {
     // Whatever was shown optimistically was a guess; let Spotify correct it
     if (!quiet) refreshSoon();
     if (err?.code !== 'NO_ACTIVE_DEVICE') { handlePlaybackError(err); return; }
+
+    // The device that vanished was this browser's own player: Spotify has forgotten it. Bring it
+    // back and play there, instead of asking which device, which is a question with one answer.
+    if (target === player().deviceId && reconnectLocalPlayer) {
+      log('playback', "this browser's player is not on Spotify Connect; reconnecting it, then playing");
+      reconnectLocalPlayer('a play found it missing');
+      const fresh = await waitForLocalDevice(SDK_RECOVER_WAIT_MS);
+      if (fresh) {
+        try {
+          await play(fresh);
+          rememberDevice(fresh);
+          if (!quiet) confirmPlayback();
+          return;
+        } catch (again) {
+          if (again?.code !== 'NO_ACTIVE_DEVICE') { handlePlaybackError(again); return; }
+        }
+      }
+    }
 
     // Whatever we aimed at has gone away. Forget it, look again, and only ask if there is a
     // real choice to make; this is the loop where picking a device led straight back to the
@@ -1054,8 +1124,23 @@ export function togglePlay() {
     if (paused) setTimeout(() => verifyLocalResume(asked), LOCAL_RESUME_CHECK_MS);
     return result;
   }
-  if (paused) return resumeRemote();
+  if (paused) return player().activeDevice ? resumeRemote() : resumeShownSong();
   return remote(pausePlayback, () => patchState({ paused: true }));
+}
+
+// Nothing is playing on any device. Spotify drops a session after a while paused, so asking it to
+// "resume" finds no device and nothing to resume; start the song on screen, where it was left.
+function resumeShownSong() {
+  const t = token();
+  if (!t) return undefined;
+  log('playback', 'nothing active anywhere; starting the song on screen where it was left');
+  return playOn((deviceId) => startShownSong(t, deviceId));
+}
+function startShownSong(t, deviceId) {
+  const st = player().playbackState;
+  const track = st?.track_window?.current_track;
+  if (!track?.uri || String(track.uri).startsWith('pending:')) return transferPlayback(t, deviceId, true);
+  return startPlaybackAt(t, deviceId, { contextUri: st.context?.uri || null, trackUri: track.uri, positionMs: interpolatedPosition() });
 }
 
 // The player's own resume does nothing on a context that has never started: at launch this
@@ -1086,7 +1171,7 @@ async function resumeRemote() {
   try {
     await resumePlayback(t, target);
   } catch (err) {
-    if (err?.code === 'NO_ACTIVE_DEVICE' && canPlayHere()) return playHereInstead('Spotify had no device to play on');
+    if (err?.code === 'NO_ACTIVE_DEVICE' && hasLocalPlayer()) return playHereInstead('Spotify had no device to play on', (d) => startShownSong(t, d));
     handlePlaybackError(err);
     refreshSoon();
     return;
@@ -1097,15 +1182,27 @@ async function resumeRemote() {
     const state = await refreshRemoteState();
     const live = player();
     if (state?.is_playing || live.isLocalActive) return;
-    if (canPlayHere()) playHereInstead(`${s.activeDevice?.name || 'the device'} did not start playing`);
+    if (hasLocalPlayer()) playHereInstead(`${s.activeDevice?.name || 'the device'} did not start playing`, (d) => transferPlayback(t, d, true));
   }, RESUME_CHECK_MS);
 }
-const canPlayHere = () => { const s = player(); return Boolean(s.deviceId && s.sdkStatus === 'ready'); };
-function playHereInstead(why) {
-  const t = token();
-  const s = player();
+const hasLocalPlayer = () => { const s = player(); return Boolean(s.deviceId && (s.sdkStatus === 'ready' || s.sdkStatus === 'reconnecting')); };
+// Plays on this browser's own player, bringing it back to Spotify Connect first if Spotify has
+// forgotten it. The device picker only opens when the player cannot be brought back at all.
+async function playHereInstead(why, play) {
   log('playback', 'playing here instead', why);
-  return transferPlayback(t, s.deviceId, true).then(confirmPlayback).catch(handlePlaybackError);
+  const attempt = async (id) => { await play(id); rememberDevice(id); confirmPlayback(); };
+  let id = player().sdkStatus === 'ready' ? player().deviceId : await waitForLocalDevice(SDK_RECOVER_WAIT_MS);
+  if (id) {
+    try { await attempt(id); return; } catch (err) {
+      if (err?.code !== 'NO_ACTIVE_DEVICE') { handlePlaybackError(err); return; }
+    }
+    reconnectLocalPlayer?.('a play found it missing');
+    id = await waitForLocalDevice(SDK_RECOVER_WAIT_MS);
+    if (id) {
+      try { await attempt(id); return; } catch (err) { handlePlaybackError(err); return; }
+    }
+  }
+  useUserStore.getState().setDevicePickerOpen(true);
 }
 
 export function next() {

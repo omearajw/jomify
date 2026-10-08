@@ -12,7 +12,8 @@ export const usePlayerStore = create((set) => ({
   isShuffled: false,
   repeatMode: 0,         // 0 off, 1 context, 2 track
 
-  // 'idle' | 'loading' | 'ready' | 'failed'. Failed (blocked script, unsupported browser,
+  // 'idle' | 'loading' | 'ready' | 'reconnecting' | 'failed'. Reconnecting: was on Spotify Connect, is
+  // being brought back, and its old device id must not be played to. Failed (blocked script, unsupported browser,
   // non-Premium) degrades to remote control of other devices instead of a dead player bar.
   sdkStatus: 'idle',
   sdkError: null,

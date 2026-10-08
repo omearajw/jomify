@@ -59,7 +59,7 @@ function NowPlayingSheetBody() {
   const percent = duration > 0 ? (shown / duration) * 100 : 0;
   const art = track?.album?.images?.[0]?.url;
   const albumId = idFromUri(track?.album?.uri, 'album');
-  const canControl = Boolean(activeDevice) || sdkStatus === 'ready';
+  const canControl = Boolean(activeDevice) || sdkStatus === 'ready' || sdkStatus === 'reconnecting';
 
   const commitSeek = () => {
     if (scrub === null) return;

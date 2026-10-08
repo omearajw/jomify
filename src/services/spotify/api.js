@@ -902,6 +902,27 @@ export async function fetchPlaylistTrackArtists(token, playlistId) {
 }
 
 // Starts any context (playlist, album, artist) at a given song and keeps going through the rest
+// Starts a song at a position, in its context when it has one, as itself when it does not. Used to
+// pick up exactly where the screen says the music was, after Spotify has dropped the session it
+// would otherwise restore. Artist contexts take no offset by uri, and a context Spotify refuses
+// (a playlist since removed, say) falls back to the song on its own; a missing device is passed
+// up, since the caller recovers from that.
+export async function startPlaybackAt(token, deviceId, { contextUri, trackUri, positionMs = 0 }) {
+  const send = (body) => spotifyFetch(`https://api.spotify.com/v1/me/player/play${deviceQuery(deviceId)}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, position_ms: Math.max(0, Math.round(positionMs || 0)) })
+  });
+  if (contextUri && !/^spotify:(artist|show):/.test(contextUri)) {
+    const response = await send({ context_uri: contextUri, offset: { uri: trackUri } });
+    if (response.ok) return;
+    const err = await playbackError(response, 'Failed to start playback');
+    if (err.code === 'NO_ACTIVE_DEVICE' || err.code === 'PREMIUM_REQUIRED') throw err;
+  }
+  const response = await send({ uris: [trackUri] });
+  if (!response.ok) throw await playbackError(response, 'Failed to start playback');
+}
+
 export async function playContextFromTrack(token, deviceId, contextUri, trackUri) {
   const response = await spotifyFetch(`https://api.spotify.com/v1/me/player/play${deviceQuery(deviceId)}`, {
     method: 'PUT',
