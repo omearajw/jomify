@@ -9,6 +9,7 @@
 // refuse the SDK, and even when they run it the Spotify app is the better place to play.
 
 import { useUserStore } from '../../store/userStore';
+import { usePartyStore } from '../../store/partyStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { toast } from '../../store/toastStore';
 import {
@@ -1179,6 +1180,10 @@ async function resumeRemote() {
   refreshSoon();
   setTimeout(async () => {
     if (lastIntentAt !== asked) return; // something else has been asked for since
+    // A party speaker (an Alexa group) can take longer than this to start; taking the music off it
+    // would start it on this phone instead. The party's own watchdog looks after the speaker.
+    const speaker = usePartyStore.getState().party?.speaker;
+    if (speaker && (target === speaker.id || s.activeDevice?.name === speaker.name)) return;
     const state = await refreshRemoteState();
     const live = player();
     if (state?.is_playing || live.isLocalActive) return;

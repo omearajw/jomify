@@ -34,7 +34,9 @@ const store = new Map();
 const lists = new Map();
 const hashes = new Map();
 const sets = new Map();
+const commandCount = { n: 0 };
 function exec([cmd, ...a]) {
+  commandCount.n += 1;
   const c = String(cmd).toUpperCase();
   const k = a[0];
   switch (c) {
@@ -55,6 +57,7 @@ function exec([cmd, ...a]) {
     case 'LREM': { const l = lists.get(k) || []; const i = l.indexOf(a[2]); if (i === -1) return 0; l.splice(i, 1); return 1; }
     case 'LTRIM': { const l = lists.get(k) || []; lists.set(k, l.slice(Number(a[1]), Number(a[2]) + 1)); return 'OK'; }
     case 'HSET': { const h = hashes.get(k) || {}; for (let i = 1; i < a.length; i += 2) h[a[i]] = a[i + 1]; hashes.set(k, h); return 1; }
+    case 'MGET': return a.map((key) => (store.has(key) ? store.get(key) : null));
     case 'HGETALL': { const h = hashes.get(k); return h ? Object.entries(h).flat() : []; }
     case 'SADD': { const set = sets.get(k) || new Set(); const before = set.size; a.slice(1).forEach((v) => set.add(v)); sets.set(k, set); return set.size - before; }
     case 'SREM': { const set = sets.get(k); if (!set) return 0; const before = set.size; a.slice(1).forEach((v) => set.delete(v)); return before - set.size; }
@@ -139,6 +142,17 @@ for (let i = 0; i < 8; i++) await inParty(code, { op: 'request', guestId: g1, tr
 check('per-guest cap holds', (await inParty(code, { op: 'request', guestId: g1, track: track('too-many') })).status === 429);
 check('request rate limit', (await inParty(code, { op: 'request', guestId: g1, track: track('rl') })).status === 429);
 
+section('database cost');
+{
+  // What one guest refresh costs, with the queue as it stands (about a dozen songs waiting)
+  const waiting = (await state(code)).body.queue.length;
+  const before = commandCount.n;
+  await state(code, g1);
+  const perPoll = commandCount.n - before;
+  console.log(`  one guest refresh with ${waiting} songs waiting: ${perPoll} Redis commands`);
+  globalThis.__perPoll = perPoll;
+}
+
 section('votes');
 const g3 = 'guest-cccccc';
 await inParty(code, { op: 'join', guestId: g3, name: 'Cal' });
@@ -183,10 +197,63 @@ await inParty(code, { op: 'settings', paused: false, backing: { uri: 'spotify:pl
 check('backing playlist changed', (await state(code)).body.party.backing.name === 'Chill');
 const removed = await inParty(code, { op: 'remove', id: (await state(code)).body.queue[0].id }, 'host-token');
 check('host removes a request', removed.body.removed === true);
+section('snapshot');
+{
+  // A rebuild that lost a race leaves a copy a revision behind; the next read notices
+  const key = `jomify:party:v1:${code}:snap`;
+  const snap = JSON.parse(store.get(key));
+  store.set(key, JSON.stringify({ ...snap, rev: snap.rev - 1, queue: [] }));
+  check('a copy behind the revision is rebuilt on read', (await state(code)).body.queue.length > 0);
+  let n = commandCount.n;
+  await inParty(code, { op: 'heartbeat', deviceId: 'laptop', playsHere: true, token: 'host-token', tokenExpiresAt: Date.now() + 3600e3, nowPlaying: { name: 'Now', uri: 'spotify:track:np', at: Date.now() } }, 'host-token');
+  const perHeartbeat = commandCount.n - n;
+  n = commandCount.n;
+  await inParty(code, { op: 'request', guestId: 'guest-dddddd', track: track('d1') });
+  const perRequest = commandCount.n - n;
+  console.log(`  one heartbeat: ${perHeartbeat} commands; one request: ${perRequest} commands`);
+  check('a heartbeat stays cheap', perHeartbeat <= 12);
+  // The night: 12 phones, half of them on screen, refreshing every 3s for 5 hours; two host
+  // devices heartbeating every 8s; 400 requests and votes
+  const night = 6 * 1200 * 5 * globalThis.__perPoll + 2 * 450 * 5 * perHeartbeat + 400 * perRequest;
+  console.log(`  a five-hour party, projected: ${night.toLocaleString()} commands (free plan: 500,000 a month)`);
+  check('a five-hour party fits well inside the free plan', night < 150000);
+  const searchesBefore = searchCalls;
+  await inParty(code, { op: 'search', guestId: g2, q: 'Kevin  Parker' });
+  await inParty(code, { op: 'search', guestId: g3, q: 'kevin parker ' });
+  check('the same search twice reaches Spotify once', searchCalls === searchesBefore + 1);
+}
+
+section('roles');
+{
+  const condKey = `jomify:party:v1:${code}:cond`;
+  const hb = (deviceId, extra = {}) => inParty(code, { op: 'heartbeat', deviceId, ...extra }, 'host-token');
+  check('the device marked to run the party takes over from the one playing', (await hb('laptop2', { role: 'conductor', deviceName: 'Jomify on Mac' })).body.conductor === true);
+  check('the playing device cannot take it back', (await hb('laptop', { playsHere: true })).body.conductor === false);
+  check('everyone sees who conducts', (await state(code)).body.conductorInfo?.name === 'Jomify on Mac');
+  check('and no reply but the heartbeat says "you conduct"', (await state(code)).body.conductor === undefined);
+  store.delete(condKey); // the laptop died: its lock lapses
+  check('a remote steps in when the lock has lapsed', (await hb('phone', { role: 'remote' })).body.conductor === true);
+  check('and gives it back as soon as an unmarked device heartbeats', (await hb('laptop2', { role: 'auto' })).body.conductor === true);
+  check('only the conductor reports the speaker', (await hb('laptop2', { role: 'auto', speakerOk: false })).body.speakerOk === false && (await hb('phone', { role: 'remote', speakerOk: true })).body.speakerOk === false);
+}
+
+section('moderation');
+{
+  await inParty(code, { op: 'join', guestId: 'guest-troll1', name: 'Troll' });
+  await inParty(code, { op: 'request', guestId: 'guest-troll1', track: track('tr1') });
+  check("the troll's song is queued", (await state(code)).body.queue.some((i) => i.guestId === 'guest-troll1'));
+  check('a guest cannot block', (await inParty(code, { op: 'block', guestId: g1 })).status === 401);
+  await inParty(code, { op: 'block', guestId: 'guest-troll1' }, 'host-token');
+  check('blocking removes their songs', !(await state(code)).body.queue.some((i) => i.guestId === 'guest-troll1'));
+  check('and refuses their next request', (await inParty(code, { op: 'request', guestId: 'guest-troll1', track: track('tr2') })).status === 403);
+  await inParty(code, { op: 'unblock', guestId: 'guest-troll1' }, 'host-token');
+  check('unblocking lets them back in', (await inParty(code, { op: 'request', guestId: 'guest-troll1', track: track('tr3') })).status === 201);
+}
+
 check('ends', (await inParty(code, { op: 'end' }, 'host-token')).body.ended === true);
 check('ended party answers 404', (await state(code)).status === 404 && (await state(code)).body.error === 'This party has ended');
 check('host door clears', (await host('GET')).body.party === null);
-check('search calls went through the host token once each', searchCalls === 1);
+check('search calls went through the host token once per distinct search', searchCalls === 2);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) { console.log(failures.map((x) => `  - ${x}`).join('\n')); process.exit(1); }

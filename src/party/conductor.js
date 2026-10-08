@@ -2,8 +2,8 @@ import { usePartyStore } from '../store/partyStore';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { hostApi } from './client';
-import { addToQueue, playContext, fetchQueue } from '../services/spotify/api';
-import { playOn, togglePlay, next as skipNext, setShuffle } from '../services/spotify/playbackController';
+import { addToQueue, playContext, fetchQueue, fetchDevices, transferPlayback, resumePlayback } from '../services/spotify/api';
+import { playOn, togglePlay, next as skipNext, setShuffle, requestFastPlaybackUpdates, PLAYER_NAME } from '../services/spotify/playbackController';
 import { log } from '../services/debugLog';
 
 // The host device that keeps the party going. It heartbeats so the server has a live token and
@@ -20,10 +20,17 @@ const FED_TIMEOUT_MS = 90000;    // a fed song Spotify hasn't started by then go
 const PAUSE_TOLERANCE_MS = 8000; // paused this long without the host asking: resume
 const SILENCE_TOLERANCE_MS = 15000;
 const RESTART_COOLDOWN_MS = 60000;
+const SPEAKER_CHECK_MS = 20000;
 
 let timers = null;
-let fed = null;
-let lastConfirmedId = null; // the last request fed elsewhere that this conductor confirmed            // { item, at } handed to Spotify, awaiting its start
+let fed = null;              // { item, at } handed to Spotify, awaiting its start
+let lastConfirmedId = null; // the last request fed elsewhere that this conductor confirmed
+let releaseFastUpdates = null;
+// The party speaker (an Alexa group, say): whether Spotify lists it, and whether the music had to go
+// somewhere else while it was missing, so it can be moved back when the speaker returns
+let speakerOk = null;
+let fellBack = false;
+let lastSpeakerCheckAt = 0;
 let pausedSince = 0;
 let silentSince = 0;
 let lastResumeAt = 0;
@@ -66,7 +73,11 @@ export async function heartbeat() {
     const u = useUserStore.getState();
     // The device the music comes out of wins the conductor lock, so the laptop that stays on all
     // night conducts even when the phone opened the party first
-    const res = await hostApi.op(code, { op: 'heartbeat', deviceId: party().deviceId, playsHere: Boolean(player().isLocalActive), token: u.token, tokenExpiresAt: u.tokenExpiresAt, nowPlaying: snapshot() });
+    const res = await hostApi.op(code, {
+      op: 'heartbeat', deviceId: party().deviceId, deviceName: PLAYER_NAME, role: party().role || 'auto',
+      playsHere: Boolean(player().isLocalActive), awake: Boolean(wakeLock && !wakeLock.released),
+      speakerOk, token: u.token, tokenExpiresAt: u.tokenExpiresAt, nowPlaying: snapshot()
+    });
     party().applyState(res);
   } catch (err) {
     if (err?.status === 404) { log('party', 'the party has ended', err.message); stopConductor(); party().clear(); return; }
@@ -123,16 +134,72 @@ async function feedNext(reason, { waitUntilQueued = false } = {}) {
   return item;
 }
 
+// The party speaker as Spotify lists it now: by id, or by name, since a speaker group can come back
+// from a restart under a new id. Null when it is not listed; undefined when the list itself failed.
+const speakerOf = () => party().party?.speaker || null;
+async function findSpeaker() {
+  const speaker = speakerOf();
+  const t = token();
+  if (!speaker || !t) return null;
+  let devices;
+  try { devices = await fetchDevices(t); } catch { return undefined; }
+  return devices.find((d) => d.id === speaker.id) || devices.find((d) => d.name && d.name === speaker.name) || null;
+}
+
+async function checkSpeaker() {
+  lastSpeakerCheckAt = Date.now();
+  if (!speakerOf()) { speakerOk = null; return null; }
+  const found = await findSpeaker();
+  if (found === undefined) return undefined; // couldn't ask; leave things as they were
+  const was = speakerOk;
+  speakerOk = Boolean(found);
+  if (was !== speakerOk) {
+    log('party', speakerOk ? `${found.name} is on Spotify Connect` : `${speakerOf().name} has dropped off Spotify Connect`);
+    heartbeat();
+  }
+  // Back after going missing, and the music had to go elsewhere meanwhile: move it back
+  if (found && fellBack) {
+    fellBack = false;
+    const active = player().activeDevice;
+    if (!active || active.id !== found.id) {
+      log('party', `${found.name} is back; moving the music there`);
+      await transferPlayback(token(), found.id, true).catch((err) => log('party', `could not move the music to ${found.name}`, err?.message));
+    }
+  }
+  return found;
+}
+
 async function restartBacking(reason) {
   const t = token();
   const backing = party().party?.backing;
   if (!t || !backing?.uri || Date.now() - lastRestartAt < RESTART_COOLDOWN_MS) return;
   lastRestartAt = Date.now();
   log('party', `starting ${backing.name || 'the playlist'} again`, reason);
-  await playOn(async (deviceId) => {
+  const start = async (deviceId) => {
     await playContext(t, deviceId, backing.uri, 0);
     await setShuffle(true, deviceId).catch(() => {});
-  }, { quiet: true }).catch((err) => log('party', 'could not restart the playlist', err?.message));
+  };
+  // The speaker first. If it is missing the music still may not stop, so it goes wherever Spotify
+  // can play, and moves back once the speaker returns.
+  if (speakerOf()) {
+    const found = await checkSpeaker();
+    if (found) {
+      try { await start(found.id); return; } catch (err) { log('party', `${found.name} would not start`, err?.message); }
+    }
+    fellBack = true;
+  }
+  await playOn(start, { quiet: true }).catch((err) => log('party', 'could not restart the playlist', err?.message));
+}
+
+// Paused with nobody asking. With a party speaker, resume there and nowhere else: the general
+// resume moves music to this browser when a remote device is slow to start, and an Alexa group can
+// be slow enough to set that off.
+async function resumeParty() {
+  const t = token();
+  if (!speakerOf() || !t) { togglePlay(); return; }
+  const found = await checkSpeaker();
+  if (!found) { restartBacking('the speaker is missing'); return; }
+  await resumePlayback(t, found.id).catch(() => restartBacking(`${found.name} would not resume`));
 }
 
 async function tick() {
@@ -163,6 +230,9 @@ async function tick() {
     }
   }
 
+  // Keep an eye on the speaker
+  if (speakerOf() && now - lastSpeakerCheckAt > SPEAKER_CHECK_MS) checkSpeaker().catch(() => {});
+
   // Never silent
   if (!current) {
     silentSince = silentSince || now;
@@ -175,7 +245,7 @@ async function tick() {
     if (!hostPaused && now - pausedSince > PAUSE_TOLERANCE_MS && now - lastResumeAt > PAUSE_TOLERANCE_MS * 2) {
       lastResumeAt = now;
       log('party', 'paused with nobody asking; resuming');
-      togglePlay();
+      resumeParty();
     }
   } else {
     pausedSince = 0;
@@ -232,6 +302,8 @@ export function startConductor() {
   fed = null; pausedSince = 0; silentSince = 0; hostPaused = false;
   timers = { hb: setInterval(heartbeat, HEARTBEAT_MS), tick: setInterval(() => { tick().catch(() => {}); }, TICK_MS) };
   heartbeat();
+  // Song changes reach the projector and the guests within a couple of seconds, not five
+  releaseFastUpdates = requestFastPlaybackUpdates();
   // Guests see a change of song straight away rather than at the next heartbeat
   const keyOf = (s) => `${s.playbackState?.track_window?.current_track?.uri || ''}|${s.playbackState?.paused ? 1 : 0}`;
   let lastKey = keyOf(player());
@@ -251,6 +323,8 @@ export function stopConductor() {
   if (!timers) return;
   clearInterval(timers.hb); clearInterval(timers.tick); timers = null;
   unsubscribeChanges?.(); unsubscribeChanges = null; clearTimeout(changeTimer);
+  releaseFastUpdates?.(); releaseFastUpdates = null;
+  speakerOk = null; fellBack = false;
   document.removeEventListener('visibilitychange', onVisible);
   wakeLock?.release?.().catch(() => {}); wakeLock = null;
   log('party', 'stopped conducting');

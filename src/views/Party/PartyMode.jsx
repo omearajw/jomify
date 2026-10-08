@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, SkipForward, Volume2, Search, Plus, X, Pin, Link2, Check, PauseCircle, PlayCircle, Users, Loader2, PartyPopper, Smartphone, QrCode, ChevronUp } from 'lucide-react';
+import { Play, Pause, SkipForward, Volume2, Search, Plus, X, Pin, Link2, Check, PauseCircle, PlayCircle, Users, Loader2, PartyPopper, Smartphone, QrCode, ChevronUp, Ban } from 'lucide-react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { usePartyStore } from '../../store/partyStore';
@@ -10,6 +10,7 @@ import { togglePlay, setVolume, playOn, setShuffle } from '../../services/spotif
 import { searchSpotify, playContext } from '../../services/spotify/api';
 import { artUrl } from '../../utils/images';
 import { toast } from '../../store/toastStore';
+import { RolePicker, SpeakerPicker, SpeakerBanner, PartyCheck } from './PartyTools';
 import qrcode from 'qrcode-generator';
 
 // The join link as a QR code, drawn once per code
@@ -66,6 +67,8 @@ export default function PartyMode() {
   const [endArmed, setEndArmed] = useState(false);
   const [showPlaylists, setShowPlaylists] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [blockArmed, setBlockArmed] = useState(null); // a guest id, waiting for the second tap
+  const blocked = usePartyStore((s) => s.blocked);
   const searchTimer = useRef(null);
 
   const own = playlists.filter((p) => p.owner?.id === profile?.id || p.collaborative);
@@ -169,6 +172,7 @@ export default function PartyMode() {
           <p className="text-center text-black font-mono font-extrabold tracking-[0.3em] mt-2">{code}</p>
         </button>
       )}
+      <SpeakerBanner party={party} />
       {error && <p className="rounded-2xl bg-amber-500/15 border border-amber-400/30 px-4 py-3 text-sm text-amber-200">{error}</p>}
       {!conductor && <p className="rounded-2xl bg-white/10 px-4 py-3 text-sm text-neutral-200 flex items-center gap-2"><Smartphone className="w-4 h-4" /> Another of your devices is running the party; this one is along for the ride.</p>}
       {hostAway && conductor && <p className="rounded-2xl bg-amber-500/15 border border-amber-400/30 px-4 py-3 text-sm text-amber-200">Guests can't search until the next heartbeat lands.</p>}
@@ -224,6 +228,7 @@ export default function PartyMode() {
 
       {/* Settings row */}
       <section className="flex flex-wrap items-center gap-2">
+        <SpeakerPicker party={party} op={op} />
         <button type="button" onClick={() => setShowPlaylists((v) => !v)} className="rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white truncate max-w-full">Playlist: {party?.backing?.name || 'none'}</button>
         <button type="button" onClick={() => op({ op: 'settings', paused: !party?.paused })} aria-pressed={Boolean(party?.paused)} className={`rounded-full px-4 py-2.5 text-sm font-semibold flex items-center gap-2 ${party?.paused ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30' : 'border border-white/15 bg-white/5 text-white'}`}>
           {party?.paused ? <PlayCircle className="w-4 h-4" /> : <PauseCircle className="w-4 h-4" />} {party?.paused ? 'Requests paused' : 'Pause requests'}
@@ -240,6 +245,19 @@ export default function PartyMode() {
         </div>
       )}
 
+      <div className="grid gap-3 md:grid-cols-2">
+        <RolePicker />
+        <PartyCheck code={code} />
+      </div>
+      {blocked?.length > 0 && (
+        <p className="text-xs text-neutral-400 flex flex-wrap items-center gap-2">
+          Blocked:
+          {blocked.map((g) => (
+            <button key={g.id} type="button" onClick={() => op({ op: 'unblock', guestId: g.id }, `${g.name} can request again`)} className="rounded-full bg-white/10 px-2 py-0.5 text-neutral-200 hover:bg-white/15">{g.name} · Unblock</button>
+          ))}
+        </p>
+      )}
+
       {/* The queue */}
       <section>
         <h2 className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">Requests{queue.length ? ` · ${queue.length}` : ''}</h2>
@@ -254,6 +272,20 @@ export default function PartyMode() {
                 <span className="min-w-0 flex-1"><span className="block font-semibold text-white truncate">{i.name}</span><span className="block text-xs text-neutral-400 truncate">{i.artists} · {i.guestName}</span></span>
                 {i.votes > 0 && <span className="text-xs font-bold text-[var(--brand-mid)] flex items-center gap-0.5 tabular-nums"><ChevronUp className="w-4 h-4" />{i.votes}</span>}
                 <button type="button" onClick={() => op({ op: 'pin', id: i.id, pinned: !i.pinnedAt })} aria-label={i.pinnedAt ? 'Unpin' : 'Play next'} aria-pressed={Boolean(i.pinnedAt)} className={`p-2 rounded-full ${i.pinnedAt ? 'text-[var(--brand-mid)]' : 'text-neutral-400 hover:text-white'}`}><Pin className="w-5 h-5" /></button>
+                {i.guestId !== 'host' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (blockArmed !== i.guestId) { setBlockArmed(i.guestId); setTimeout(() => setBlockArmed((v) => (v === i.guestId ? null : v)), 4000); return; }
+                      setBlockArmed(null);
+                      op({ op: 'block', guestId: i.guestId }, `Blocked ${i.guestName}; their songs are gone`);
+                    }}
+                    aria-label={blockArmed === i.guestId ? `Tap again to block ${i.guestName}` : `Block ${i.guestName}`}
+                    className={`rounded-full ${blockArmed === i.guestId ? 'bg-red-500 text-white px-2 py-1 text-xs font-bold' : 'p-2 text-neutral-500 hover:text-red-300'}`}
+                  >
+                    {blockArmed === i.guestId ? `Block ${i.guestName}?` : <Ban className="w-4 h-4" />}
+                  </button>
+                )}
                 <button type="button" onClick={() => op({ op: 'remove', id: i.id })} aria-label={`Remove ${i.name}`} className="p-2 rounded-full text-neutral-400 hover:text-white"><X className="w-5 h-5" /></button>
               </li>
             ))}
