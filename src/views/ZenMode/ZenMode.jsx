@@ -1,10 +1,11 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, AlertCircle, Projector } from 'lucide-react';
+import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, Projector } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import AudioWaveform from '../../components/AudioWaveform';
-import { findLyrics, LYRIC_LEAD_IN_MS } from '../../lib/lrc';
+import { findLyrics } from '../../lib/lrc';
+import CinematicLyrics from '../../components/lyrics/CinematicLyrics';
+import AmbientWave from '../../components/lyrics/AmbientWave';
 import { useSlice } from '../../store/selectors';
 import { getBlurredBackdrop } from '../../utils/blurBackdrop';
 import { togglePlay, next as nextTrack, previous as previousTrack, seek, setVolume as setPlaybackVolume } from '../../services/spotify/playbackController';
@@ -20,9 +21,6 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform
 const desktop = () => (typeof window !== 'undefined' ? window.jomifyDesktop : null);
 const usesRealFullscreen = () => !IS_MAC && !desktop()?.setZenFullscreen;
 
-// Lines this far from the active one get the animated depth-of-field treatment; the rest are
-// plain elements with a static style, so a 200-line song doesn't run 200 spring animations
-const ANIMATED_LINE_RADIUS = 10;
 
 export default function ZenMode() {
   const { isZenMode, toggleZenMode, savedVolume, setSavedVolume } = useSlice(useUserStore, ['isZenMode', 'toggleZenMode', 'savedVolume', 'setSavedVolume']);
@@ -57,12 +55,6 @@ export default function ZenMode() {
   const [syncedLyrics, setSyncedLyrics] = useState(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsError, setLyricsError] = useState('');
-  const [activeIndex, setActiveIndex] = useState(-1);
-
-  const lineRefs = useRef([]);
-  const progressRef = useRef(0);
-  const syncedLyricsRef = useRef(null);
-  const scrollRef = useRef(null);
 
   const currentTrack = playbackState?.track_window?.current_track;
   // At a party, the guest who asked for this song
@@ -72,10 +64,6 @@ export default function ZenMode() {
   const isPaused = playbackState ? playbackState.paused : true;
   const albumArtUrl = currentTrack?.album?.images?.[0]?.url || '';
   const trackId = currentTrack?.id || 'empty';
-
-  useEffect(() => {
-    syncedLyricsRef.current = syncedLyrics;
-  }, [syncedLyrics]);
 
   // Handle auto-hide UI
   useEffect(() => {
@@ -183,77 +171,6 @@ export default function ZenMode() {
     return () => document.removeEventListener('keydown', onKey);
   }, [toggleZenMode]);
 
-  // --- LYRICS CLOCK ENGINE ---
-  // Recalibrates from the live player position whenever the track changes,
-  // playback state updates, or new synced lyrics finish loading — so the
-  // highlighted line snaps to the right spot immediately instead of
-  // continuing to run off the previous song's accumulated clock. A
-  // `cancelled` guard stops a slow-resolving getCurrentState() from a
-  // fast track skip landing after the fact and flashing the wrong line.
-  useEffect(() => {
-    if (!showLyrics) return;
-
-    let animationFrameId;
-    let lastTime = performance.now();
-    let currentPos = playbackState?.position || 0;
-
-    progressRef.current = currentPos;
-
-    const checkLineIndex = (pos) => {
-      const lyrics = syncedLyricsRef.current;
-      if (!lyrics || lyrics.length === 0) return;
-      // Same lead-in as LyricsView, so both views highlight the same line at the same moment
-      const idx = lyrics.findLastIndex(l => l.timeMs <= pos + LYRIC_LEAD_IN_MS);
-      setActiveIndex(prev => (prev !== idx ? idx : prev));
-    };
-
-    const startClock = () => {
-      // The store already holds the last position the player reported and when; advancing that
-      // to now is as accurate as asking the SDK again and costs no round trip, so the clock
-      // never pauses while a reply is awaited
-      const live = usePlayerStore.getState();
-      if (live.playbackState) {
-        currentPos = live.playbackState.position + (live.playbackState.paused ? 0 : Date.now() - live.positionAt);
-        progressRef.current = currentPos;
-        lastTime = performance.now();
-      }
-
-      // Snap to the correct line right away instead of waiting for the
-      // first animation frame (or the next natural playbackState tick).
-      checkLineIndex(currentPos);
-
-      if (playbackState && !playbackState.paused) {
-        const loop = (now) => {
-          const delta = now - lastTime;
-          lastTime = now;
-          currentPos += delta;
-          progressRef.current = currentPos;
-          
-          checkLineIndex(currentPos);
-          animationFrameId = requestAnimationFrame(loop);
-        };
-        animationFrameId = requestAnimationFrame(loop);
-      }
-    };
-
-    startClock();
-
-    return () => {
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    };
-  }, [playbackState, showLyrics, trackId, syncedLyrics]);
-
-  // --- RESET SCROLL & LINE REFS ON TRACK CHANGE ---
-  // Without this, switching songs while the panel is open leaves the
-  // lyrics view scrolled to wherever the previous song's line was, and
-  // stale DOM refs from the old lyric list can linger until re-render.
-  useEffect(() => {
-    lineRefs.current = [];
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ top: 0, behavior: 'auto' });
-    }
-  }, [trackId]);
-
   // --- UNIFIED BULLETPROOF LYRICS ENGINE ---
   useEffect(() => {
     // Nothing to clear here: fetchLyrics resets every lyric state on its next run, and the
@@ -267,7 +184,6 @@ export default function ZenMode() {
     const fetchLyrics = async () => {
       setSyncedLyrics(null);
       setPlainLyrics([]);
-      setActiveIndex(-1);
       setLyricsError('');
       setLyricsLoading(true);
 
@@ -292,100 +208,13 @@ export default function ZenMode() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack?.id, showLyrics]);
 
-  // --- AUTO-SCROLL ON LINE CHANGE ---
-  useEffect(() => {
-    if (showLyrics && activeIndex >= 0 && lineRefs.current[activeIndex] && scrollRef.current) {
-      const container = scrollRef.current;
-      const targetLine = lineRefs.current[activeIndex];
-      const scrollPos = targetLine.offsetTop - (container.clientHeight / 2) + (targetLine.clientHeight / 2);
-      
-      container.scrollTo({
-        top: scrollPos,
-        behavior: 'smooth'
-      });
-    }
-  }, [activeIndex, showLyrics]);
-
   const handleSeek = (timeMs) => { seek(timeMs); };
 
-  // --- HYPER-CINEMATIC ZEN RENDERERS ---
-  const renderSyncedEngine = () => {
-    return (
-      <div 
-        ref={scrollRef}
-        style={lite ? undefined : { 
-          maskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)',
-          WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)'
-        }}
-        className="relative z-10 flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] px-4 scroll-smooth w-full flex flex-col items-center"
-      >
-        <div className="max-w-4xl w-full text-center space-y-6 md:space-y-8 pt-[38vh] pb-[38vh]">
-          {syncedLyrics.map((line, i) => {
-            const isLineActive = i === activeIndex;
-            const isPast = i < activeIndex;
-            const isInstrumental = !line.text || line.text.trim() === '♪' || line.text.toLowerCase().includes('instrumental');
-
-            return (
-              <div 
-                key={i} 
-                ref={el => lineRefs.current[i] = el} 
-                onClick={() => handleSeek(line.timeMs)}
-                className="relative flex flex-col items-center justify-center min-h-[4.5rem] cursor-pointer group px-4 py-2"
-              >
-                {/* Hyper-Intense Cinematic Spotlight Glow Behind Active Line */}
-                {isLineActive && !lite && (
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[var(--brand-mid)]/40 to-transparent opacity-75 blur-3xl pointer-events-none -z-10 animate-pulse" />
-                )}
-
-                {isInstrumental ? (
-                  <AudioWaveform size="lg" isActive={isLineActive} />
-                ) : (() => {
-                  // Depth-of-field: lines further from the active one rack
-                  // out of focus, like a camera pulling focus between them.
-                  const distance = Math.abs(i - activeIndex);
-                  const depthBlur = isLineActive || lite ? 0 : Math.min(1.5 + distance * 0.9, 6);
-                  const depthOpacity = isLineActive
-                    ? 1
-                    : Math.max((isPast ? 0.15 : 0.3) - distance * 0.04, isPast ? 0.08 : 0.12);
-                  const lineClass = `text-2xl md:text-4xl lg:text-5xl font-black tracking-tighter leading-relaxed pb-1 transition-colors duration-200 origin-center group-hover:scale-105 group-hover:opacity-100 group-hover:blur-none ${
-                    isLineActive
-                      ? (lite ? 'text-white [text-shadow:0_0_18px_rgba(255,255,255,0.75)]' : 'text-white drop-shadow-[0_0_20px_rgba(255,255,255,1)] drop-shadow-[0_0_40px_rgba(255,255,255,0.8)] drop-shadow-[0_0_80px_rgba(249,19,98,0.6)]')
-                      : 'text-neutral-400'
-                  }`;
-
-                  // Far-off lines are static; only the neighbourhood of the active line animates
-                  // Far-off lines are nearly invisible already; a blur filter on each of them was a
-                  // separate layer to rasterise for no visible gain
-                  if (activeIndex >= 0 && distance > ANIMATED_LINE_RADIUS) {
-                    return (
-                      <p className={lineClass} style={{ opacity: depthOpacity, transform: 'scale(0.92)' }}>
-                        {line.text}
-                      </p>
-                    );
-                  }
-
-                  return (
-                    <motion.p
-                      initial={false}
-                      animate={{
-                        opacity: depthOpacity,
-                        scale: isLineActive ? 1.08 : 0.92,
-                        ...(lite ? {} : { filter: `blur(${depthBlur}px)` }),
-                      }}
-                      transition={{ type: "spring", stiffness: 300, damping: 22, mass: 0.5 }}
-                      className={lineClass}
-                    >
-                      {line.text}
-                    </motion.p>
-                  );
-                })()}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
+  // --- LYRICS ---
+  // Synced lyrics, glass and centred on the line being sung (shared with the lyrics page)
+  const renderSyncedEngine = () => (
+    <CinematicLyrics key={trackId} lines={syncedLyrics} onSeek={handleSeek} variant="zen" lite={lite} />
+  );
 
   const renderEditorialLayout = () => {
     return (
@@ -402,14 +231,9 @@ export default function ZenMode() {
               <div key={i} className="h-4 bg-white/10 rounded-full animate-pulse" style={{ width: `${Math.random() * 40 + 30}%` }} />
             ))}
           </motion.div>
-        ) : lyricsError ? (
-          <div className="flex items-center justify-center h-full pb-32">
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center text-center text-neutral-400 bg-black/40 p-10 rounded-3xl border border-white/5 backdrop-blur-md">
-              <AlertCircle className="w-10 h-10 mb-4 text-[#f91362] opacity-80" />
-              <p className="font-bold text-lg text-white mb-2">Lyrics Unavailable</p>
-              <p className="max-w-xs text-sm">{lyricsError}</p>
-            </motion.div>
-          </div>
+        ) : lyricsError || plainLyrics.length === 0 ? (
+          // No lyrics is not an error worth a red icon in Zen mode: the music gets the stage
+          <AmbientWave variant="zen" />
         ) : (
           <motion.div 
             initial={{ opacity: 0, y: 20 }} 

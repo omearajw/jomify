@@ -1,16 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { usePlayerStore } from '../../store/playerStore';
 import { useUserStore } from '../../store/userStore';
-import { Mic2, AlertCircle, Sparkles, X, Maximize2, Minimize2 } from 'lucide-react';
+import { Mic2, Sparkles, X, Maximize2, Minimize2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import TrackArtists from '../../components/TrackArtists';
-import AudioWaveform from '../../components/AudioWaveform';
-import { findLyrics, LYRIC_LEAD_IN_MS } from '../../lib/lrc';
+import { findLyrics } from '../../lib/lrc';
+import CinematicLyrics from '../../components/lyrics/CinematicLyrics';
+import AmbientWave from '../../components/lyrics/AmbientWave';
 import { seek } from '../../services/spotify/playbackController';
 import { useSlice } from '../../store/selectors';
 
 export default function LyricsView() {
-  const { playbackState, player, isLocalActive, positionAt } = useSlice(usePlayerStore, ['playbackState', 'player', 'isLocalActive', 'positionAt']);
+  const { playbackState } = useSlice(usePlayerStore, ['playbackState']);
   const goBack = useUserStore((s) => s.goBack);
   const currentTrack = playbackState?.track_window?.current_track;
 
@@ -25,6 +26,25 @@ export default function LyricsView() {
       if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
     };
   }, []);
+  // The page fits the visible area, so its lyrics scroll inside it and the header stays: sized by
+  // its content instead, the whole page scrolled to centre a line and took the header with it
+  const [fitHeight, setFitHeight] = useState(null);
+  useLayoutEffect(() => {
+    const root = containerRef.current;
+    if (!root) return undefined;
+    let box = root.parentElement;
+    while (box && !/(auto|scroll)/.test(getComputedStyle(box).overflowY)) box = box.parentElement;
+    if (!box) return undefined;
+    const measure = () => {
+      const top = root.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+      setFitHeight(Math.max(320, Math.floor(box.clientHeight - top - 16)));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, []);
+
   const toggleFullscreen = () => {
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
     else containerRef.current?.requestFullscreen?.().catch(() => {});
@@ -39,72 +59,8 @@ export default function LyricsView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  const [activeIndex, setActiveIndex] = useState(-1);
-
-  const lineRefs = useRef([]);
-  const progressRef = useRef(0);
-  const syncedLyricsRef = useRef(null);
 
   const albumArt = currentTrack?.album?.images?.[0]?.url || '';
-
-  // Keep ref in sync for RAF loop access
-  useEffect(() => {
-    syncedLyricsRef.current = syncedLyrics;
-  }, [syncedLyrics]);
-
-  // --- 1. HIGH-PERFORMANCE CLOCK & LINE-MATCH ENGINE ---
-  useEffect(() => {
-    let animationFrameId;
-    let lastTime = performance.now();
-    let currentPos = playbackState?.position || 0;
-    
-    progressRef.current = currentPos;
-
-    const startClock = async () => {
-      if (isLocalActive && player) {
-        const state = await player.getCurrentState();
-        if (state) {
-          currentPos = state.position;
-          progressRef.current = currentPos;
-        }
-      } else if (playbackState && !playbackState.paused) {
-        // Remote playback: the last poll is a little old by now, so advance it to the present
-        currentPos = playbackState.position + (Date.now() - positionAt);
-        progressRef.current = currentPos;
-      }
-
-      const checkLineIndex = (pos) => {
-        const lyrics = syncedLyricsRef.current;
-        if (!lyrics || lyrics.length === 0) return;
-        const idx = lyrics.findLastIndex(l => l.timeMs <= pos + LYRIC_LEAD_IN_MS);
-        setActiveIndex(prev => (prev !== idx ? idx : prev));
-      };
-
-      if (playbackState && !playbackState.paused) {
-        const loop = (now) => {
-          const delta = now - lastTime;
-          lastTime = now;
-          currentPos += delta;
-          progressRef.current = currentPos;
-          
-          checkLineIndex(currentPos);
-          animationFrameId = requestAnimationFrame(loop);
-        };
-        animationFrameId = requestAnimationFrame(loop);
-      } else {
-        progressRef.current = playbackState?.position || 0;
-        checkLineIndex(progressRef.current);
-      }
-    };
-
-    startClock();
-
-    return () => {
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    };
-  // positionAt changes with every playbackState, so listing it adds nothing but keeps the
-  // dependency list honest for the remote branch above
-  }, [playbackState, player, isLocalActive, positionAt]);
 
   // --- 2. PUBLIC FREE API FETCHING (LrcLib) ---
   // Cancellation matters here: skip tracks quickly and a slow response for track A used to
@@ -120,7 +76,6 @@ export default function LyricsView() {
       setError('');
       setPlainLyrics([]);
       setSyncedLyrics(null);
-      setActiveIndex(-1);
 
       try {
         const found = await findLyrics(currentTrack, trackDurationSec);
@@ -143,17 +98,6 @@ export default function LyricsView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack?.id]);
 
-  // --- 3. AUTO-SCROLL ON LINE CHANGE ---
-  useEffect(() => {
-    const targetLine = lineRefs.current[activeIndex];
-    if (activeIndex >= 0 && targetLine) {
-      targetLine.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center'
-      });
-    }
-  }, [activeIndex]);
-
   // --- 4. CLICK TO SEEK ---
   const handleSeek = (timeMs) => { seek(timeMs); };
 
@@ -166,58 +110,10 @@ export default function LyricsView() {
     );
   }
 
-  // --- SYNCED ENGINE RENDERER (LINE-BY-LINE) ---
-  const renderSyncedEngine = () => {
-    return (
-      <div 
-        style={{ 
-          maskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)',
-          WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)'
-        }}
-        className="relative z-10 flex-1 overflow-y-auto custom-scrollbar px-6 md:px-20 w-full flex flex-col items-center"
-      >
-        <div className="max-w-5xl w-full text-center space-y-4 md:space-y-6 pt-[45vh] pb-[45vh]">
-          {syncedLyrics.map((line, i) => {
-            const isActive = i === activeIndex;
-            const isPast = i < activeIndex;
-            
-            // Check if the line is an instrumental break
-            const isInstrumental = !line.text || line.text.trim() === '♪' || line.text.toLowerCase().includes('instrumental');
-
-            return (
-              <div 
-                key={i} 
-                ref={el => lineRefs.current[i] = el} 
-                onClick={() => handleSeek(line.timeMs)}
-                className="flex flex-col items-center justify-center min-h-[4rem] cursor-pointer group px-4 py-2"
-              >
-                {isInstrumental ? (
-                  <AudioWaveform isActive={isActive} />
-                ) : (
-                  <motion.p
-                    initial={false}
-                    animate={{
-                      opacity: isActive ? 1 : (isPast ? 0.3 : 0.4),
-                      scale: isActive ? 1.05 : 0.95,
-                      filter: isActive ? "blur(0px)" : (isPast ? "blur(1px)" : "blur(2px)"),
-                    }}
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                    className={`text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight leading-normal pb-2 transition-colors duration-300 origin-center group-hover:scale-105 group-hover:opacity-100 group-hover:blur-none ${
-                      isActive 
-                        ? 'text-white drop-shadow-[0_0_25px_rgba(255,255,255,0.7)]' 
-                        : 'text-neutral-400'
-                    }`}
-                  >
-                    {line.text}
-                  </motion.p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
+  // --- SYNCED LYRICS: glass, centred on the line being sung (shared with Zen mode) ---
+  const renderSyncedEngine = () => (
+    <CinematicLyrics key={currentTrack.id} lines={syncedLyrics} onSeek={handleSeek} variant="page" />
+  );
 
   // --- PLAIN TEXT EDITORIAL RENDERER ---
   const renderEditorialLayout = () => {
@@ -235,14 +131,8 @@ export default function LyricsView() {
               <div key={i} className="h-4 bg-white/10 rounded-full animate-pulse" style={{ width: `${Math.random() * 60 + 20}%` }} />
             ))}
           </motion.div>
-        ) : error ? (
-          <div className="flex items-center justify-center h-full pb-32">
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center text-center text-neutral-400 bg-black/40 p-12 rounded-3xl border border-white/5 backdrop-blur-md">
-              <AlertCircle className="w-12 h-12 mb-4 text-[#f91362] opacity-80" />
-              <p className="font-bold text-xl text-white mb-2">Lyrics Unavailable</p>
-              <p className="max-w-md">{error}</p>
-            </motion.div>
-          </div>
+        ) : error || plainLyrics.length === 0 ? (
+          <AmbientWave variant="page" />
         ) : (
           <motion.div 
             initial={{ opacity: 0, y: 20 }} 
@@ -266,7 +156,7 @@ export default function LyricsView() {
   };
 
   return (
-    <div ref={containerRef} className="relative flex-1 h-full w-full rounded-3xl overflow-hidden bg-black flex flex-col animate-fade-in shadow-2xl">
+    <div ref={containerRef} style={fitHeight ? { height: fitHeight } : undefined} className="relative flex-1 h-full w-full rounded-3xl overflow-hidden bg-black flex flex-col animate-fade-in shadow-2xl">
       
       {/* Immersive Blur Background */}
       {albumArt && (
@@ -275,7 +165,9 @@ export default function LyricsView() {
           style={{ backgroundImage: `url(${albumArt})` }} 
         />
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-0 pointer-events-none" />
+      {/* An even dimming, not a band: a gradient darkening the lower half made the same lines
+          look dim before the first lyric and after the last, and bright in between */}
+      <div className="absolute inset-0 bg-black/45 z-0 pointer-events-none" />
 
       {/* Header Bar */}
       <div className="absolute top-0 left-0 right-0 z-20 px-10 pt-8 pb-12 bg-gradient-to-b from-black/80 to-transparent shrink-0 flex items-center justify-between pointer-events-none">

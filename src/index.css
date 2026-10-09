@@ -169,3 +169,27 @@
     scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   }
 }
+
+/* Lyrics as glass: translucent frosted glyphs with a fine edge. The current line takes a sheen
+   across its top half and fills with light from the left as it is sung (--p, set each frame). */
+.lyric-glass {
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  padding-bottom: 0.08em;
+  color: transparent;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-stroke: 0.6px rgba(255, 255, 255, 0.22);
+  text-wrap: balance;
+}
+.lyric-glass.is-active {
+  --p: 0%;
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 50%),
+    linear-gradient(90deg, #fff 0%, #fff calc(var(--p) - 3%), rgba(255, 255, 255, 0.58) calc(var(--p) + 5%), rgba(255, 255, 255, 0.58) 100%);
+  -webkit-text-stroke: 0.8px rgba(255, 255, 255, 0.45);
+  filter: drop-shadow(0 0 22px rgba(255, 255, 255, 0.28)) drop-shadow(0 6px 30px color-mix(in srgb, var(--brand-mid) 45%, transparent));
+}
+.lyrics-lite .lyric-glass.is-active { filter: none; }
