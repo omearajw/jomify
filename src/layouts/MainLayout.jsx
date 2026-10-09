@@ -6,7 +6,9 @@ import ContextMenu from '../components/ContextMenu';
 import ToastHost from '../components/Toast';
 import SyncConflictDialog from '../components/SyncConflictDialog';
 import ShortcutsHelp from '../components/ShortcutsHelp';
-import { ChevronLeft, AlertTriangle, CloudOff, WifiOff } from 'lucide-react';
+import { ChevronLeft, AlertTriangle, CloudOff, WifiOff, PartyPopper } from 'lucide-react';
+import { usePartyStore } from '../store/partyStore';
+import { endParty, rejoinParty } from '../party/conductor';
 import { useUserStore } from '../store/userStore';
 import { useSyncStore } from '../store/syncStore';
 import UpdatePrompt from '../pwa/registerServiceWorker';
@@ -91,7 +93,9 @@ export default function MainLayout({ children }) {
 
   // Views with their own sticky sub-headers (Browse) need to know how tall this one is, so it
   // is published as a CSS variable instead of being hard-coded as a magic number over there.
-  const bannerHeight = (isCoolingDown ? 44 : 0) + (syncBroken ? 44 : 0) + (offline ? 44 : 0);
+  // A party left open from another night: not running, but worth a word
+  const dormantParty = usePartyStore((s) => (s.dormant ? s.code : null));
+  const bannerHeight = (isCoolingDown ? 44 : 0) + (syncBroken ? 44 : 0) + (offline ? 44 : 0) + (dormantParty ? 44 : 0);
   const backBarHeight = canGoBack ? 64 : 0;
 
   return (
@@ -109,8 +113,16 @@ export default function MainLayout({ children }) {
           {/* One sticky header, so banners and the back button stack instead of all pinning to
               top:0 and covering each other. The back row only exists when there is somewhere
               to go back to. */}
-          {(isCoolingDown || syncBroken || canGoBack || offline) && (
+          {(isCoolingDown || syncBroken || canGoBack || offline || dormantParty) && (
             <div className="sticky top-0 z-30">
+              {dormantParty && (
+                <div className="bg-neutral-900/95 backdrop-blur-md text-white px-4 md:px-8 py-2.5 flex items-center justify-center gap-3 text-sm font-medium shadow-lg animate-fade-in">
+                  <PartyPopper className="w-5 h-5 text-[var(--brand-mid)] shrink-0" />
+                  <span className="min-w-0 truncate">Party {dormantParty} is still open from earlier.</span>
+                  <button type="button" onClick={() => { rejoinParty(); useUserStore.getState().setCurrentView('party'); }} className="rounded-full bg-white/10 hover:bg-white/15 px-3 py-1 text-xs font-bold">Resume</button>
+                  <button type="button" onClick={() => endParty()} className="rounded-full border border-white/15 hover:bg-white/10 px-3 py-1 text-xs font-bold">End it</button>
+                </div>
+              )}
               {offline && (
                 <div className="bg-neutral-800/95 backdrop-blur-md text-white px-4 md:px-8 py-3 flex items-center justify-center space-x-3 text-sm font-medium shadow-lg animate-fade-in">
                   <WifiOff className="w-5 h-5 text-neutral-400" />

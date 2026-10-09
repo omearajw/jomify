@@ -42,6 +42,16 @@ export default async function handler(req, res) {
     const guestId = GUEST_ID.test(body.guestId || '') ? body.guestId : null;
     const needGuest = () => { if (!guestId) throw new PartyError(400, 'A guest id is required'); };
 
+    // The host paused, on any of their devices: the conductor (maybe another device) must leave it
+    if (op === 'hostPause') {
+      const snap = await loadSnapshot(code);
+      const party = snap ? { code, hostId: snap.hostId, ...snap.party } : await readParty(code);
+      await requireHost(req, party.hostId);
+      const next = await patchSnapshot(code, party, { hostPausedAt: Date.now(), hostPausedBy: body.deviceName ? String(body.deviceName).slice(0, 60) : null });
+      res.status(200).json(viewFor(next, 'host'));
+      return;
+    }
+
     // The heartbeat comes every few seconds from each of the host's devices: it patches the
     // snapshot instead of reading the party and rebuilding everything
     if (op === 'heartbeat') {

@@ -16,7 +16,10 @@ export default async function handler(req, res) {
       if (!code) { res.status(200).json({ party: null }); return; }
       try {
         const party = await readParty(String(code));
-        res.status(200).json({ party: publicParty(party) });
+        // When one of the host's devices last ran it: a reload mid-party rejoins, a party left open
+        // since last week does not quietly take over
+        const lastHeartbeatAt = Number(await r.get(K.heartbeat(String(code)))) || 0;
+        res.status(200).json({ party: publicParty(party), lastHeartbeatAt, serverTime: Date.now() });
       } catch (err) {
         if (err instanceof PartyError) { await r.del(K.hostParty(hostId)); res.status(200).json({ party: null }); return; }
         throw err;

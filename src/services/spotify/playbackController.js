@@ -995,7 +995,7 @@ function parkPlay(play) {
 export async function playOn(play, { track, quiet = false } = {}) {
   activateLocalPlayer(); // synchronously, while still inside the tap
   if (!token()) return;
-  if (!quiet) { player().setAutoplaySource(null); lastIntentAt = Date.now(); }
+  if (!quiet) { player().setAutoplaySource(null); lastIntentAt = Date.now(); localPlayedThisSession = true; }
 
   // Name the song straight away. Finding a device can take a round trip, and a tap that shows
   // nothing for half a second reads as a button that did not work.
@@ -1113,13 +1113,37 @@ async function remote(action, optimistic) {
   }
 }
 
+// Listeners told whenever the user pauses through Jomify on this device (the player bar, Zen, a
+// key, a media key, the lock screen): the party's watchdog must leave such a pause alone
+const userPauseListeners = new Set();
+export function onUserPause(fn) { userPauseListeners.add(fn); return () => userPauseListeners.delete(fn); }
+let lastUserPauseAt = 0;
+export const userPausedAt = () => lastUserPauseAt;
+
+// The song on this browser's player was handed over at launch, before anyone clicked anything.
+// Safari won't let a song set up then make sound: resuming it moved the progress bar in silence,
+// while Skip, which loads a fresh song after the click, played fine. So the first play after
+// opening starts the remembered song afresh, at the remembered position, from the click.
+let localPlayedThisSession = false;
+
 export function togglePlay() {
   lastIntentAt = Date.now();
   activateLocalPlayer();
   const sdk = localSdk();
   const paused = player().playbackState?.paused ?? true;
   log('transport', paused ? 'play' : 'pause', sdk ? 'this browser' : 'remote device');
+  if (!paused) {
+    lastUserPauseAt = Date.now();
+    userPauseListeners.forEach((fn) => { try { fn(); } catch { /* a listener's problem */ } });
+  }
+  if (sdk && paused && !localPlayedThisSession && player().playbackState?.track_window?.current_track?.uri) {
+    localPlayedThisSession = true;
+    log('playback', 'first play since opening: starting the song afresh where it was left');
+    const t = token();
+    return playOn((deviceId) => startShownSong(t, deviceId));
+  }
   if (sdk) {
+    localPlayedThisSession = true;
     const asked = lastIntentAt;
     const result = sdk.togglePlay().catch(console.error);
     if (paused) setTimeout(() => verifyLocalResume(asked), LOCAL_RESUME_CHECK_MS);
@@ -1212,6 +1236,7 @@ async function playHereInstead(why, play) {
 
 export function next() {
   lastIntentAt = Date.now();
+  localPlayedThisSession = true;
   activateLocalPlayer();
   const sdk = localSdk();
   log('transport', 'next', sdk ? 'this browser' : 'remote device');
@@ -1221,6 +1246,7 @@ export function next() {
 
 export function previous() {
   lastIntentAt = Date.now();
+  localPlayedThisSession = true;
   activateLocalPlayer();
   const sdk = localSdk();
   log('transport', 'previous', sdk ? 'this browser' : 'remote device');

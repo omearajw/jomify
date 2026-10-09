@@ -5,7 +5,7 @@ import { usePlayerStore } from '../../store/playerStore';
 import { usePartyStore } from '../../store/partyStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { hostApi, partyLink, partyScreenLink } from '../../party/client';
-import { startConductor, stopConductor, heartbeat, skipWithParty, setHostPaused, isConducting } from '../../party/conductor';
+import { startConductor, stopConductor, heartbeat, skipWithParty, setHostPaused, isConducting, rejoinParty, endParty } from '../../party/conductor';
 import { togglePlay, setVolume, playOn, setShuffle } from '../../services/spotify/playbackController';
 import { searchSpotify, playContext } from '../../services/spotify/api';
 import { artUrl } from '../../utils/images';
@@ -61,6 +61,8 @@ export default function PartyMode() {
   const [showQr, setShowQr] = useState(false);
   const [blockArmed, setBlockArmed] = useState(null); // a guest id, waiting for the second tap
   const blocked = usePartyStore((s) => s.blocked);
+  const dormant = usePartyStore((s) => s.dormant);
+  const rejoinChecked = usePartyStore((s) => s.rejoinChecked);
   const searchTimer = useRef(null);
 
   const own = playlists.filter((p) => p.owner?.id === profile?.id || p.collaborative);
@@ -68,9 +70,11 @@ export default function PartyMode() {
 
   // The conductor runs whether or not this page is open; opening it just makes sure
   useEffect(() => {
-    if (code && token && !isConducting()) startConductor();
+    // Only once the launch check has spoken: a party left open from earlier waits for Resume
+    // rather than starting because the app happened to reopen on this page
+    if (code && token && rejoinChecked && !dormant && !isConducting()) startConductor();
     else if (code && token) heartbeat();
-  }, [code, token]);
+  }, [code, token, rejoinChecked, dormant]);
 
   useEffect(() => {
     clearTimeout(searchTimer.current);
@@ -141,6 +145,19 @@ export default function PartyMode() {
   const volume = isLocalActive ? savedVolume : (remoteVolume ?? activeDevice?.volumePercent ?? 50);
 
   if (!code) return <Setup playlists={choices} profile={profile} onStart={start} busy={busy} />;
+
+  if (dormant) {
+    return (
+      <div className="flex flex-col gap-4 animate-fade-in max-w-xl">
+        <h1 className="text-3xl font-extrabold tracking-tight text-white">Party {code} is still open</h1>
+        <p className="text-neutral-300">It was left open from earlier and isn't running now, so it won't touch your music. Resume it to carry on with its queue and guests, or end it.</p>
+        <div className="flex gap-3">
+          <button type="button" onClick={rejoinParty} className="rounded-full bg-brand-gradient px-6 py-3 font-bold text-white shadow-brand-glow">Resume the party</button>
+          <button type="button" onClick={() => endParty()} className="rounded-full border border-white/15 px-6 py-3 font-bold text-white hover:bg-white/10">End it</button>
+        </div>
+      </div>
+    );
+  }
 
   const fromGuest = requestedBy(track, { history, upNext });
 

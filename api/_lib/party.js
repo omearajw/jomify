@@ -391,6 +391,8 @@ export function viewFor(snap, guestId) {
     // the heartbeat's answer to "is it me", so this goes under its own name
     conductorInfo: snap.conductor ? { name: snap.conductor.name || null, at: snap.conductor.at || null, awake: snap.conductor.awake ?? null } : null,
     speakerOk: snap.speakerOk ?? null,
+    hostPausedAt: snap.hostPausedAt || null,
+    hostPausedBy: snap.hostPausedBy || null,
     ...(guestId === 'host' ? { blocked: snap.blocked || [] } : {}),
     serverTime: now
   };

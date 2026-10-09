@@ -22,6 +22,8 @@ export const usePartyStore = create(persist((set) => ({
   role: 'auto',
   conductorInfo: null,
   conductorQuiet: false,
+  dormant: false, // a party left open from earlier, not rejoined on opening
+  rejoinChecked: false, // the launch check has decided whether to rejoin
   blocked: [],
   speakerOk: null,
   error: null,
@@ -38,5 +40,5 @@ export const usePartyStore = create(persist((set) => ({
     hostAway: Boolean(s.hostAway), lastHeartbeatAt: Date.now(), error: null
   })),
   setError: (error) => set({ error }),
-  clear: () => set({ code: null, party: null, queue: [], upNext: null, history: [], guestCount: 0, conductor: false, hostAway: false, error: null })
+  clear: () => set({ dormant: false, code: null, party: null, queue: [], upNext: null, history: [], guestCount: 0, conductor: false, hostAway: false, error: null })
 }), { name: 'jomify-party', partialize: (s) => ({ code: s.code, deviceId: s.deviceId, role: s.role }) }));

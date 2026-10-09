@@ -1,9 +1,9 @@
 import { usePartyStore } from '../store/partyStore';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
-import { hostApi } from './client';
+import { hostApi, guestApi } from './client';
 import { addToQueue, playContext, fetchQueue, fetchDevices, transferPlayback, resumePlayback } from '../services/spotify/api';
-import { playOn, togglePlay, next as skipNext, setShuffle, requestFastPlaybackUpdates, PLAYER_NAME } from '../services/spotify/playbackController';
+import { playOn, togglePlay, next as skipNext, setShuffle, requestFastPlaybackUpdates, PLAYER_NAME, onUserPause, userPausedAt } from '../services/spotify/playbackController';
 import { log } from '../services/debugLog';
 
 // The host device that keeps the party going. It heartbeats so the server has a live token and
@@ -46,6 +46,26 @@ const player = () => usePlayerStore.getState();
 const token = () => useUserStore.getState().token;
 
 export const isConducting = () => Boolean(timers);
+
+// A pause made through Jomify on this device stands. Every device reports it to the party, so the
+// conductor leaves it be even when the pause was pressed on the phone and the laptop conducts.
+onUserPause(() => {
+  hostPaused = true;
+  const code = party().code;
+  if (code && token()) hostApi.op(code, { op: 'hostPause', deviceName: PLAYER_NAME }).catch(() => {});
+});
+
+// Before resuming a pause that looks unasked: was it the host, here or on another of their devices?
+async function pausedByHost(since) {
+  if (userPausedAt() >= since - 3000) return 'on this device';
+  const code = party().code;
+  if (!code) return null;
+  try {
+    const view = await guestApi.state(code);
+    if (view.hostPausedAt && view.hostPausedAt >= since - 5000) return view.hostPausedBy ? `on ${view.hostPausedBy}` : 'on another of your devices';
+  } catch { /* can't tell: resume, as before */ }
+  return null;
+}
 export function setHostPaused(value) { hostPaused = Boolean(value); if (!value) pausedSince = 0; }
 
 function livePosition(state, positionAt) {
@@ -243,12 +263,20 @@ async function tick() {
   if (state.paused) {
     pausedSince = pausedSince || now;
     if (!hostPaused && now - pausedSince > PAUSE_TOLERANCE_MS && now - lastResumeAt > PAUSE_TOLERANCE_MS * 2) {
-      lastResumeAt = now;
-      log('party', 'paused with nobody asking; resuming');
-      resumeParty();
+      const since = pausedSince;
+      const byHost = await pausedByHost(since);
+      if (byHost) {
+        hostPaused = true;
+        log('party', `paused by you ${byHost}; leaving it paused`);
+      } else if (party().conductor && player().playbackState?.paused && pausedSince === since) {
+        lastResumeAt = Date.now(); // only an actual resume holds off the next one
+        log('party', 'paused with nobody asking; resuming');
+        resumeParty();
+      }
     }
   } else {
     pausedSince = 0;
+    hostPaused = false; // playing again: the next pause is judged afresh
   }
 
   // Hand over the next request as late as possible
@@ -331,12 +359,38 @@ export function stopConductor() {
 }
 
 // Rejoin after a reload: the code is persisted, the server says whether the party still exists
+// On opening: a party one of the host's devices was running a few minutes ago (a reload, a
+// restart mid-party) is rejoined; one left open since another night is not quietly taken over,
+// since its watchdog would start resuming every pause. It waits behind a bar offering to open
+// or end it.
+const REJOIN_WITHIN_MS = 20 * 60 * 1000;
 export async function resumePartyIfAny() {
   const code = party().code;
-  if (!code || !token()) return;
+  const checked = (patch = {}) => usePartyStore.setState({ rejoinChecked: true, ...patch });
+  if (!code || !token()) { checked(); return; }
   try {
-    const { party: live } = await hostApi.current();
-    if (live?.code === code) { startConductor(); return; }
-  } catch { return; }
+    const { party: live, lastHeartbeatAt, serverTime } = await hostApi.current();
+    if (live?.code === code) {
+      const quietFor = (serverTime || Date.now()) - (lastHeartbeatAt || 0);
+      if (lastHeartbeatAt && quietFor < REJOIN_WITHIN_MS) { checked({ dormant: false }); startConductor(); return; }
+      log('party', 'a party is still open from earlier; not rejoining it by itself', code);
+      checked({ dormant: true, party: live });
+      return;
+    }
+  } catch { checked(); return; }
+  party().clear();
+  checked();
+}
+
+// Picking a party left open from earlier back up
+export function rejoinParty() {
+  usePartyStore.setState({ dormant: false });
+  startConductor();
+}
+
+export async function endParty() {
+  const code = party().code;
+  if (code) await hostApi.op(code, { op: 'end' }).catch(() => {});
+  stopConductor();
   party().clear();
 }
