@@ -122,20 +122,22 @@ function paintFill(geom, p) {
 // WebKit and Chromium. Built once as markup; nothing in it comes from outside.
 const glassFilter = (id, s) => `
 <filter id="${id}" x="-10%" y="-30%" width="120%" height="170%" color-interpolation-filters="sRGB">
-  <feGaussianBlur in="SourceAlpha" stdDeviation="${1.0 * s}" result="soft"/>
+  <feGaussianBlur in="SourceAlpha" stdDeviation="${1.5 * s}" result="soft"/>
   <feComponentTransfer in="soft" result="bump"><feFuncA type="linear" slope="2.4" intercept="-0.2"/></feComponentTransfer>
   <feSpecularLighting in="bump" surfaceScale="4" specularConstant="1.4" specularExponent="30" lighting-color="#fff" result="spec">
     <feDistantLight azimuth="225" elevation="58"/>
   </feSpecularLighting>
-  <feComponentTransfer in="spec" result="specSharp"><feFuncA type="table" tableValues="0 0 0.05 0.9 1"/></feComponentTransfer>
+  <feComponentTransfer in="spec" result="specSharp"><feFuncA type="table" tableValues="0 0 0.12 0.6 0.85"/></feComponentTransfer>
   <feComposite in="specSharp" in2="SourceAlpha" operator="in" result="gloss"/>
-  <feMorphology in="SourceAlpha" operator="erode" radius="${0.8 * s}" result="inner1"/>
-  <feComposite in="SourceAlpha" in2="inner1" operator="out" result="contour"/>
-  <feFlood flood-color="#fff" flood-opacity="0.3"/>
+  <feMorphology in="SourceAlpha" operator="erode" radius="${1.4 * s}" result="inner1"/>
+  <feComposite in="SourceAlpha" in2="inner1" operator="out" result="contourHard"/>
+  <feGaussianBlur in="contourHard" stdDeviation="${0.7 * s}" result="contourSoft"/>
+  <feComposite in="contourSoft" in2="SourceAlpha" operator="in" result="contour"/>
+  <feFlood flood-color="#fff" flood-opacity="0.22"/>
   <feComposite in2="contour" operator="in" result="rimLight"/>
   <feOffset in="contour" dx="${s}" dy="${1.4 * s}" result="lowerC"/>
   <feComposite in="lowerC" in2="SourceAlpha" operator="in" result="lowerIn"/>
-  <feFlood flood-color="#05070d" flood-opacity="0.45"/>
+  <feFlood flood-color="#05070d" flood-opacity="0.32"/>
   <feComposite in2="lowerIn" operator="in" result="lowerDark"/>
   <feGaussianBlur in="SourceAlpha" stdDeviation="${2 * s}" result="dsBlur"/>
   <feOffset in="dsBlur" dx="${s}" dy="${3 * s}" result="dsOff"/>

@@ -208,14 +208,15 @@
   -webkit-background-clip: text;
   background-clip: text;
   background-color: #2a2234;
-  background-image: linear-gradient(rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.1)), var(--lyric-wash, none);
+  background-image: linear-gradient(rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.18)), var(--lyric-wash, none);
   background-size: 100% 100%, 260% auto;
   background-repeat: no-repeat;
   will-change: transform;
 }
 .lyrics-refract .lyric-refract {
   background-color: #000;
-  background-image: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)), var(--lyric-refract, none);
+  /* Half a grey tint over the cover: frosted enough to read as a solid face, clear enough to see through */
+  background-image: linear-gradient(rgba(82, 82, 92, 0.5), rgba(82, 82, 92, 0.5)), var(--lyric-refract, none);
 }
 @media (min-width: 768px) {
   .lyrics-zen .lyric-line.is-near .lyric-glass { filter: url(#lyric-glass-m); }
