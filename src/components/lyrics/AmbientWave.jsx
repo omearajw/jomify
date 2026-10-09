@@ -1,11 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { subscribeLevels, useWaveSource, MAX_BARS } from '../../audio/levels';
 import { usePlayerStore } from '../../store/playerStore';
 
-// What the lyrics panel shows when a song has none: a wide, mirrored glass waveform with the bass in
-// the middle and the treble out to the edges, and a quiet line beneath. It follows the real levels
-// when there are any (Spotify's analysis, or the microphone) and drifts on its own otherwise, so
-// Zen mode never stops on an error message.
+// What the lyrics panel shows when a song has none: a wide, mirrored waveform that drifts while the
+// music plays and settles when it's paused, with a quiet line beneath, so Zen mode never stops on
+// an error message. It is an animation, not the sound: the browser can't hear what it plays.
 
 const BARS = 48;
 
@@ -17,30 +15,22 @@ function drift(t, j, dist, playing) {
 
 export default function AmbientWave({ caption = 'No words for this one. Just listen.', variant = 'zen' }) {
   const bars = useRef([]);
-  const source = useWaveSource();
-  const live = useRef(source);
-  useEffect(() => { live.current = source; }, [source]);
 
-  useEffect(() => subscribeLevels((levels) => {
-    const t = performance.now() / 1000;
-    const playing = usePlayerStore.getState().playbackState?.paused === false;
+  useEffect(() => {
+    let raf = 0;
     const centre = (BARS - 1) / 2;
-    for (let j = 0; j < BARS; j++) {
-      const el = bars.current[j];
-      if (!el) continue;
-      const dist = Math.abs(j - centre) / centre;
-      let v;
-      if (live.current) {
-        const band = dist * (MAX_BARS - 1);
-        const lo = Math.floor(band);
-        const frac = band - lo;
-        v = ((levels[lo] || 0) * (1 - frac) + (levels[Math.min(MAX_BARS - 1, lo + 1)] || 0) * frac) * (1.15 - 0.45 * dist);
-      } else {
-        v = drift(t, j, dist, playing);
+    const frame = () => {
+      const t = performance.now() / 1000;
+      const playing = usePlayerStore.getState().playbackState?.paused === false;
+      for (let j = 0; j < BARS; j++) {
+        const el = bars.current[j];
+        if (el) el.style.transform = `scaleY(${Math.max(0.04, Math.min(1, drift(t, j, Math.abs(j - centre) / centre, playing))).toFixed(3)})`;
       }
-      el.style.transform = `scaleY(${Math.max(0.04, Math.min(1, v)).toFixed(3)})`;
-    }
-  }), []);
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   return (
     <div className="flex-1 w-full flex flex-col items-center justify-center gap-8 px-6" aria-label={caption}>

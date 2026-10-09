@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, session, desktopCapturer } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const express = require('express');
 const path = require('path');
 
@@ -37,19 +37,7 @@ ipcMain.handle('zen-fullscreen', (_event, on) => {
   return true;
 });
 
-// The waveform's "sound from this computer": a capture request from the page is answered with
-// the whole screen's audio loopback (Windows, and macOS 13+ through Apple's audio capture); the
-// page stops the picture that comes with it at once. Nothing else in Jomify asks to capture.
-function allowSystemAudio() {
-  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    desktopCapturer.getSources({ types: ['screen'] })
-      .then((sources) => callback(sources[0] ? { video: sources[0], audio: 'loopback' } : {}))
-      .catch(() => callback({}));
-  });
-}
-
 app.whenReady().then(() => {
-  allowSystemAudio();
   const listener = server.listen(port, host, () => createWindow());
 
   // Previously an unhandled error here (most often the Vite dev server already holding port

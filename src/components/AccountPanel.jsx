@@ -10,7 +10,6 @@ import NotificationToggle from './NotificationToggle';
 import DebugLogPanel from './DebugLogPanel';
 import { disableNotifications } from '../pwa/push';
 import { clearLibraryCache } from '../services/libraryCache';
-import { listInputs } from '../audio/levels';
 import { Keyboard } from 'lucide-react';
 
 const ENDINGS = [
@@ -29,37 +28,8 @@ const ZEN_EFFECTS = [
   { id: 'full', label: 'Full', hint: 'Blended layers, blurred lyrics, always-moving backdrop' },
   { id: 'lite', label: 'Lite', hint: 'The same scene without the expensive layers' }
 ];
-const WAVEFORMS = [
-  { id: 'auto', label: "The song's own shape", hint: 'Follows Spotify\'s analysis of the song when Spotify shares it; animated when it doesn\'t' },
-  { id: 'mic', label: 'Listen to an audio input', hint: 'The microphone hears the room, whatever speaker plays it. A virtual input (BlackHole on a Mac, Stereo Mix or VB-Cable on Windows) carries exactly what this computer plays. Analysed on this device, never recorded or sent.' },
-  // The desktop app can take the computer's sound itself (main.cjs grants it)
-  ...(typeof window !== 'undefined' && window.jomifyDesktop?.systemAudio ? [{ id: 'system', label: "Sound from this computer", hint: "Exactly what this computer plays, with nothing to install. Your system may ask to allow screen and audio recording once." }] : []),
-  { id: 'off', label: 'Animated', hint: 'The bars move on their own' }
-];
 const GRID_SIZES = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']];
 const LIBRARY_SORTS = [['recent', 'Recently played'], ['spotify', 'Spotify order'], ['az', 'A to Z'], ['za', 'Z to A'], ['owner', 'By owner']];
-
-// Which audio input the waveform listens to: the microphone, or a virtual device carrying the
-// computer's own sound
-function InputPicker({ value, onChange }) {
-  const [inputs, setInputs] = useState(null);
-  useEffect(() => {
-    let cancelled = false;
-    listInputs().then((list) => { if (!cancelled) setInputs(list); });
-    return () => { cancelled = true; };
-  }, []);
-  const unnamed = (inputs || []).every((d) => /^Input \d+$/.test(d.name));
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 -mt-2">
-      <label className="text-sm font-semibold text-white mb-2 block" htmlFor="waveform-input">Input</label>
-      <select id="waveform-input" value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded-xl bg-neutral-900 border border-white/10 px-3 py-2 text-sm text-white">
-        <option value="default">The default microphone</option>
-        {(inputs || []).filter((d) => d.id !== 'default').map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-      </select>
-      {unnamed && <p className="text-xs text-neutral-500 mt-2">Names appear once Jomify has been allowed the microphone: open a waveform once, then come back.</p>}
-    </div>
-  );
-}
 
 function Choice({ label, value, options, onChange }) {
   return (
@@ -277,8 +247,6 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
 
       <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500">App</p>
       <Choice label="Open on" value={playbackSettings?.startupPage || 'resume'} options={STARTS} onChange={(v) => setPlaybackSetting('startupPage', v)} />
-      <Choice label="Waveform" value={playbackSettings?.waveform || 'auto'} options={WAVEFORMS} onChange={(v) => setPlaybackSetting('waveform', v)} />
-      {playbackSettings?.waveform === 'mic' && <InputPicker value={playbackSettings?.micDeviceId || 'default'} onChange={(id) => setPlaybackSetting('micDeviceId', id)} />}
       <Choice label="Zen mode effects" value={playbackSettings?.zenEffects || 'auto'} options={ZEN_EFFECTS} onChange={(v) => { setPlaybackSetting('zenEffects', v); if (v !== 'auto') { try { localStorage.removeItem('jomify_zen_lite'); } catch { /* fine */ } } }} />
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
