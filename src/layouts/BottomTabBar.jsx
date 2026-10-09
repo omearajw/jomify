@@ -1,5 +1,6 @@
-import { Home, Search, Library, Users } from 'lucide-react';
+import { Home, Search, Library, Users, PartyPopper } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
+import { usePartyStore } from '../store/partyStore';
 
 // Views that live "under" the Library tab, so it stays lit while you're inside one
 const LIBRARY_VIEWS = new Set(['library', 'playlist', 'album', 'artist', 'liked-songs']);
@@ -10,13 +11,16 @@ const TABS = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'browse', label: 'Search', icon: Search },
   { id: 'library', label: 'Library', icon: Library },
-  { id: 'sevens', label: 'Sevens', icon: Users }
+  { id: 'sevens', label: 'Sevens', icon: Users },
+  // The phone is the party's remote, so the party is one tap away
+  { id: 'party', label: 'Party', icon: PartyPopper }
 ];
 
 export default function BottomTabBar() {
   const currentView = useUserStore((s) => s.currentView);
   const setCurrentView = useUserStore((s) => s.setCurrentView);
   const setActiveFolderId = useUserStore((s) => s.setActiveFolderId);
+  const partyOn = usePartyStore((s) => Boolean(s.code));
 
   const isActive = (id) => currentView === id
     || (id === 'library' && LIBRARY_VIEWS.has(currentView))
@@ -39,7 +43,10 @@ export default function BottomTabBar() {
               aria-current={active ? 'page' : undefined}
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-colors ${active ? 'text-white' : 'text-neutral-500 active:text-neutral-300'}`}
             >
-              <Icon className={`w-6 h-6 ${active ? 'text-[var(--brand-mid)]' : ''}`} />
+              <span className="relative">
+                <Icon className={`w-6 h-6 ${active ? 'text-[var(--brand-mid)]' : ''}`} />
+                {id === 'party' && partyOn && <span aria-label="A party is running" className="absolute -top-0.5 -right-1 w-2.5 h-2.5 rounded-full bg-[var(--brand-mid)] ring-2 ring-black" />}
+              </span>
               {label}
             </button>
           );

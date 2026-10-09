@@ -14,6 +14,74 @@
 
     <link rel="icon" type="image/png" href="/Jomify-Icon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Black from the first paint: if the app's stylesheet never arrives the page must not be a
+         blank white sheet with nothing to say -->
+    <style>html, body { background: #000; color: #fff; margin: 0; }</style>
+    <script>
+      // The start-up watchdog. It runs before the app and stays out of the way unless the app has
+      // not appeared after a few seconds; then it says why (a file that would not load, an error)
+      // and offers a repair. A broken start used to be a silent white screen, and since the
+      // "Update ready" button lives inside the app, a copy that cannot start could never update.
+      (function () {
+        var problems = [];
+        window.addEventListener('error', function (e) {
+          var t = e.target;
+          if (t && t !== window && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) problems.push('Could not load ' + String(t.src || t.href).split('/').pop());
+          else if (e.message) problems.push(e.message + (e.filename ? ' (' + String(e.filename).split('/').pop() + ':' + e.lineno + ')' : ''));
+        }, true);
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e.reason; problems.push(String((r && (r.message || r)) || 'a promise failed'));
+        });
+        function started() {
+          var root = document.getElementById('root');
+          return Boolean(root && root.children.length > 0);
+        }
+        function repair() {
+          var jobs = [];
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            jobs.push(navigator.serviceWorker.getRegistrations().then(function (regs) { return Promise.all(regs.map(function (r) { return r.unregister(); })); }));
+          }
+          if (window.caches && caches.keys) {
+            jobs.push(caches.keys().then(function (keys) { return Promise.all(keys.map(function (k) { return caches.delete(k); })); }));
+          }
+          Promise.all(jobs).catch(function () {}).then(function () { location.reload(); });
+        }
+        window.__jomifyRepair = repair;
+        function show() {
+          if (started() || document.getElementById('jomify-boot')) return;
+          var box = document.createElement('div');
+          box.id = 'jomify-boot';
+          box.setAttribute('role', 'alert');
+          box.style.cssText = 'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#000;color:#fff;z-index:99999';
+          var detail = problems.length ? problems.slice(0, 4).join(' · ') : 'It took too long to start.';
+          box.innerHTML = '<p style="font-size:24px;font-weight:800;margin:0">Jomify didn\'t start</p>'
+            + '<p id="jomify-boot-detail" style="font-size:13px;color:#a3a3a3;max-width:520px;margin:0;word-break:break-word"></p>'
+            + '<p style="font-size:12px;color:#737373;max-width:420px;margin:0">Repair clears the app files this device has saved and fetches them again. Your library, settings and sign-in stay.</p>'
+            + '<div style="display:flex;gap:10px;margin-top:6px"><button id="jomify-boot-repair" style="padding:10px 22px;border-radius:999px;border:0;background:#f91362;color:#fff;font-weight:700;font-size:14px">Repair and reload</button>'
+            + '<button id="jomify-boot-reload" style="padding:10px 22px;border-radius:999px;border:1px solid #404040;background:transparent;color:#fff;font-weight:700;font-size:14px">Reload</button></div>';
+          document.body.appendChild(box);
+          document.getElementById('jomify-boot-detail').textContent = detail;
+          document.getElementById('jomify-boot-repair').onclick = repair;
+          document.getElementById('jomify-boot-reload').onclick = function () { location.reload(); };
+        }
+        setTimeout(function () {
+          if (started()) return;
+          // A newer version waiting behind a copy that cannot start: take it, once, before asking
+          var tried = false;
+          try { tried = sessionStorage.getItem('jomify-boot-update') === '1'; } catch (e) {}
+          if (!tried && navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
+            navigator.serviceWorker.getRegistration().then(function (reg) {
+              if (reg && reg.waiting) {
+                try { sessionStorage.setItem('jomify-boot-update', '1'); } catch (e) {}
+                navigator.serviceWorker.addEventListener('controllerchange', function () { location.reload(); });
+                reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                setTimeout(show, 4000);
+              } else show();
+            }).catch(show);
+          } else show();
+        }, 8000);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
