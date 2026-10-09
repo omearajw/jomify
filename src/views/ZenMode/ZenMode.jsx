@@ -215,7 +215,7 @@ export default function ZenMode() {
   // --- LYRICS ---
   // Synced lyrics, glass and centred on the line being sung (shared with the lyrics page)
   const renderSyncedEngine = () => (
-    <CinematicLyrics key={trackId} lines={syncedLyrics} onSeek={handleSeek} variant="zen" lite={lite} />
+    <CinematicLyrics key={trackId} lines={syncedLyrics} onSeek={handleSeek} variant="zen" lite={lite} wash={backdropUrl} />
   );
 
   const renderEditorialLayout = () => {

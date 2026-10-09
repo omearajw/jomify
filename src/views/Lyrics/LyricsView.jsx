@@ -127,7 +127,7 @@ export default function LyricsView() {
   // sat beside the song's name
   const renderSyncedEngine = () => (
     <div className="relative z-10 flex-1 min-h-0 flex flex-col pt-24">
-      <CinematicLyrics key={currentTrack.id} lines={syncedLyrics} onSeek={handleSeek} variant="page" />
+      <CinematicLyrics key={currentTrack.id} lines={syncedLyrics} onSeek={handleSeek} variant="page" wash={backdropFor?.url} />
     </div>
   );
 

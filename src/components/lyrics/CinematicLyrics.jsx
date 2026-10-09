@@ -9,9 +9,11 @@ import AudioWaveform from '../AudioWaveform';
 // sung: Zen used to work the line out before the list was on screen, scroll to nothing, and sit
 // at the top until the next line. The current line is always centred, first and last included
 // (the list is padded by half its own height), and lines further from it fall back in depth.
-// The words near the current line are glass: the text is drawn solid and an SVG lighting filter
-// (GLASS_FILTERS) turns it into a clear body with a fine bright rim, a sharp highlight from the top
-// left, a darker lower edge and a soft shadow. As the current line is sung it fills with light from
+// The words near the current line are flat-fronted glass: each line's letters are filled with an
+// enlarged, shifted slice of the album wash behind the lyrics (`wash`), so they bend the colours
+// around them, and an SVG lighting filter (GLASS_FILTERS) adds a narrow bevel with a highlight
+// from the top left, a fine rim, a darker lower edge and a soft shadow. The slice is fixed per line,
+// never moved per frame, so the filter is never re-run for it. As the current line is sung it fills with light from
 // left to right, row by row: a glowing copy of each row the line wrapped to, uncovered by a soft-
 // edged mask on its own layer, so the glass under it is never redrawn. When the next line starts,
 // the fill fades back to glass. A soft light behind the current line follows it down the list.
@@ -95,38 +97,30 @@ function paintFill(geom, p) {
 // WebKit and Chromium. Built once as markup; nothing in it comes from outside.
 const glassFilter = (id, s) => `
 <filter id="${id}" x="-10%" y="-30%" width="120%" height="170%" color-interpolation-filters="sRGB">
-  <feGaussianBlur in="SourceAlpha" stdDeviation="${1.4 * s}" result="bump"/>
-  <feSpecularLighting in="bump" surfaceScale="6" specularConstant="1.6" specularExponent="40" lighting-color="#fff" result="spec">
-    <feDistantLight azimuth="225" elevation="42"/>
+  <feGaussianBlur in="SourceAlpha" stdDeviation="${1.0 * s}" result="soft"/>
+  <feComponentTransfer in="soft" result="bump"><feFuncA type="linear" slope="2.4" intercept="-0.2"/></feComponentTransfer>
+  <feSpecularLighting in="bump" surfaceScale="4" specularConstant="1.4" specularExponent="30" lighting-color="#fff" result="spec">
+    <feDistantLight azimuth="225" elevation="58"/>
   </feSpecularLighting>
-  <feComponentTransfer in="spec" result="specSharp">
-    <feFuncA type="table" tableValues="0 0 0.15 1 1"/>
-    <feFuncR type="linear" slope="1.4"/><feFuncG type="linear" slope="1.4"/><feFuncB type="linear" slope="1.4"/>
-  </feComponentTransfer>
+  <feComponentTransfer in="spec" result="specSharp"><feFuncA type="table" tableValues="0 0 0.05 0.9 1"/></feComponentTransfer>
   <feComposite in="specSharp" in2="SourceAlpha" operator="in" result="gloss"/>
-  <feMorphology in="SourceAlpha" operator="erode" radius="${0.7 * s}" result="inner1"/>
+  <feComponentTransfer in="SourceGraphic" result="body">
+    <feFuncR type="linear" slope="1.3" intercept="0.07"/><feFuncG type="linear" slope="1.3" intercept="0.07"/><feFuncB type="linear" slope="1.3" intercept="0.09"/>
+  </feComponentTransfer>
+  <feMorphology in="SourceAlpha" operator="erode" radius="${0.8 * s}" result="inner1"/>
   <feComposite in="SourceAlpha" in2="inner1" operator="out" result="contour"/>
-  <feFlood flood-color="#0a1020" flood-opacity="0.35"/>
-  <feComposite in2="contour" operator="in" result="outline"/>
-  <feMorphology in="SourceAlpha" operator="erode" radius="${1.2 * s}" result="core"/>
-  <feGaussianBlur in="core" stdDeviation="${1.2 * s}" result="coreSoft"/>
-  <feComposite in="SourceAlpha" in2="coreSoft" operator="out" result="edge"/>
-  <feFlood flood-color="#fff" flood-opacity="0.35"/>
-  <feComposite in2="edge" operator="in" result="rimLight"/>
-  <feOffset in="SourceAlpha" dx="${-1.4 * s}" dy="${-1.8 * s}" result="shifted"/>
-  <feComposite in="SourceAlpha" in2="shifted" operator="out" result="lower"/>
-  <feGaussianBlur in="lower" stdDeviation="${0.7 * s}" result="lowerSoft"/>
+  <feFlood flood-color="#fff" flood-opacity="0.3"/>
+  <feComposite in2="contour" operator="in" result="rimLight"/>
+  <feOffset in="contour" dx="${s}" dy="${1.4 * s}" result="lowerC"/>
+  <feComposite in="lowerC" in2="SourceAlpha" operator="in" result="lowerIn"/>
   <feFlood flood-color="#05070d" flood-opacity="0.45"/>
-  <feComposite in2="lowerSoft" operator="in"/>
-  <feComposite in2="SourceAlpha" operator="in" result="lowerDark"/>
-  <feFlood flood-color="#fff" flood-opacity="0.08"/>
-  <feComposite in2="SourceAlpha" operator="in" result="body"/>
-  <feGaussianBlur in="SourceAlpha" stdDeviation="${2.2 * s}" result="dsBlur"/>
+  <feComposite in2="lowerIn" operator="in" result="lowerDark"/>
+  <feGaussianBlur in="SourceAlpha" stdDeviation="${2 * s}" result="dsBlur"/>
   <feOffset in="dsBlur" dx="${s}" dy="${3 * s}" result="dsOff"/>
   <feFlood flood-color="#000" flood-opacity="0.45"/>
   <feComposite in2="dsOff" operator="in"/>
   <feComposite in2="SourceAlpha" operator="out" result="drop"/>
-  <feMerge><feMergeNode in="drop"/><feMergeNode in="body"/><feMergeNode in="rimLight"/><feMergeNode in="lowerDark"/><feMergeNode in="outline"/><feMergeNode in="gloss"/></feMerge>
+  <feMerge><feMergeNode in="drop"/><feMergeNode in="body"/><feMergeNode in="rimLight"/><feMergeNode in="lowerDark"/><feMergeNode in="gloss"/></feMerge>
 </filter>`;
 const GLASS_FILTERS = [['s', 0.55], ['m', 0.75], ['l', 1], ['xl', 1.25]]
   .map(([size, s]) => glassFilter(`lyric-glass-${size}`, s)).join('');
@@ -141,7 +135,7 @@ const SIZES = {
   page: 'text-3xl md:text-5xl lg:text-6xl'
 };
 
-export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite = false }) {
+export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite = false, wash = null }) {
   const [active, setActive] = useState(() => lineAt(lines, positionMs()));
   const [pad, setPad] = useState(0);
   const scroller = useRef(null);
@@ -268,7 +262,7 @@ export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite =
       className={`relative flex-1 min-h-0 h-full w-full overflow-y-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none] lyrics-${variant} ${lite ? 'lyrics-lite' : ''}`}
       // An even fade at the very edges only; the line in the middle is what is lit. The page's box
       // ends at the card's edge, so its lower fade is longer or the last line looks cut off
-      style={lite ? undefined : { maskImage: EDGE_FADE[variant] || EDGE_FADE.zen, WebkitMaskImage: EDGE_FADE[variant] || EDGE_FADE.zen }}
+      style={lite ? undefined : { maskImage: EDGE_FADE[variant] || EDGE_FADE.zen, WebkitMaskImage: EDGE_FADE[variant] || EDGE_FADE.zen, '--lyric-wash': wash ? `url(${wash})` : 'none' }}
     >
       {!lite && <svg width="0" height="0" className="absolute" aria-hidden="true" dangerouslySetInnerHTML={{ __html: GLASS_FILTERS }} />}
       {!lite && <div ref={light} className="lyric-light" aria-hidden="true" />}
@@ -304,7 +298,8 @@ export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite =
                 ? <AudioWaveform size={variant === 'zen' ? 'lg' : 'md'} isActive={isActive} />
                 : (
                   <p className={`lyric-line ${SIZES[variant] || SIZES.zen} ${isActive ? 'is-active' : ''} ${glass ? 'is-near' : ''}`}>
-                    <span className="lyric-glass">{line.text}</span>
+                    {/* Neighbouring lines refract different parts of the wash */}
+                    <span className="lyric-glass" style={glass ? { backgroundPosition: `50% ${(i * 37) % 100}%` } : undefined}>{line.text}</span>
                     {lit && (
                       <span className={`lyric-fill ${lit === fill ? '' : 'is-fading'}`} aria-hidden="true">
                         {lit.rows.map((text, k) => <span key={k} className="lyric-fill-row">{text}</span>)}

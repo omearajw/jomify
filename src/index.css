@@ -170,9 +170,9 @@
   }
 }
 
-/* Lyrics as glass. Lines near the current one (.is-near) are drawn solid white and an SVG lighting
-   filter from CinematicLyrics turns them into glass: clear body, fine bright rim, a sharp highlight
-   from the top left, a darker lower edge, a soft shadow. One filter per text size, because its bevel
+/* Lyrics as glass. Lines near the current one (.is-near) are filled with a slice of the album wash
+   (--lyric-wash, enlarged so it reads as refracted) and an SVG lighting filter from CinematicLyrics
+   gives them a flat front: a narrow bevel and highlight, a fine rim, a darker lower edge, a shadow. One filter per text size, because its bevel
    is in pixels, and never swapped on a line (WebKit runs it on the CPU). As the current line is sung,
    .lyric-fill lights it from left to right: one glowing copy per row the line wrapped to, each
    uncovered by a soft-edged mask (--fill-a to --fill-b, set every frame), on a layer of its own so
@@ -194,7 +194,17 @@
     0 0 16px rgba(255, 255, 255, 0.12),
     0 0 36px rgba(255, 255, 255, 0.05);
 }
-.lyric-line.is-near .lyric-glass { color: #fff; text-shadow: none; filter: url(#lyric-glass-s); will-change: transform; }
+.lyric-line.is-near .lyric-glass {
+  color: transparent;
+  text-shadow: none;
+  background-color: #2a2234;
+  background-image: var(--lyric-wash, none);
+  background-size: 260% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: url(#lyric-glass-s);
+  will-change: transform;
+}
 @media (min-width: 768px) {
   .lyrics-zen .lyric-line.is-near .lyric-glass { filter: url(#lyric-glass-m); }
   .lyrics-page .lyric-line.is-near .lyric-glass { filter: url(#lyric-glass-l); }
