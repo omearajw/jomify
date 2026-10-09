@@ -28,6 +28,11 @@ const ZEN_EFFECTS = [
   { id: 'full', label: 'Full', hint: 'Blended layers, blurred lyrics, always-moving backdrop' },
   { id: 'lite', label: 'Lite', hint: 'The same scene without the expensive layers' }
 ];
+const WAVEFORMS = [
+  { id: 'auto', label: "The song's own shape", hint: 'Follows Spotify\'s analysis of the song when Spotify shares it; animated when it doesn\'t' },
+  { id: 'mic', label: 'Listen through the microphone', hint: 'The real sound in the room, whatever speaker plays it. Asks for the microphone; analysed on this device, never recorded or sent.' },
+  { id: 'off', label: 'Animated', hint: 'The bars move on their own' }
+];
 const GRID_SIZES = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']];
 const LIBRARY_SORTS = [['recent', 'Recently played'], ['spotify', 'Spotify order'], ['az', 'A to Z'], ['za', 'Z to A'], ['owner', 'By owner']];
 
@@ -247,6 +252,7 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
 
       <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500">App</p>
       <Choice label="Open on" value={playbackSettings?.startupPage || 'resume'} options={STARTS} onChange={(v) => setPlaybackSetting('startupPage', v)} />
+      <Choice label="Waveform" value={playbackSettings?.waveform || 'auto'} options={WAVEFORMS} onChange={(v) => setPlaybackSetting('waveform', v)} />
       <Choice label="Zen mode effects" value={playbackSettings?.zenEffects || 'auto'} options={ZEN_EFFECTS} onChange={(v) => { setPlaybackSetting('zenEffects', v); if (v !== 'auto') { try { localStorage.removeItem('jomify_zen_lite'); } catch { /* fine */ } } }} />
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">

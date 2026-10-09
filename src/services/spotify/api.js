@@ -923,6 +923,15 @@ export async function startPlaybackAt(token, deviceId, { contextUri, trackUri, p
   if (!response.ok) throw await playbackError(response, 'Failed to start playback');
 }
 
+// Spotify's own analysis of a recording: segments of a fraction of a second, each with its
+// loudness and the strength of the twelve pitch classes. Withdrawn for apps registered after
+// November 2024; an app from before may still be answered, so it is asked and the answer kept.
+export async function fetchAudioAnalysis(token, trackId) {
+  const response = await spotifyFetch(`${API}/audio-analysis/${encodeURIComponent(trackId)}`, { method: 'GET', headers: auth(token) });
+  if (!response.ok) { const err = new Error(`Audio analysis refused (${response.status})`); err.status = response.status; throw err; }
+  return response.json();
+}
+
 export async function playContextFromTrack(token, deviceId, contextUri, trackUri) {
   const response = await spotifyFetch(`https://api.spotify.com/v1/me/player/play${deviceQuery(deviceId)}`, {
     method: 'PUT',

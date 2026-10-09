@@ -83,6 +83,7 @@ export async function checkSpotifyEndpoints() {
     ids.track && ['GET /me/tracks/contains (deprecated)', `/me/tracks/contains?ids=${ids.track}`],
     ids.track && ['GET /me/library/contains (new)', `/me/library/contains?uris=${u(`spotify:track:${ids.track}`)}`],
     ids.track && ['GET /tracks/{id}', `/tracks/${ids.track}`],
+    ids.track && ['GET /audio-analysis/{id} (withdrawn for apps registered after Nov 2024; drives the live waveform)', `/audio-analysis/${ids.track}`],
     ids.artist && ['GET /artists/{id}', `/artists/${ids.artist}`],
     ids.artist && ['GET /artists?ids= (deprecated)', `/artists?ids=${ids.artist}`],
     ids.artist && ['GET /artists/{id}/top-tracks (deprecated)', `/artists/${ids.artist}/top-tracks?market=from_token`],

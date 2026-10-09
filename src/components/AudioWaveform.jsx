@@ -1,7 +1,11 @@
+import { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
+import { useWaveSource, subscribeLevels, MAX_BARS } from '../audio/levels';
 
-// The animated "instrumental" bars shown when lyrics have nothing to say. Two presets replace
-// the two near-identical copies that lived in LyricsView (md) and ZenMode (lg).
+// The waveform shown when lyrics have nothing to say, and on the projector. Its bars follow the real
+// music when there is something real to follow: Spotify's analysis of the song, or the
+// microphone (see src/audio/levels.js). Otherwise they keep the animation they always had.
+// Two presets replace the two near-identical copies that lived in LyricsView (md) and ZenMode (lg).
 const PRESETS = {
   md: {
     wrapper: 'flex items-end justify-center space-x-2 h-12 my-2',
@@ -36,7 +40,50 @@ const BARS = [
   { active: [0.4, 0.9, 0.5, 1, 0.4], idle: [0.15, 0.2, 0.15], activeDuration: 1.1, idleDuration: 4.2, kind: 'outer' }
 ];
 
-export default function AudioWaveform({ isActive, size = 'md' }) {
+const LIVE_BARS = { md: 9, lg: 15 };
+
+// Bars that follow the levels: each frame sets their height directly, without a React render
+function LiveBars({ p, count, isActive }) {
+  const bars = useRef([]);
+  useEffect(() => subscribeLevels((levels) => {
+    for (let i = 0; i < count; i++) {
+      const el = bars.current[i];
+      if (!el) continue;
+      // Sample the full set of bands evenly, so 9 bars and 15 bars show the same shape
+      const level = levels[Math.min(MAX_BARS - 1, Math.round((i * (MAX_BARS - 1)) / Math.max(1, count - 1)))] || 0;
+      el.style.transform = `scaleY(${Math.max(0.06, Math.min(1, level))})`;
+    }
+  }), [count]);
+  const kindAt = (i) => {
+    const fromCentre = Math.abs(i - (count - 1) / 2) / ((count - 1) / 2);
+    return fromCentre < 0.2 ? 'centre' : fromCentre < 0.65 ? 'brand' : 'outer';
+  };
+  const colourFor = (kind) => (kind === 'outer' ? p.outer : kind === 'centre' ? (isActive ? p.centre : p.dimCentre) : (isActive ? p.brand : p.dimBrand));
+  return (
+    <div className={p.wrapper} style={{ opacity: isActive ? 1 : p.idleOpacity + 0.25 }} aria-hidden="true">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} ref={(el) => { bars.current[i] = el; }} className={`${p.bar} h-full rounded-full origin-bottom will-change-transform transition-colors duration-700 ${colourFor(kindAt(i))}`} style={{ transform: 'scaleY(0.06)' }} />
+      ))}
+    </div>
+  );
+}
+
+export default function AudioWaveform(props) {
+  const source = useWaveSource();
+  const p = PRESETS[props.size] || PRESETS.md;
+  // Registering is what wakes the sources; until one answers, the animation shows
+  return source
+    ? <LiveBars p={p} count={LIVE_BARS[props.size] || LIVE_BARS.md} isActive={props.isActive} />
+    : <><Wake /><AnimatedWaveform {...props} /></>;
+}
+
+// Keeps the level sources awake (and asking) while only the animation is on screen
+function Wake() {
+  useEffect(() => subscribeLevels(() => {}), []);
+  return null;
+}
+
+function AnimatedWaveform({ isActive, size = 'md' }) {
   const p = PRESETS[size] || PRESETS.md;
 
   const colourFor = (kind) => {
