@@ -170,9 +170,10 @@
   }
 }
 
-/* Lyrics as glass. Lines near the current one (.is-near) are filled with a slice of the album wash
-   (--lyric-wash, enlarged so it reads as refracted) and an SVG lighting filter from CinematicLyrics
-   gives them a flat front: a narrow bevel and highlight, a fine rim, a darker lower edge, a shadow. One filter per text size, because its bevel
+/* Lyrics as glass. Lines near the current one (.is-near) are two layers: .lyric-refract, the face,
+   showing what is behind the letters bent, and over it .lyric-glass, drawn solid and turned by an SVG
+   lighting filter from CinematicLyrics into just a flat front's narrow bevel and highlight, a fine
+   rim, a darker lower edge and a shadow. One filter per text size, because its bevel
    is in pixels, and never swapped on a line (WebKit runs it on the CPU). As the current line is sung,
    .lyric-fill lights it from left to right: one glowing copy per row the line wrapped to, each
    uncovered by a soft-edged mask (--fill-a to --fill-b, set every frame), on a layer of its own so
@@ -194,16 +195,27 @@
     0 0 16px rgba(255, 255, 255, 0.12),
     0 0 36px rgba(255, 255, 255, 0.05);
 }
-.lyric-line.is-near .lyric-glass {
+.lyric-line.is-near .lyric-glass { color: #fff; text-shadow: none; filter: url(#lyric-glass-s); will-change: transform; }
+/* The glass face, under the filtered bevel: what is behind the letters, bent. On the lyrics page a
+   fixed slice of the wash; in Zen (.lyrics-refract) the clear cover, lined up from script, drawn
+   with the same shade as the cover behind the lyrics and a touch lighter */
+.lyric-refract {
+  position: absolute;
+  inset: 0;
+  display: block;
   color: transparent;
-  text-shadow: none;
-  background-color: #2a2234;
-  background-image: var(--lyric-wash, none);
-  background-size: 260% auto;
+  pointer-events: none;
   -webkit-background-clip: text;
   background-clip: text;
-  filter: url(#lyric-glass-s);
+  background-color: #2a2234;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.1)), var(--lyric-wash, none);
+  background-size: 100% 100%, 260% auto;
+  background-repeat: no-repeat;
   will-change: transform;
+}
+.lyrics-refract .lyric-refract {
+  background-color: #000;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)), var(--lyric-refract, none);
 }
 @media (min-width: 768px) {
   .lyrics-zen .lyric-line.is-near .lyric-glass { filter: url(#lyric-glass-m); }

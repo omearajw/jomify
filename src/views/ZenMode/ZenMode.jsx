@@ -22,6 +22,9 @@ const desktop = () => (typeof window !== 'undefined' ? window.jomifyDesktop : nu
 const usesRealFullscreen = () => !IS_MAC && !desktop()?.setZenFullscreen;
 
 
+// How dark the clear cover behind the lyrics is drawn; the glass lyrics use the same shade
+const CLEAR_COVER_SHADE = 'rgba(0, 0, 0, 0.62)';
+
 export default function ZenMode() {
   const { isZenMode, toggleZenMode, savedVolume, setSavedVolume } = useSlice(useUserStore, ['isZenMode', 'toggleZenMode', 'savedVolume', 'setSavedVolume']);
   const { playbackState, activeDevice, isLocalActive, remoteVolume } = useSlice(usePlayerStore, ['playbackState', 'activeDevice', 'isLocalActive', 'remoteVolume']);
@@ -120,6 +123,10 @@ export default function ZenMode() {
   }, [albumArtUrl]);
 
   const backdropUrl = backdrop?.art === albumArtUrl ? backdrop.url : null;
+  // With lyrics on, the cover itself fills the screen behind them, lightly blurred and darkened,
+  // so the glass lyrics have detail to refract (they line their own copy up with this layer)
+  const [clearCover, setClearCover] = useState(null);
+  const showClearCover = Boolean(albumArtUrl) && !lite;
 
   // Measure the full scene once it is up; a slow result switches to lite for good on this device
   useEffect(() => {
@@ -215,7 +222,7 @@ export default function ZenMode() {
   // --- LYRICS ---
   // Synced lyrics, glass and centred on the line being sung (shared with the lyrics page)
   const renderSyncedEngine = () => (
-    <CinematicLyrics key={trackId} lines={syncedLyrics} onSeek={handleSeek} variant="zen" lite={lite} wash={backdropUrl} />
+    <CinematicLyrics key={trackId} lines={syncedLyrics} onSeek={handleSeek} variant="zen" lite={lite} wash={backdropUrl} refract={showClearCover ? { url: albumArtUrl, behind: clearCover } : null} />
   );
 
   const renderEditorialLayout = () => {
@@ -369,6 +376,15 @@ export default function ZenMode() {
       >
         <Minimize2 className="w-5 h-5" />
       </button>
+
+      {showClearCover && (
+        <div
+          ref={setClearCover}
+          aria-hidden="true"
+          className={`absolute -inset-5 pointer-events-none bg-cover bg-center blur-[6px] transition-opacity duration-1000 ${showLyrics ? 'opacity-100' : 'opacity-0'}`}
+          style={{ backgroundImage: `linear-gradient(${CLEAR_COVER_SHADE}, ${CLEAR_COVER_SHADE}), url(${albumArtUrl})` }}
+        />
+      )}
 
       {/* DYNAMIC CINEMATIC SPLIT-SCREEN LAYOUT */}
       <div className="relative z-10 flex flex-col lg:flex-row items-center justify-center w-full max-w-[1800px] mx-auto h-full px-8 lg:px-16 gap-8 lg:gap-16 pb-20">
