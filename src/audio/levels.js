@@ -10,8 +10,9 @@ import { log } from '../services/debugLog';
 //   - Spotify's analysis of the song (loudness and pitch, a few readings a second), drawn in
 //     step with the playback position. Works whatever device is playing. Spotify withdrew it
 //     for apps registered after November 2024, so it is asked for and a refusal remembered.
-//   - The microphone, when the user switches it on: the real sound in the room, analysed here
-//     and never recorded or sent.
+//   - An audio input, when the user switches it on: the microphone (the real sound in the room),
+//     a virtual device carrying the computer's sound (BlackHole, Stereo Mix), or in the desktop
+//     app the computer's sound directly. Analysed here, never recorded or sent.
 // With neither, the waveform falls back to its animation.
 
 export const MAX_BARS = 15;
@@ -110,38 +111,69 @@ function analysisLevels(data, seconds, out) {
   return out;
 }
 
-// ---- the microphone ------------------------------------------------------------------------
+// ---- the microphone, or the computer's own sound -------------------------------------------
+// Either is an audio input analysed the same way. The microphone can be any input device,
+// including a virtual one such as BlackHole (macOS) or Stereo Mix / VB-Cable (Windows) carrying
+// what the computer plays. The desktop app can take the computer's sound directly ("system").
 
-let mic = null; // { stream, ctx, analyser, data }
+let mic = null; // { stream, ctx, analyser, data, key }
 let micState = 'off'; // 'off' | 'starting' | 'on' | 'denied'
+let deniedKey = null;  // the input that was refused, so another choice is tried afresh
+
+const inputKey = () => {
+  const s = useUserStore.getState().playbackSettings || {};
+  return s.waveform === 'system' ? 'system' : `mic:${s.micDeviceId || 'default'}`;
+};
+
+async function openStream(key) {
+  if (key === 'system') {
+    // The desktop app answers this itself with the computer's sound (main.cjs); the picture that
+    // comes with it is stopped straight away
+    const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+    stream.getVideoTracks().forEach((t) => t.stop());
+    if (!stream.getAudioTracks().length) throw Object.assign(new Error('no sound came with it'), { name: 'NoAudio' });
+    return stream;
+  }
+  const deviceId = key.slice(4);
+  // Raw sound: the voice processing a call wants would flatten the music
+  return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, ...(deviceId !== 'default' ? { deviceId: { exact: deviceId } } : {}) } });
+}
 
 async function startMic() {
-  if (micState === 'starting' || micState === 'on' || micState === 'denied') return;
-  if (!navigator.mediaDevices?.getUserMedia) { micState = 'denied'; return; }
+  const key = inputKey();
+  if (mic && mic.key !== key) stopMic(); // the choice changed: switch inputs
+  if (micState === 'starting' || micState === 'on') return;
+  if (micState === 'denied' && deniedKey === key) return;
+  if (!navigator.mediaDevices?.getUserMedia) { micState = 'denied'; deniedKey = key; return; }
   micState = 'starting';
   try {
-    // Raw sound: the voice processing a call wants would flatten the music
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    const stream = await openStream(key);
     const Ctx = window.AudioContext || window.webkitAudioContext;
     const ctx = new Ctx();
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 1024;
     analyser.smoothingTimeConstant = 0.72;
     ctx.createMediaStreamSource(stream).connect(analyser);
+    const label = key === 'system' ? "the computer's own sound" : stream.getAudioTracks()[0]?.label || 'the microphone';
     // Browsers keep audio processing suspended until a click or key press, and this runs from the
     // drawing loop, not a click: waiting on resume() here waited for ever. It is resumed now if
     // allowed, else on the next click or key; until then the bars stay on their other source.
     const resume = () => { if (ctx.state === 'suspended') ctx.resume().catch(() => {}); };
     const events = ['pointerdown', 'keydown', 'touchend'];
     events.forEach((ev) => document.addEventListener(ev, resume, { capture: true }));
-    ctx.onstatechange = () => { if (ctx.state === 'running') log('waveform', 'listening through the microphone (analysed here, never recorded or sent)'); };
-    mic = { stream, ctx, analyser, data: new Uint8Array(analyser.frequencyBinCount), cleanup: () => events.forEach((ev) => document.removeEventListener(ev, resume, { capture: true })) };
+    const said = { done: false };
+    const announce = () => { if (!said.done && ctx.state === 'running') { said.done = true; log('waveform', `listening to ${label} (analysed here, never recorded or sent)`); } };
+    ctx.onstatechange = announce;
+    // A device unplugged, or sharing stopped: let go, and don't ask again for that same input
+    stream.getAudioTracks().forEach((t) => { t.onended = () => { log('waveform', `${label} stopped`); stopMic(); micState = 'denied'; deniedKey = key; }; });
+    mic = { stream, ctx, analyser, data: new Uint8Array(analyser.frequencyBinCount), key, cleanup: () => events.forEach((ev) => document.removeEventListener(ev, resume, { capture: true })) };
     micState = 'on';
     resume();
-    if (ctx.state === 'running') log('waveform', 'listening through the microphone (analysed here, never recorded or sent)');
+    announce();
   } catch (err) {
     micState = 'denied';
-    log('waveform', 'the microphone was refused; the waveform uses the song analysis or its animation', err?.name || err?.message || String(err));
+    deniedKey = key;
+    log('waveform', `${key === 'system' ? "the computer's sound" : 'the microphone'} was refused or unavailable; the waveform uses the song analysis or its animation`, err?.name || err?.message || String(err));
   }
 }
 
@@ -152,6 +184,15 @@ function stopMic() {
   mic.ctx.close().catch(() => {});
   mic = null;
   micState = 'off';
+}
+
+// The audio inputs this device has, for choosing one. Names only appear once the browser has been
+// allowed the microphone.
+export async function listInputs() {
+  try {
+    const all = await navigator.mediaDevices.enumerateDevices();
+    return all.filter((d) => d.kind === 'audioinput').map((d, i) => ({ id: d.deviceId || 'default', name: d.label || `Input ${i + 1}` }));
+  } catch { return []; }
 }
 
 // Bands spaced evenly in pitch, not frequency, from a bass note to the top of most music
@@ -195,11 +236,12 @@ function frame() {
   const trackId = currentTrackId();
   if (trackId !== lastTrackId) { lastTrackId = trackId; segIndex = 0; }
   if (mode !== 'off' && trackId) loadAnalysis(trackId);
-  if (mode === 'mic') startMic(); else if (mic) stopMic();
+  const listening = mode === 'mic' || mode === 'system';
+  if (listening) startMic(); else if (mic) stopMic();
 
   const data = trackId ? analyses.get(trackId) : null;
   let next = null;
-  if (mode === 'mic' && micState === 'on' && mic?.ctx.state === 'running') next = 'mic';
+  if (listening && micState === 'on' && mic?.ctx.state === 'running' && mic.key === inputKey()) next = 'mic';
   else if (mode !== 'off' && data && data !== 'pending') next = 'analysis';
   setSource(next);
 

@@ -5,5 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // monitor; the main process answers with the window's "simple" fullscreen instead.
 contextBridge.exposeInMainWorld('jomifyDesktop', {
   platform: process.platform,
-  setZenFullscreen: (on) => ipcRenderer.invoke('zen-fullscreen', Boolean(on))
+  setZenFullscreen: (on) => ipcRenderer.invoke('zen-fullscreen', Boolean(on)),
+  // The computer's own sound for the waveform: Windows, and macOS 13 or later
+  systemAudio: process.platform === 'win32' || (process.platform === 'darwin' && parseInt(process.getSystemVersion?.() || '0', 10) >= 13)
 });
