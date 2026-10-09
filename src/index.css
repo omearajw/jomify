@@ -170,40 +170,72 @@
   }
 }
 
-/* Lyrics as frosted glass: every line is a faint fill with a soft halo, like letters lit from behind
-   through frosted glass. The current line has a lit copy laid exactly over it (same box, so it wraps
-   the same) that fades in when the line comes round; its bloom is text-shadow, which follows the
-   letters. No outline: -webkit-text-stroke traces the variable font's overlapping contours, which
-   showed as seams inside the letters. No filters or clipped backgrounds on text either: together
-   those drew a visible box in WebKit. */
+/* Lyrics as glass. Lines near the current one (.is-near) are drawn solid white and an SVG lighting
+   filter from CinematicLyrics turns them into glass: clear body, fine bright rim, a sharp highlight
+   from the top left, a darker lower edge, a soft shadow. One filter per text size, because its bevel
+   is in pixels, and never swapped on a line (WebKit runs it on the CPU). As the current line is sung,
+   .lyric-fill lights it from left to right: one glowing copy per row the line wrapped to, each
+   uncovered by a soft-edged mask (--fill-a to --fill-b, set every frame), on a layer of its own so
+   the glass is not redrawn. Each row's box is padded past its text so the glow is never cut off.
+   Far lines and the lite scene keep a cheap frosted fill. */
 .lyric-line {
   position: relative;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 800;
+  letter-spacing: -0.015em;
   line-height: 1.16;
   text-wrap: balance;
 }
 .lyric-glass {
+  display: block;
+  position: relative;
   color: rgba(255, 255, 255, 0.26);
   text-shadow:
     0 0 1px rgba(255, 255, 255, 0.35),
     0 0 16px rgba(255, 255, 255, 0.12),
     0 0 36px rgba(255, 255, 255, 0.05);
-  transition: color 0.5s ease;
 }
-.lyric-line.is-active .lyric-glass { color: rgba(255, 255, 255, 0.32); }
-.lyric-lit {
+.lyric-line.is-near .lyric-glass { color: #fff; text-shadow: none; filter: url(#lyric-glass-s); will-change: transform; }
+@media (min-width: 768px) {
+  .lyrics-zen .lyric-line.is-near .lyric-glass { filter: url(#lyric-glass-m); }
+  .lyrics-page .lyric-line.is-near .lyric-glass { filter: url(#lyric-glass-l); }
+}
+@media (min-width: 1024px) {
+  .lyrics-zen .lyric-line.is-near .lyric-glass { filter: url(#lyric-glass-l); }
+  .lyrics-page .lyric-line.is-near .lyric-glass { filter: url(#lyric-glass-xl); }
+}
+.lyrics-lite .lyric-glass { text-shadow: none; }
+.lyric-fill {
   position: absolute;
   inset: 0;
-  color: #fff;
-  opacity: 0;
-  text-shadow:
-    0 0 1px rgba(255, 255, 255, 0.9),
-    0 0 14px rgba(255, 255, 255, 0.5),
-    0 0 42px color-mix(in srgb, var(--brand-mid) 45%, transparent);
-  transition: opacity 0.6s ease;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   pointer-events: none;
+  will-change: transform;
+  transition: opacity 0.9s ease;
 }
-.lyric-line.is-active .lyric-lit { opacity: 1; }
-.lyrics-lite .lyric-lit { text-shadow: 0 0 1px rgba(255, 255, 255, 0.9), 0 0 12px rgba(255, 255, 255, 0.35); }
-.lyrics-lite .lyric-glass { text-shadow: none; }
+.lyric-fill.is-fading { opacity: 0; }
+.lyric-fill-row {
+  display: block;
+  white-space: pre;
+  color: #fff;
+  padding: 0.7em;
+  margin: -0.7em;
+  text-shadow:
+    0 0 2px rgba(255, 255, 255, 0.9),
+    0 0 14px rgba(255, 255, 255, 0.55),
+    0 0 30px color-mix(in srgb, var(--brand-mid) 45%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, #000 var(--fill-a, 0px), transparent var(--fill-b, 0px));
+  mask-image: linear-gradient(90deg, #000 var(--fill-a, 0px), transparent var(--fill-b, 0px));
+}
+.lyrics-lite .lyric-fill-row { text-shadow: 0 0 1px rgba(255, 255, 255, 0.9), 0 0 12px rgba(255, 255, 255, 0.35); }
+.lyric-light {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  opacity: 0;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.11), color-mix(in srgb, var(--brand-mid) 16%, transparent) 50%, transparent 100%);
+  transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1), width 0.55s ease, height 0.55s ease, opacity 0.6s ease;
+}
