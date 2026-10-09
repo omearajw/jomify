@@ -22,6 +22,7 @@
     "test:routes": "node scripts/routes-cases.mjs",
     "test:party": "node scripts/party-cases.mjs",
     "test:projector": "node scripts/projector-cases.mjs",
+    "test:lyrics": "node scripts/lyrics-cases.mjs",
     "preview": "vite preview",
     "build-app": "vite build && electron-builder -w"
   },

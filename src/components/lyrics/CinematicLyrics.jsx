@@ -9,7 +9,9 @@ import AudioWaveform from '../AudioWaveform';
 // sung: Zen used to work the line out before the list was on screen, scroll to nothing, and sit
 // at the top until the next line. The current line is always centred, first and last included
 // (the list is padded by half its own height), and lines further from it fall back in depth.
-// The words are glass: translucent, edged, and the current line fills with light as it is sung.
+// The words are frosted glass (see .lyric-glass in index.css). The current line has a second, lit
+// copy over it that fades in when the line comes round, its bloom made of text shadows, which
+// follow the letters. (A drop-shadow filter on clipped-background text drew a box in WebKit.)
 
 const DEPTH_RADIUS = 10;
 const USER_SCROLL_HOLD_MS = 4000;
@@ -27,6 +29,11 @@ const lineAt = (lines, pos) => {
 const isInstrumental = (line) => !line.text || line.text.trim() === '♪' || /instrumental/i.test(line.text);
 const clamp01 = (n) => Math.max(0, Math.min(1, n));
 const nowMs = () => Date.now();
+
+const EDGE_FADE = {
+  zen: 'linear-gradient(to bottom, transparent 0, black 9%, black 91%, transparent 100%)',
+  page: 'linear-gradient(to bottom, transparent 0, black 9%, black 80%, transparent 100%)'
+};
 
 const SIZES = {
   zen: 'text-2xl md:text-4xl lg:text-5xl',
@@ -60,14 +67,7 @@ export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite =
       const pos = positionMs();
       const idx = lineAt(lines, pos);
       if (idx !== last) { last = idx; setActive(idx); }
-      if (idx >= 0) {
-        const glass = rows.current[idx]?.querySelector('[data-glass]');
-        if (glass) {
-          const start = lines[idx].timeMs - LYRIC_LEAD_IN_MS;
-          const end = (lines[idx + 1]?.timeMs ?? lines[idx].timeMs + 6000) - LYRIC_LEAD_IN_MS;
-          glass.style.setProperty('--p', `${(clamp01((pos - start) / Math.max(1, end - start)) * 100).toFixed(1)}%`);
-        }
-      } else if (dots.current && lines[0]) {
+      if (idx < 0 && dots.current && lines[0]) {
         dots.current.style.setProperty('--p', String(clamp01(pos / Math.max(1, lines[0].timeMs - LYRIC_LEAD_IN_MS))));
       }
       raf = requestAnimationFrame(tick);
@@ -77,14 +77,16 @@ export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite =
   }, [lines]);
 
   // Keep the current line centred: at once when the lyrics appear, smoothly after; a moment's
-  // grace after the user scrolls by hand
-  // Centred by the browser, in whichever box scrolls: this one in Zen, the page on the lyrics page
+  // grace after the user scrolls by hand. Only this box scrolls: scrollIntoView also moved every
+  // scrolling parent, and on the lyrics page that slid the header off the top.
   useLayoutEffect(() => {
     const row = rows.current[Math.max(0, active)];
-    if (!row || !pad) return;
-    if (!placed.current) { placed.current = true; row.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' }); return; }
+    const box = scroller.current;
+    if (!row || !box || !pad) return;
+    const top = row.offsetTop + row.offsetHeight / 2 - box.clientHeight / 2;
+    if (!placed.current) { placed.current = true; box.scrollTo({ top, behavior: 'auto' }); return; }
     if (nowMs() - userScrolledAt.current < USER_SCROLL_HOLD_MS) return;
-    row.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+    box.scrollTo({ top, behavior: 'smooth' });
   }, [active, pad]);
 
   const heldByUser = () => { userScrolledAt.current = nowMs(); };
@@ -97,8 +99,9 @@ export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite =
       // min-h-0: a flex child grows to fit its content unless told it may shrink, and a list as tall
       // as itself has nothing to scroll, so centring did nothing
       className={`relative flex-1 min-h-0 h-full w-full overflow-y-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none] ${lite ? 'lyrics-lite' : ''}`}
-      // An even fade at the very edges only; the line in the middle is what is lit
-      style={lite ? undefined : { maskImage: 'linear-gradient(to bottom, transparent 0, black 9%, black 91%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, black 9%, black 91%, transparent 100%)' }}
+      // An even fade at the very edges only; the line in the middle is what is lit. The page's box
+      // ends at the card's edge, so its lower fade is longer or the last line looks cut off
+      style={lite ? undefined : { maskImage: EDGE_FADE[variant] || EDGE_FADE.zen, WebkitMaskImage: EDGE_FADE[variant] || EDGE_FADE.zen }}
     >
       <div style={{ paddingTop: pad, paddingBottom: pad }} className="max-w-4xl mx-auto px-6 flex flex-col items-center text-center gap-4 md:gap-6">
         {lines.map((line, i) => {
@@ -124,7 +127,12 @@ export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite =
               )}
               {isInstrumental(line)
                 ? <AudioWaveform size={variant === 'zen' ? 'lg' : 'md'} isActive={isActive} />
-                : <p data-glass={isActive ? '' : undefined} className={`lyric-glass ${SIZES[variant] || SIZES.zen} ${isActive ? 'is-active' : ''}`}>{line.text}</p>}
+                : (
+                  <p className={`lyric-line ${SIZES[variant] || SIZES.zen} ${isActive ? 'is-active' : ''}`}>
+                    <span className="lyric-glass">{line.text}</span>
+                    <span className="lyric-lit" aria-hidden="true">{line.text}</span>
+                  </p>
+                )}
             </div>
           );
         })}

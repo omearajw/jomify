@@ -9,6 +9,7 @@ import CinematicLyrics from '../../components/lyrics/CinematicLyrics';
 import AmbientWave from '../../components/lyrics/AmbientWave';
 import { seek } from '../../services/spotify/playbackController';
 import { useSlice } from '../../store/selectors';
+import { getBlurredBackdrop } from '../../utils/blurBackdrop';
 
 export default function LyricsView() {
   const { playbackState } = useSlice(usePlayerStore, ['playbackState']);
@@ -62,12 +63,23 @@ export default function LyricsView() {
 
   const albumArt = currentTrack?.album?.images?.[0]?.url || '';
 
+  // The same pre-blurred wash as Zen mode: a 120px CSS blur over the whole page is the most
+  // expensive thing to paint here, and WebKit sometimes painted it black
+  const [backdrop, setBackdrop] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (albumArt) getBlurredBackdrop(albumArt).then((url) => { if (!cancelled) setBackdrop({ art: albumArt, url }); });
+    return () => { cancelled = true; };
+  }, [albumArt]);
+  const backdropFor = backdrop?.art === albumArt ? backdrop : null;
+
   // --- 2. PUBLIC FREE API FETCHING (LrcLib) ---
   // Cancellation matters here: skip tracks quickly and a slow response for track A used to
   // land after track B's and paint B with A's lyrics. Every state write is guarded.
   useEffect(() => {
     if (!currentTrack) return;
     let cancelled = false;
+    const stop = new AbortController();
     // Used to pick the right VERSION -- the first search hit is often a live cut or a remix
     const trackDurationSec = playbackState?.duration ? playbackState.duration / 1000 : null;
 
@@ -78,7 +90,7 @@ export default function LyricsView() {
       setSyncedLyrics(null);
 
       try {
-        const found = await findLyrics(currentTrack, trackDurationSec);
+        const found = await findLyrics(currentTrack, trackDurationSec, { signal: stop.signal });
         if (cancelled) return;
         if (found.synced) setSyncedLyrics(found.synced);
         else setPlainLyrics(found.plain);
@@ -92,7 +104,7 @@ export default function LyricsView() {
     };
 
     fetchLyrics();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; stop.abort(); };
   // Deliberately keyed on the track id, not the track object or playbackState.duration: those
   // change on every position tick and would refetch lyrics several times a second
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,8 +123,12 @@ export default function LyricsView() {
   }
 
   // --- SYNCED LYRICS: glass, centred on the line being sung (shared with Zen mode) ---
+  // Starts below the title row: the header floats over this page, and lines scrolled up under it
+  // sat beside the song's name
   const renderSyncedEngine = () => (
-    <CinematicLyrics key={currentTrack.id} lines={syncedLyrics} onSeek={handleSeek} variant="page" />
+    <div className="relative z-10 flex-1 min-h-0 flex flex-col pt-24">
+      <CinematicLyrics key={currentTrack.id} lines={syncedLyrics} onSeek={handleSeek} variant="page" />
+    </div>
   );
 
   // --- PLAIN TEXT EDITORIAL RENDERER ---
@@ -123,7 +139,7 @@ export default function LyricsView() {
           maskImage: 'linear-gradient(to bottom, transparent, black 5%, black 95%, transparent)',
           WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 5%, black 95%, transparent)'
         }}
-        className="relative z-10 flex-1 overflow-y-auto custom-scrollbar px-10 pt-12 pb-32 scroll-smooth w-full"
+        className="relative z-10 flex-1 overflow-y-auto custom-scrollbar px-10 pt-28 pb-32 scroll-smooth w-full"
       >
         {loading ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="columns-1 md:columns-2 lg:columns-3 gap-12 space-y-8">
@@ -131,8 +147,6 @@ export default function LyricsView() {
               <div key={i} className="h-4 bg-white/10 rounded-full animate-pulse" style={{ width: `${Math.random() * 60 + 20}%` }} />
             ))}
           </motion.div>
-        ) : error || plainLyrics.length === 0 ? (
-          <AmbientWave variant="page" />
         ) : (
           <motion.div 
             initial={{ opacity: 0, y: 20 }} 
@@ -159,10 +173,16 @@ export default function LyricsView() {
     <div ref={containerRef} style={fitHeight ? { height: fitHeight } : undefined} className="relative flex-1 h-full w-full rounded-3xl overflow-hidden bg-black flex flex-col animate-fade-in shadow-2xl">
       
       {/* Immersive Blur Background */}
-      {albumArt && (
-        <div 
-          className="absolute inset-0 z-0 opacity-40 pointer-events-none bg-cover bg-center blur-[120px] saturate-[2] scale-110" 
-          style={{ backgroundImage: `url(${albumArt})` }} 
+      {albumArt && backdropFor?.url && (
+        <div
+          className="absolute -inset-[15%] z-0 opacity-80 pointer-events-none bg-cover bg-center"
+          style={{ backgroundImage: `url(${backdropFor.url})` }}
+        />
+      )}
+      {albumArt && backdropFor && !backdropFor.url && (
+        <div
+          className="absolute inset-0 z-0 opacity-40 pointer-events-none bg-cover bg-center blur-[120px] saturate-[2] scale-110"
+          style={{ backgroundImage: `url(${albumArt})` }}
         />
       )}
       {/* An even dimming, not a band: a gradient darkening the lower half made the same lines
@@ -217,7 +237,12 @@ export default function LyricsView() {
       </div>
 
       {/* RENDER ENGINE DUALITY */}
-      {syncedLyrics ? renderSyncedEngine() : renderEditorialLayout()}
+      {syncedLyrics ? renderSyncedEngine() : !loading && (error || plainLyrics.length === 0) ? (
+        // Its own full-height area below the header, so the wave sits in the middle of the card
+        <div className="relative z-10 flex-1 min-h-0 flex flex-col pt-24 pb-8">
+          <AmbientWave variant="page" />
+        </div>
+      ) : renderEditorialLayout()}
 
     </div>
   );

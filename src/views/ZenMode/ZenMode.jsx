@@ -178,6 +178,7 @@ export default function ZenMode() {
     if (!showLyrics || !currentTrack) return;
 
     let isMounted = true;
+    const stop = new AbortController();
     // Used to pick the right VERSION from lrclib -- the first hit is often a live cut or a remix
     const trackDurationSec = playbackState?.duration ? playbackState.duration / 1000 : null;
 
@@ -188,13 +189,14 @@ export default function ZenMode() {
       setLyricsLoading(true);
 
       try {
-        const found = await findLyrics(currentTrack, trackDurationSec);
+        const found = await findLyrics(currentTrack, trackDurationSec, { signal: stop.signal });
         if (!isMounted) return;
         if (found.synced) setSyncedLyrics(found.synced);
         else setPlainLyrics(found.plain);
       } catch (err) {
+        if (!isMounted) return;
         console.error("Lyrics Engine Error:", err);
-        if (isMounted) setLyricsError(err.message || "Failed to load lyrics.");
+        setLyricsError(err.message || "Failed to load lyrics.");
       } finally {
         if (isMounted) setLyricsLoading(false);
       }
@@ -202,7 +204,7 @@ export default function ZenMode() {
 
     fetchLyrics();
 
-    return () => { isMounted = false; };
+    return () => { isMounted = false; stop.abort(); };
   // Deliberately keyed on the track id, not the track object or playbackState.duration: those
   // change on every position tick and would refetch lyrics several times a second
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -284,11 +286,11 @@ export default function ZenMode() {
                     blur, and no edge to see however it turns. The layers are larger than the screen
                     so the feather sits beyond the corners. */}
                 <div
-                  className={`absolute -inset-[30%] bg-contain bg-center bg-no-repeat opacity-60 ${lite ? '' : 'animate-[pulse_12s_ease-in-out_infinite] will-change-transform'}`}
+                  className={`absolute -inset-[30%] bg-contain bg-center bg-no-repeat opacity-80 ${lite ? '' : 'animate-[pulse_12s_ease-in-out_infinite] will-change-transform'}`}
                   style={{ backgroundImage: `url(${backdropUrl})` }}
                 />
                 <div
-                  className={`absolute -inset-[45%] bg-contain bg-no-repeat opacity-50 ${lite ? 'rotate-12 bg-[position:40%_55%]' : 'bg-[position:38%_58%] animate-[spin_90s_linear_infinite] will-change-transform'}`}
+                  className={`absolute -inset-[45%] bg-contain bg-no-repeat opacity-70 ${lite ? 'rotate-12 bg-[position:40%_55%]' : 'bg-[position:38%_58%] animate-[spin_90s_linear_infinite] will-change-transform'}`}
                   style={{ backgroundImage: `url(${backdropUrl})` }}
                 />
               </>
@@ -309,7 +311,9 @@ export default function ZenMode() {
               className="absolute inset-0 pointer-events-none"
               style={{ background: 'radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.55) 100%)' }}
             />
-            <div className={`absolute inset-0 bg-gradient-to-tr from-[var(--brand-mid)]/10 via-transparent to-blue-500/5 pointer-events-none ${lite ? '' : 'mix-blend-color-dodge'}`} />
+            {/* A plain tint: as color-dodge, WebKit blew the wash out to hard-edged, posterised red and
+                blue, and Chromium banded it. The wash layers above are brighter to make up its lift */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-[var(--brand-mid)]/10 via-transparent to-blue-500/5 pointer-events-none" />
 
             {/* Film grain — self-contained inline noise, jittering like real 35mm dirt. A CSS
                 transform keyframe (compositor only) rather than a blended layer re-composited

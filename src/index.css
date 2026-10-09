@@ -170,26 +170,40 @@
   }
 }
 
-/* Lyrics as glass: translucent frosted glyphs with a fine edge. The current line takes a sheen
-   across its top half and fills with light from the left as it is sung (--p, set each frame). */
-.lyric-glass {
-  font-weight: 750;
-  letter-spacing: -0.025em;
-  line-height: 1.12;
-  padding-bottom: 0.08em;
-  color: transparent;
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.3));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-stroke: 0.6px rgba(255, 255, 255, 0.22);
+/* Lyrics as frosted glass: every line is a faint fill with a soft halo, like letters lit from behind
+   through frosted glass. The current line has a lit copy laid exactly over it (same box, so it wraps
+   the same) that fades in when the line comes round; its bloom is text-shadow, which follows the
+   letters. No outline: -webkit-text-stroke traces the variable font's overlapping contours, which
+   showed as seams inside the letters. No filters or clipped backgrounds on text either: together
+   those drew a visible box in WebKit. */
+.lyric-line {
+  position: relative;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.16;
   text-wrap: balance;
 }
-.lyric-glass.is-active {
-  --p: 0%;
-  background-image:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 50%),
-    linear-gradient(90deg, #fff 0%, #fff calc(var(--p) - 3%), rgba(255, 255, 255, 0.58) calc(var(--p) + 5%), rgba(255, 255, 255, 0.58) 100%);
-  -webkit-text-stroke: 0.8px rgba(255, 255, 255, 0.45);
-  filter: drop-shadow(0 0 22px rgba(255, 255, 255, 0.28)) drop-shadow(0 6px 30px color-mix(in srgb, var(--brand-mid) 45%, transparent));
+.lyric-glass {
+  color: rgba(255, 255, 255, 0.26);
+  text-shadow:
+    0 0 1px rgba(255, 255, 255, 0.35),
+    0 0 16px rgba(255, 255, 255, 0.12),
+    0 0 36px rgba(255, 255, 255, 0.05);
+  transition: color 0.5s ease;
 }
-.lyrics-lite .lyric-glass.is-active { filter: none; }
+.lyric-line.is-active .lyric-glass { color: rgba(255, 255, 255, 0.32); }
+.lyric-lit {
+  position: absolute;
+  inset: 0;
+  color: #fff;
+  opacity: 0;
+  text-shadow:
+    0 0 1px rgba(255, 255, 255, 0.9),
+    0 0 14px rgba(255, 255, 255, 0.5),
+    0 0 42px color-mix(in srgb, var(--brand-mid) 45%, transparent);
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+.lyric-line.is-active .lyric-lit { opacity: 1; }
+.lyrics-lite .lyric-lit { text-shadow: 0 0 1px rgba(255, 255, 255, 0.9), 0 0 12px rgba(255, 255, 255, 0.35); }
+.lyrics-lite .lyric-glass { text-shadow: none; }
