@@ -246,9 +246,9 @@
   padding: 0.7em;
   margin: -0.7em;
   text-shadow:
-    0 0 2px rgba(255, 255, 255, 0.9),
-    0 0 14px rgba(255, 255, 255, 0.55),
-    0 0 30px color-mix(in srgb, var(--brand-mid) 45%, transparent);
+    0 0 2px rgba(255, 255, 255, 0.7),
+    0 0 12px rgba(255, 255, 255, 0.3),
+    0 0 26px color-mix(in srgb, var(--brand-mid) 25%, transparent);
   -webkit-mask-image: linear-gradient(90deg, #000 var(--fill-a, 0px), transparent var(--fill-b, 0px));
   mask-image: linear-gradient(90deg, #000 var(--fill-a, 0px), transparent var(--fill-b, 0px));
 }

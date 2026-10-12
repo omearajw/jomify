@@ -92,7 +92,7 @@ vec3 item(vec3 col, sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
     col = mix(col, g, a * glass * alpha);
   }
   col = mix(col, vec3(0.92, 0.9, 0.96), clamp(s * 1.25, 0.0, 1.0) * (1.0 - glass) * alpha * 0.32);
-  col += (vec3(1.0) * 0.10 + c1 * 0.16) * s * pr.z * alpha * (1.0 - a * glass * 0.5);
+  col += (vec3(1.0) * 0.06 + c1 * 0.1) * s * pr.z * alpha * (1.0 - a * glass * 0.5);
   return col;
 }
 void main(){
@@ -100,7 +100,7 @@ void main(){
   vec3 col = texture2D(scene, uv).rgb;
 ${Array.from({ length: ITEMS }, (_, i) => `  col = item(col, tx${i}, bx${i}, pr${i}, tl${i}, fpx);`).join('\n')}
   // The sung words' glow: their letters, blurred as a whole (see GLOW_FS)
-  col += (vec3(1.0) * 0.42 + c1 * 0.5) * texture2D(glow, uv).r * 1.25;
+  col += (vec3(1.0) * 0.42 + c1 * 0.5) * texture2D(glow, uv).r * 0.6;
   vec2 q = uv - 0.5;
   col *= 1.0 - dot(q, q) * 0.9;
   col += (hash(fpx + fract(grain) * 31.0) - 0.5) * 0.022;
@@ -333,9 +333,10 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
     }
     // The glow: lit letters drawn small, then blurred in place a few times
     draw(P.glow, glowA, { ...u, res: [glowA.w, glowA.h], full: [canvas.width, canvas.height] });
-    for (let pass = 0; pass < 4; pass++) {
-      draw(P.blur, glowB, { tex: glowA, dir: [1.2 / glowA.w, 0] });
-      draw(P.blur, glowA, { tex: glowB, dir: [0, 1.2 / glowA.h] });
+    // A modest spread: wider, it washed over the unsung letters beside the sung ones
+    for (let pass = 0; pass < 3; pass++) {
+      draw(P.blur, glowB, { tex: glowA, dir: [1.0 / glowA.w, 0] });
+      draw(P.blur, glowA, { tex: glowB, dir: [0, 1.0 / glowA.h] });
     }
     u.glow = glowA;
     draw(P.comp, null, u);
