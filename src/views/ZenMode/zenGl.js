@@ -68,15 +68,17 @@ vec3 item(vec3 col, sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
   vec4 p = texture2D(tx, st);
   float a = p.r, s = p.b, o = p.a, alpha = pr.x, glass = pr.y;
   // The head runs past both ends, so the first letter starts unlit and the last ends fully lit
-  float head = mix(-0.06, 1.08, tl.z);
-  float lit = tl.z <= 0.0 ? 0.0 : (1.0 - smoothstep(head - 0.05, head + 0.005, o)) * pr.w;
+  float head = mix(-0.04, 1.0, tl.z);
+  // Full light reaches the head itself; the soft edge runs ahead of it, never behind, or the words
+  // light late
+  float lit = tl.z <= 0.0 ? 0.0 : (1.0 - smoothstep(head, head + 0.04, o)) * pr.w;
   // The glow spills past its row into the next one's band, where reading order jumps from one
   // row to the next: averaged over a row's height, it fades between rows instead of cutting off
   float litGlow = 0.0;
   if (tl.z > 0.0){
     for (int k = -2; k <= 2; k++){
       float ok = texture2D(tx, st + vec2(0.0, float(k) * 0.5 * tl.w * tl.y)).a;
-      litGlow += 1.0 - smoothstep(head - 0.05, head + 0.005, ok);
+      litGlow += 1.0 - smoothstep(head, head + 0.04, ok);
     }
     litGlow *= 0.2 * pr.w;
   }

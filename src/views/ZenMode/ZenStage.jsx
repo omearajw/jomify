@@ -9,11 +9,19 @@ import { FALLBACK_PALETTE } from './palette';
 // belongs (current, previous, next, or leaving), so a new line, a seek, a song change or lyrics
 // turned off are all the same motion, and any of them can interrupt another.
 
+// This computer's player says when it measured the position; counting from when the update
+// arrived instead runs the lyrics late by however long it took to arrive. A remote device's
+// timestamp means something else (when playback last changed), so it is not used.
 const positionNow = () => {
-  const { playbackState, positionAt } = usePlayerStore.getState();
-  if (!playbackState) return 0;
-  return playbackState.position + (playbackState.paused ? 0 : Date.now() - positionAt);
+  const { playbackState: ps, positionAt } = usePlayerStore.getState();
+  if (!ps) return 0;
+  if (ps.paused) return ps.position;
+  const measured = !ps.remote && Number.isFinite(ps.timestamp) && positionAt - ps.timestamp >= 0 && positionAt - ps.timestamp < 3000 ? ps.timestamp : positionAt;
+  return ps.position + Date.now() - measured;
 };
+
+// Words light this far ahead of their timestamps: exactly on time reads as late to the eye
+const WORD_LEAD_MS = 120;
 
 const approach = (v, to, dt, tau) => (tau <= 0 ? to : v + (to - v) * (1 - Math.exp(-dt / tau)));
 
@@ -130,7 +138,7 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
           const rise = it.fresh === 'big' ? big * 0.9 : it.fresh === 'prev' ? big * 1.0 : big * 0.5;
           it.x = to.x; it.y = to.y + rise * calm; it.scale = it.fresh === 'big' && calm ? 0.7 : 1;
           // The arriving line waits a beat for the one leaving to clear, so the two never blur together
-          it.wait = it.fresh === 'big' && calm ? 0.15 : 0;
+          it.wait = it.fresh === 'big' && calm ? 0.08 : 0;
           it.fresh = null;
         }
         if (!to) {
@@ -148,13 +156,15 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
         it.alpha = approach(it.alpha, to.alpha, dt, it.face === 'big' && to.alpha === 0 ? 0.13 : 0.3);
         it.glass = approach(it.glass, to.glass, dt, 0.32);
         it.halo = approach(it.halo, to.halo, dt, 0.4);
-        it.litVisible = approach(it.litVisible, to.litVisible, dt, 0.45);
+        // Quick, so a new line's first word is not late to light
+        it.litVisible = approach(it.litVisible, to.litVisible, dt, 0.12);
         if (focus && it.face === 'big' && it.linesKey === L.linesKey) {
           if (it.index === focus.current) {
-            // Word by word where the sync has them; otherwise paced to the line's length. The
-            // shader's head runs past both ends, so a fraction f of the line is (f + 0.06) / 1.14.
-            const f = wordFill(L.lines[it.index].words, it.line.stops, pos);
-            it.lit = f === null ? fillProgress(L.lines, it.index, pos) : f >= 1 ? 1 : f <= 0 ? 0 : (f + 0.06) / 1.14;
+            // Word by word where the sync has them, a moment early so it reads as in time; otherwise
+            // paced to the line's length. The shader's head starts just before the line, so a
+            // fraction f of the line is (f + 0.04) / 1.04.
+            const f = wordFill(L.lines[it.index].words, it.line.stops, pos + WORD_LEAD_MS);
+            it.lit = f === null ? fillProgress(L.lines, it.index, pos) : f >= 1 ? 1 : f <= 0 ? 0 : (f + 0.04) / 1.04;
           } else if (anchor !== null && it.index < anchor) it.lit = 1;
         }
         if (to.alpha === 0 && it.alpha < 0.01) { r.freeLine(it.line); items.delete(key); }
