@@ -56,9 +56,11 @@ export const tracksOfArtist = (id) => [...TRACKS.values()].filter((t) => t.artis
 export const albumsOfArtist = (id) => ALBUMS.filter((a) => a.artists.some((x) => x.id === id));
 
 // Pick tracks by album and name, so the playlists read like a person made them
+// Names compare without case or curly quotes, since Spotify's titles use ’ where these use '
+const plain = (text) => String(text).toLowerCase().replace(/[‘’]/g, "'");
 const pick = (albumName, ...names) => {
-  const al = ALBUMS.find((a) => a.name.startsWith(albumName));
-  return names.map((n) => al?.trackList.find((t) => t.name.toLowerCase().startsWith(n.toLowerCase()))).filter(Boolean);
+  const al = ALBUMS.find((a) => plain(a.name).includes(plain(albumName)));
+  return names.map((n) => al?.trackList.find((t) => plain(t.name).startsWith(plain(n)))).filter(Boolean);
 };
 const day = (n) => new Date(Date.UTC(2026, 0, 1) + n * 86400000).toISOString();
 
@@ -76,8 +78,9 @@ const sunday = [...pick('Rumours', 'Dreams', 'Never Going Back', 'Songbird', 'Th
 const gym = [...pick('Nevermind', 'Smells Like', 'Lithium', 'Breed', 'Territorial'), ...pick('AM', 'R U Mine', 'Arabella', 'Knee Socks'), ...pick('Demon Days', 'Feel Good Inc', 'DARE', 'Kids with Guns'), ...pick('Random Access', 'Get Lucky', 'Lose Yourself', 'Contact'), ...pick('White Pony', 'Change', 'Digital Bath', 'Elite')];
 const everything = [...TRACKS.values()].filter((_, i) => i % 3 === 0);
 
-// A Seven: two friends taking turns, seven songs at a time
-const sevenTracks = [...pick('Currents', 'Let It Happen', 'Nangs', 'The Moment', 'Yes I\'m Changing', 'Eventually', 'Gossip', 'Cause I\'m A Man'),
+// A Seven: two friends taking turns, seven songs at a time. Alex sent the last batch, so it is the
+// visitor's turn and the workspace has something to do
+const sevenTracks = [...pick('Currents', 'Let It Happen', 'Nangs', 'The Moment', 'Yes I\'m Changing', 'Eventually', 'Gossip', '\'Cause I\'m A Man'),
   ...pick('Morning Glory', 'Hello', 'Roll with It', 'Wonderwall', 'Don\'t Look Back', 'Hey Now', 'Some Might Say', 'Cast No Shadow'),
   ...pick('Demon Days', 'Last Living', 'Kids with Guns', 'O Green World', 'Dirty Harry', 'Feel Good', 'El Mañana', 'Every Planet')].slice(0, 21);
 
@@ -85,7 +88,7 @@ export const PLAYLISTS = [
   playlist('demoLateNightDrives', 'Late Night Drives', 'Windows down, city lights.', lateNight),
   playlist('demoSundayMorning', 'Sunday Morning', 'Slow coffee, slower songs.', sunday),
   playlist('demoGym', 'Gym', 'One more set.', gym),
-  playlist('demoSevensAlex', 'Sevens with Alex', 'Seven songs each, taking turns.', sevenTracks, { collaborative: true, addedBy: (i) => (Math.floor(i / 7) % 2 === 0 ? DEMO_USER.id : DEMO_FRIEND.id) }),
+  playlist('demoSevensAlex', 'Sevens with Alex', 'Seven songs each, taking turns.', sevenTracks, { collaborative: true, addedBy: (i) => (Math.floor(i / 7) % 2 === 0 ? DEMO_FRIEND.id : DEMO_USER.id) }),
   playlist('demoSevensPool', 'Songs for Alex', 'Saving these for my next turn.', [...pick('Rumours', 'Go Your Own Way', 'Second Hand News'), ...pick('Random Access', 'Instant Crush', 'Doin\' it Right')]),
   playlist('demoEverything', 'Everything', 'A bit of it all.', everything),
   playlist('demoAlexPicks', 'Alex\'s picks', 'Things I keep telling everyone about.', [...pick('White Pony', 'Change', 'Passenger', 'Teenager'), ...pick('In Rainbows', 'Bodysnatchers', '15 Step')], { owner: DEMO_FRIEND })
