@@ -4,6 +4,7 @@
 //   { type: 'words' | 'lines', source, lines: [{ timeMs, endMs, text, words?: [{ text, startMs, endMs, joined }] }] }
 //
 // `joined` marks a syllable that continues the word before it, so no space goes between them.
+// (Spicy flags the other end: the syllable that runs on into the next.)
 // Background vocals are left out: Jomify shows one voice. Null when there is nothing timed.
 
 const ms = (s) => Math.round(Number(s) * 1000);
@@ -19,9 +20,10 @@ export function normalizeSpicy(payload) {
     for (const entry of content) {
       const syllables = entry?.Lead?.Syllables;
       if (!Array.isArray(syllables) || syllables.length === 0) continue;
-      const words = syllables
-        .filter((s) => typeof s?.Text === 'string' && s.Text.trim() !== '' && Number.isFinite(Number(s.StartTime)))
-        .map((s, i) => ({ text: s.Text.trim(), startMs: ms(s.StartTime), endMs: ms(s.EndTime ?? s.StartTime), joined: i > 0 && Boolean(s.IsPartOfWord) }));
+      // IsPartOfWord says a syllable runs on into the next one ("paci" before "fy"), so a syllable
+      // is joined to the one before it when that one carries the flag
+      const kept = syllables.filter((s) => typeof s?.Text === 'string' && s.Text.trim() !== '' && Number.isFinite(Number(s.StartTime)));
+      const words = kept.map((s, i) => ({ text: s.Text.trim(), startMs: ms(s.StartTime), endMs: ms(s.EndTime ?? s.StartTime), joined: i > 0 && Boolean(kept[i - 1].IsPartOfWord) }));
       if (words.length === 0) continue;
       const text = words.reduce((out, w, i) => (i === 0 ? w.text : out + (w.joined ? '' : ' ') + w.text), '');
       lines.push({ timeMs: ms(entry.Lead.StartTime ?? syllables[0].StartTime), endMs: ms(entry.Lead.EndTime ?? words[words.length - 1].endMs / 1000), text, words });

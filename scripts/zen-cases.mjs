@@ -88,8 +88,8 @@ check('fill: nothing for no line', fillProgress(L, null, 9000) === 0);
 {
   const spicy = { Body: { Type: 'Syllable', source: 'apple_music', Content: [
     { Type: 'Vocal', Lead: { StartTime: 1.0, EndTime: 2.5, Syllables: [
-      { Text: 'May', IsPartOfWord: false, StartTime: 1.0, EndTime: 1.3 },
-      { Text: 'be', IsPartOfWord: true, StartTime: 1.3, EndTime: 1.6 },
+      { Text: 'May', IsPartOfWord: true, StartTime: 1.0, EndTime: 1.3 },
+      { Text: 'be', IsPartOfWord: false, StartTime: 1.3, EndTime: 1.6 },
       { Text: 'you', IsPartOfWord: false, StartTime: 1.6, EndTime: 2.0 },
       { Text: ' ', IsPartOfWord: false, StartTime: 2.0, EndTime: 2.1 },
       { Text: 'know', IsPartOfWord: false, StartTime: 2.1, EndTime: 2.5 }] }, Background: [{ Syllables: [{ Text: 'ooh', StartTime: 1, EndTime: 2 }] }] },
@@ -97,6 +97,10 @@ check('fill: nothing for no line', fillProgress(L, null, 9000) === 0);
   const n = normalizeSpicy(spicy);
   check('Spicy syllables: one line, joined syllables make one word', n.type === 'words' && n.lines.length === 1 && n.lines[0].text === 'Maybe you know');
   check('…times in ms, blank syllables and background vocals left out', n.lines[0].timeMs === 1000 && n.lines[0].endMs === 2500 && n.lines[0].words.length === 4 && n.lines[0].words[1].joined === true);
+  // As Spicy sends it: the flag is on the syllable that runs on into the next
+  const pac = normalizeSpicy({ Body: { Type: 'Syllable', Content: [{ Type: 'Vocal', Lead: { StartTime: 0, EndTime: 2, Syllables: [
+    { Text: 'to', IsPartOfWord: false, StartTime: 0, EndTime: 0.5 }, { Text: 'paci', IsPartOfWord: true, StartTime: 0.5, EndTime: 1.2 }, { Text: 'fy', IsPartOfWord: false, StartTime: 1.2, EndTime: 2 }] } }] } });
+  check('"paci" runs on into "fy": "to pacify", not "topaci fy"', pac.lines[0].text === 'to pacify');
   check('Spicy line sync keeps lines without words', normalizeSpicy({ Body: { Type: 'Line', Content: [{ Text: 'Hello', StartTime: 3, EndTime: 4 }] } }).lines[0].timeMs === 3000);
   check('static or empty answers are nothing', normalizeSpicy({ Body: { Type: 'Static', Lines: [] } }) === null && normalizeSpicy(null) === null);
 

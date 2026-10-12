@@ -11,7 +11,8 @@ import { normalizeSpicy } from './_lib/wordLyrics.js';
 const FOUND_SECONDS = 30 * 24 * 60 * 60;
 const MISSING_SECONDS = 3 * 24 * 60 * 60;
 const SPOTIFY_ID = /^[A-Za-z0-9]{22}$/;
-const cacheKey = (id) => `lyrics:spicy:v1:${id}`;
+// v2: v1 joined syllables to the wrong neighbour ("topaci fy")
+const cacheKey = (id) => `lyrics:spicy:v2:${id}`;
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
