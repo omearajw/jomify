@@ -275,23 +275,27 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
     sx.font = lineFont(big); sx.textBaseline = 'middle'; sx.fillStyle = '#fff';
     rows.forEach((r, i) => sx.fillText(r, pad, pad + lh * (i + 0.5)));
 
+    // Reading order, painted in each row's own letters (a gradient along the row) rather than in
+    // horizontal bands: a band boundary cut through the tails of g, y and p, which then took the
+    // next row's order and lit only when that row was sung. A stroke covers the letters' soft edges.
     const order = document.createElement('canvas');
     order.width = w; order.height = h;
     const ox = order.getContext('2d');
+    ox.font = lineFont(big); ox.textBaseline = 'middle';
+    ox.lineWidth = Math.max(2, big * 0.08); ox.lineJoin = 'round';
     const total = widths.reduce((s, v) => s + v, 0) || 1;
+    const grey = (v) => { const c = Math.round(v * 255); return `rgb(${c},${c},${c})`; };
     let done = 0;
-    rows.forEach((_, i) => {
+    rows.forEach((r, i) => {
       const from = done / total;
       done += widths[i];
-      const to = done / total;
       const g = ox.createLinearGradient(pad, 0, pad + widths[i], 0);
-      const grey = (v) => { const c = Math.round(v * 255); return `rgb(${c},${c},${c})`; };
       g.addColorStop(0, grey(from));
-      g.addColorStop(1, grey(to));
-      ox.fillStyle = g;
-      const top = i === 0 ? 0 : pad + lh * i;
-      const bottom = i === rows.length - 1 ? h : pad + lh * (i + 1);
-      ox.fillRect(0, top, w, bottom - top);
+      g.addColorStop(1, grey(done / total));
+      ox.fillStyle = g; ox.strokeStyle = g;
+      const y = pad + lh * (i + 0.5);
+      ox.strokeText(r, pad, y);
+      ox.fillText(r, pad, y);
     });
 
     const sharpT = texture(shapes);
