@@ -28,11 +28,11 @@ export function trackFeatures(spotifyId) {
   return work;
 }
 
-// A soft swell at each beat: sharp rise, slow fall
+// A gentle swell at each beat, rising and falling smoothly (a sharp rise read as a flash)
 export function beatAt(positionMs, tempo) {
   if (!tempo) return 0;
   const phase = ((positionMs / 60000) * tempo) % 1;
-  return Math.pow(1 - phase, 3);
+  return Math.pow(0.5 + 0.5 * Math.cos(phase * Math.PI * 2), 2);
 }
 
 export const canHearComputer = () => {

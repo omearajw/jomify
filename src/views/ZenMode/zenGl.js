@@ -40,7 +40,7 @@ void main(){
     float band = exp(-pow((uv.y - y) / w, 2.0));
     float curtain = 0.55 + 0.45 * fbm(vec2(p.x * 9.0 + t * 0.08, uv.y * 1.5 + fi * 7.0));
     float upper = smoothstep(y - w * 2.5, y + w * 0.4, uv.y);
-    col += c * band * curtain * (0.55 + 0.25 * beat) * (0.6 + 0.4 * upper) * intro;
+    col += c * band * curtain * (0.55 + 0.14 * beat) * (0.6 + 0.4 * upper) * intro;
     col += c * exp(-pow((uv.y - y) / (w * 4.0), 2.0)) * 0.07 * intro;
     // Fine filaments along each ribbon: the detail the glass has to bend
     float fil = pow(abs(sin((uv.y - y) * 48.0 + fbm(vec2(p.x * 2.2, fi + t * 0.01)) * 7.0)), 34.0) * smoothstep(0.35, 0.75, fbm(vec2(p.x * 1.6 - t * 0.02, fi * 5.0)));

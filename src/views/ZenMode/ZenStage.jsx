@@ -78,7 +78,8 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
 
       const pos = positionNow();
       const sensed = L.pulse?.(pos);
-      beat = approach(beat, (sensed?.beat ?? 0) * (0.6 + 0.6 * (sensed?.energy ?? 0.5)), dt, sensed?.live ? 0.05 : 0.08);
+      // Subtle: energy decides how much it breathes, but never more than a slight lift
+      beat = approach(beat, (sensed?.beat ?? 0) * (0.35 + 0.4 * (sensed?.energy ?? 0.5)), dt, sensed?.live ? 0.08 : 0.12);
 
       // Which faces belong on stage, and where
       const box = boxRef?.current?.getBoundingClientRect();
