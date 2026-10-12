@@ -1,6 +1,7 @@
 // The colours of Zen's light, taken from the cover: its two main hues by area, weighted by how
 // coloured each pixel is, plus its average for the deep base. Picking the most saturated pixels
-// instead chose Currents' thin red line and gold drip over the purple that fills the cover.
+// instead chose Currents' thin red line and gold drip over the purple that fills the cover; and
+// counting only bright, saturated pixels called most covers colourless (After Hours' red too).
 
 import { loadArt } from '../../utils/blurBackdrop.js';
 
@@ -36,8 +37,9 @@ export function paletteFromPixels(pixels) {
     const b = pixels[k + 2] / 255;
     avg[0] += r; avg[1] += g; avg[2] += b; count += 1;
     const { h, s, v } = hsv(r, g, b);
-    const w = s * v * v;
-    if (w < 0.04) continue;
+    // Coloured enough to count: grey, near-black and near-white pixels say nothing about the hue
+    if (s < 0.18 || v < 0.12) continue;
+    const w = s * Math.sqrt(v);
     const bin = bins[Math.floor(h / 30) % 12];
     bin.w += w; bin.r += r * w; bin.g += g * w; bin.b += b * w;
   }
@@ -45,7 +47,8 @@ export function paletteFromPixels(pixels) {
   const mean = avg.map((v) => v / count);
   const ranked = bins.filter((b) => b.w > 0).sort((a, b) => b.w - a.w);
   const first = ranked[0];
-  if (!first || first.w / count < 0.03) return [FALLBACK_PALETTE[0], FALLBACK_PALETTE[1], lift(mean, 0.75)];
+  // Only a cover with almost no colour at all (black and white, greys) borrows Jomify's own
+  if (!first || first.w / count < 0.008) return [FALLBACK_PALETTE[0], FALLBACK_PALETTE[1], lift(mean, 0.75)];
   const hueGap = (b) => Math.min(Math.abs(b.i - first.i), 12 - Math.abs(b.i - first.i));
   const other = ranked.find((b) => hueGap(b) >= 2 && b.w > first.w * 0.08) || ranked[1];
   const colour = (b) => [b.r / b.w, b.g / b.w, b.b / b.w];
