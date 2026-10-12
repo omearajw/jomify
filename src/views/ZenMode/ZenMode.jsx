@@ -81,7 +81,7 @@ function ZenProgress() {
 }
 
 export default function ZenMode() {
-  const { isZenMode, toggleZenMode, savedVolume, setSavedVolume, playbackSettings } = useSlice(useUserStore, ['isZenMode', 'toggleZenMode', 'savedVolume', 'setSavedVolume', 'playbackSettings']);
+  const { isZenMode, toggleZenMode, savedVolume, setSavedVolume, playbackSettings, setPlaybackSetting } = useSlice(useUserStore, ['isZenMode', 'toggleZenMode', 'savedVolume', 'setSavedVolume', 'playbackSettings', 'setPlaybackSetting']);
   const { playbackState, activeDevice, isLocalActive, remoteVolume } = useSlice(usePlayerStore, ['playbackState', 'activeDevice', 'isLocalActive', 'remoteVolume']);
 
   const [prevVolume, setPrevVolume] = useState(50);
@@ -104,7 +104,9 @@ export default function ZenMode() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  const [showLyrics, setShowLyrics] = useState(false);
+  // Remembered with the other playback settings, so Zen opens the way it was left
+  const showLyrics = Boolean(playbackSettings?.zenLyrics);
+  const setShowLyrics = (on) => setPlaybackSetting('zenLyrics', Boolean(on));
   const [plainLyrics, setPlainLyrics] = useState([]);
   const [syncedLyrics, setSyncedLyrics] = useState(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
