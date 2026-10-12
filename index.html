@@ -18,6 +18,41 @@
          blank white sheet with nothing to say -->
     <style>html, body { background: #000; color: #fff; margin: 0; }</style>
     <script>
+      // Demo mode (/demo, or a tab already in it): before any of the app runs, give it its own
+      // storage for this tab only and a demo session. It has to be here: the app's code is bundled
+      // into shared files that load ahead of its own, and the saved session is read as soon as one
+      // of them runs, so a module would be too late. The rest of the demo is src/demo/boot.js.
+      (function () {
+        var FLAG = 'jomify_demo', PREFIX = 'jomify-demo:';
+        var on = false;
+        try { on = /^\/demo\/?$/.test(location.pathname) || sessionStorage.getItem(FLAG) === '1'; } catch (e) { return; }
+        if (!on) return;
+        try { sessionStorage.setItem(FLAG, '1'); } catch (e) { /* private browsing: this page only */ }
+        if (/^\/demo\/?$/.test(location.pathname)) history.replaceState(history.state, '', '/');
+        function keys() { var out = []; for (var i = 0; i < sessionStorage.length; i++) { var k = sessionStorage.key(i); if (k && k.indexOf(PREFIX) === 0) out.push(k.slice(PREFIX.length)); } return out; }
+        var storage = {
+          getItem: function (k) { return sessionStorage.getItem(PREFIX + k); },
+          setItem: function (k, v) { try { sessionStorage.setItem(PREFIX + k, String(v)); } catch (e) { /* full */ } },
+          removeItem: function (k) { sessionStorage.removeItem(PREFIX + k); },
+          clear: function () { keys().forEach(function (k) { sessionStorage.removeItem(PREFIX + k); }); },
+          key: function (i) { var k = keys()[i]; return k === undefined ? null : k; },
+          get length() { return keys().length; }
+        };
+        Object.defineProperty(window, 'localStorage', { value: storage, configurable: true });
+        window.__jomifyDemo = true;
+        // The demo session: ids match src/demo/library.js
+        if (!storage.getItem('jomify-storage')) storage.setItem('jomify-storage', JSON.stringify({ version: 2, state: {
+          token: 'jomify-demo-token', refreshToken: 'jomify-demo-refresh', tokenExpiresAt: Date.UTC(2100, 0, 1), savedVolume: 70,
+          customFolders: [{ id: 'demoFolderMoods', name: 'Moods', playlistIds: ['demoLateNightDrives', 'demoSundayMorning', 'demoGym'], parentId: null, order: 1000 }],
+          pinnedItems: [{ id: 'demoLateNightDrives', type: 'playlist' }, { id: 'demoFolderMoods', type: 'folder' }],
+          sevens: [{ playlistId: 'demoSevensAlex', partnerId: 'alexdemo', partnerName: 'Alex', poolPlaylistId: 'demoSevensPool', active: true }],
+          sevensSeeded: true, friends: [{ id: 'alexdemo', name: 'Alex', image: null, addedAt: 1 }],
+          playbackSettings: { whenPlaylistEnds: 'spotify', startupPage: 'resume', zenLyrics: true },
+          libraryGridSize: 'medium', manuallyQueuedTracks: [], playlistSortSettings: {}
+        } }));
+      })();
+    </script>
+    <script>
       // The start-up watchdog. It runs before the app and stays out of the way unless the app has
       // not appeared after a few seconds; then it says why (a file that would not load, an error)
       // and offers a repair. A broken start used to be a silent white screen, and since the

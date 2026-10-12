@@ -39,6 +39,8 @@ import { BarChart3, ChevronDown, ChevronUp, Settings, Play } from 'lucide-react'
 import { CardMoreButton } from './components/MoreButton';
 import { rowButtonProps } from './utils/a11y';
 import { motion, AnimatePresence } from 'framer-motion';
+import { isDemo, enterDemo } from './demo/boot';
+import DemoBadge from './demo/DemoBadge';
 
 // The Sevens these used to be hardcoded as. They are migrated into the configurable
 // `sevens` store on first run and are never read again afterwards.
@@ -112,7 +114,8 @@ function App() {
   // round trip after start-up, so there is a window on every launch where folders exist locally
   // but the account they belong to is still unknown. Syncing before then would be anonymous.
   useEffect(() => {
-    if (!token || !profile?.id) return;
+    // A demo visit has no account on the server to sync with
+    if (!token || !profile?.id || isDemo()) return;
     let cancelled = false;
 
     syncEngine.start(profile.id).then((synced) => {
@@ -179,7 +182,7 @@ function App() {
       try { openTarget(new URL(event.data.url, location.origin).searchParams.get('open')); } catch { /* ignore */ }
     };
     navigator.serviceWorker?.addEventListener('message', onMessage);
-    syncPushStatus(token).then((reason) => {
+    if (!isDemo()) syncPushStatus(token).then((reason) => {
       if (reason === 'grant') toast("Sevens notifications stopped: Spotify ended Jomify's access. Turn them on again to restore it.", { tone: 'error', duration: 8000 });
     });
     return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
@@ -206,7 +209,7 @@ function App() {
   }, [signedIn]);
 
   // A party survives a reload: the phone that hosts it picks the baton back up
-  useEffect(() => { if (signedIn) resumePartyIfAny(); }, [signedIn]);
+  useEffect(() => { if (signedIn && !isDemo()) resumePartyIfAny(); }, [signedIn]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -455,6 +458,13 @@ function App() {
           >
             Connect to Spotify
           </button>
+          <button
+            type="button"
+            onClick={enterDemo}
+            className="block mx-auto mt-5 text-sm font-semibold text-neutral-400 hover:text-white underline-offset-4 hover:underline transition-colors"
+          >
+            Look around without an account
+          </button>
           {loginError && <p className="mt-4 text-sm text-red-400">{loginError}</p>}
         </div>
       </div>
@@ -466,6 +476,7 @@ function App() {
       <div className="fixed inset-0 z-[-2] bg-aurora opacity-20"></div>
       <div className="fixed inset-0 z-[-1] bg-noise opacity-[0.03] pointer-events-none"></div>
       
+      {isDemo() && <DemoBadge />}
       <MainLayout>
         {profile ? (
           <>

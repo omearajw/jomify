@@ -11,6 +11,7 @@ import DebugLogPanel from './DebugLogPanel';
 import { disableNotifications } from '../pwa/push';
 import { clearLibraryCache } from '../services/libraryCache';
 import { canHearComputer } from '../views/ZenMode/zenPulse';
+import { isDemo } from '../demo/boot';
 import { Keyboard } from 'lucide-react';
 
 const ENDINGS = [
@@ -86,6 +87,7 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
   }, []);
 
   const syncLabel = (() => {
+    if (isDemo()) return { text: 'Demo: nothing is saved', isError: false };
     switch (syncStatus) {
       case 'pulling':
       case 'pushing': return { text: 'Syncing…', isError: false };
@@ -215,8 +217,10 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
           <p className={backupMessage.isError ? 'text-red-400' : 'text-[var(--brand-start)]'}>{backupMessage.text}</p>
         )}
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={handleSyncNow} disabled={syncing} className="hover:text-white transition-colors disabled:opacity-60">{syncing ? 'Syncing…' : 'Sync now'}</button>
-          <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
+          {!isDemo() && <>
+            <button onClick={handleSyncNow} disabled={syncing} className="hover:text-white transition-colors disabled:opacity-60">{syncing ? 'Syncing…' : 'Sync now'}</button>
+            <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
+          </>}
           <button onClick={handleExportBackup} className="hover:text-white transition-colors">Back up</button>
           <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
           <button onClick={() => backupFileInputRef.current?.click()} className="hover:text-white transition-colors">Restore</button>
@@ -276,9 +280,9 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
 
       <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500">Account and sync</p>
       <div className="rounded-2xl border border-white/10 divide-y divide-white/5 overflow-hidden">
-        <button type="button" onClick={handleSyncNow} disabled={syncing} className={`${row} disabled:opacity-60`}>
+        {!isDemo() && <button type="button" onClick={handleSyncNow} disabled={syncing} className={`${row} disabled:opacity-60`}>
           <RefreshCw className={`w-5 h-5 text-neutral-400 ${syncing ? 'animate-spin' : ''}`} /> Sync now
-        </button>
+        </button>}
         <button type="button" onClick={handleExportBackup} className={row}>
           <Download className="w-5 h-5 text-neutral-400" /> Back up data
         </button>

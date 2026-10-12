@@ -1,3 +1,5 @@
+// First, so the demo (when it is one) answers Spotify before the app asks it anything
+import './demo/boot'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'

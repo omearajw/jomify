@@ -2,11 +2,13 @@ import { applyCors } from './_lib/cors.js';
 import { resolveUserId, AuthError } from './_lib/auth.js';
 import { redis, RedisConfigError } from './_lib/redis.js';
 import { normalizeSpicy } from './_lib/wordLyrics.js';
+import { DEMO_TRACK_IDS } from '../src/demo/catalogue.js';
 
 // Word-timed lyrics from the Spicy Lyrics API, by Spotify track id: GET /api/lyrics?id=<id>.
 // The key stays here (SPICY_LYRICS_KEY in the Vercel environment); it allows 60 requests a
 // minute, so every answer is cached, a found sync for a month and a miss for three days. Only
-// a signed-in Jomify user may ask, so the key cannot be borrowed through this route.
+// a signed-in Jomify user may ask, so the key cannot be borrowed through this route; the demo
+// (?demo=1) may ask without an account, but only about its own 152 songs.
 
 const FOUND_SECONDS = 30 * 24 * 60 * 60;
 const MISSING_SECONDS = 3 * 24 * 60 * 60;
@@ -23,7 +25,8 @@ export default async function handler(req, res) {
   if (!SPOTIFY_ID.test(id)) { res.status(400).json({ error: 'A Spotify track id is required' }); return; }
 
   try {
-    await resolveUserId(req);
+    const demo = req.query?.demo === '1' && DEMO_TRACK_IDS.has(id);
+    if (!demo) await resolveUserId(req);
     const r = redis();
     const cached = await r.get(cacheKey(id));
     if (cached) {
