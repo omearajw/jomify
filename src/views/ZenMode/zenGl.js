@@ -50,10 +50,10 @@ void main(){
 }`;
 
 // Six faces at once covers a line change: the big face leaving and arriving, and the small ones
-// above and below doing the same. With the scene, seven textures: WebGL1 promises eight.
+// above and below doing the same. With the scene and the glow, eight textures: all WebGL1 promises.
 const ITEMS = 6;
 const COMP_FS = `precision highp float; varying vec2 uv;
-uniform sampler2D scene; uniform vec2 res; uniform float strength, grain; uniform vec3 c1;
+uniform sampler2D scene, glow; uniform vec2 res; uniform float strength, grain; uniform vec3 c1;
 ${Array.from({ length: ITEMS }, (_, i) => `uniform sampler2D tx${i}; uniform vec4 bx${i}, pr${i}, tl${i};`).join('\n')}
 float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 float hgt(sampler2D tx, vec2 st){ return smoothstep(0.06, 0.94, texture2D(tx, st).g); }
@@ -72,16 +72,6 @@ vec3 item(vec3 col, sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
   // Full light reaches the head itself; the soft edge runs ahead of it, never behind, or the words
   // light late
   float lit = tl.z <= 0.0 ? 0.0 : (1.0 - smoothstep(head, head + 0.04, o)) * pr.w;
-  // The glow spills past its row into the next one's band, where reading order jumps from one
-  // row to the next: averaged over a row's height, it fades between rows instead of cutting off
-  float litGlow = 0.0;
-  if (tl.z > 0.0){
-    for (int k = -2; k <= 2; k++){
-      float ok = texture2D(tx, st + vec2(0.0, float(k) * 0.5 * tl.w * tl.y)).a;
-      litGlow += 1.0 - smoothstep(head, head + 0.04, ok);
-    }
-    litGlow *= 0.2 * pr.w;
-  }
   float sh = texture2D(tx, st + vec2(-1.5, 4.0) * tl.xy).b;
   col *= 1.0 - 0.45 * sh * glass * alpha * (1.0 - a);
   if (glass > 0.003 && a > 0.003){
@@ -101,19 +91,40 @@ vec3 item(vec3 col, sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
   }
   col = mix(col, vec3(0.92, 0.9, 0.96), clamp(s * 1.25, 0.0, 1.0) * (1.0 - glass) * alpha * 0.32);
   col += (vec3(1.0) * 0.10 + c1 * 0.16) * s * pr.z * alpha * (1.0 - a * glass * 0.5);
-  // Kept off letters still to be sung, so the light never seems to run ahead of the singer
-  col += (vec3(1.0) * 0.42 + c1 * 0.5) * s * litGlow * alpha * (1.0 - a * 0.5) * (1.0 - a * (1.0 - lit) * 0.85);
   return col;
 }
 void main(){
   vec2 fpx = vec2(gl_FragCoord.x, res.y - gl_FragCoord.y);
   vec3 col = texture2D(scene, uv).rgb;
 ${Array.from({ length: ITEMS }, (_, i) => `  col = item(col, tx${i}, bx${i}, pr${i}, tl${i}, fpx);`).join('\n')}
+  // The sung words' glow: their letters, blurred as a whole (see GLOW_FS)
+  col += (vec3(1.0) * 0.42 + c1 * 0.5) * texture2D(glow, uv).r * 1.25;
   vec2 q = uv - 0.5;
   col *= 1.0 - dot(q, q) * 0.9;
   col += (hash(fpx + fract(grain) * 31.0) - 0.5) * 0.022;
   col = col / (1.0 + col * 0.25);
   gl_FragColor = vec4(col, 1.0);
+}`;
+
+// The sung part of each line, as plain light, drawn small to be blurred into its glow. Blurring the
+// lit letters themselves is what keeps the glow smooth: working it out per pixel from the line's
+// reading order left hard steps where one row's glow met the next.
+const GLOW_FS = `precision highp float; varying vec2 uv;
+uniform vec2 res, full;
+${Array.from({ length: ITEMS }, (_, i) => `uniform sampler2D tx${i}; uniform vec4 bx${i}, pr${i}, tl${i};`).join('\n')}
+float lit(sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
+  if (pr.x < 0.003 || tl.z <= 0.0 || pr.w < 0.003) return 0.0;
+  vec2 l = (fpx - bx.xy) / bx.zw;
+  if (l.x < 0.0 || l.y < 0.0 || l.x > 1.0 || l.y > 1.0) return 0.0;
+  vec4 p = texture2D(tx, vec2(l.x, 1.0 - l.y));
+  float head = mix(-0.04, 1.0, tl.z);
+  return p.r * (1.0 - smoothstep(head, head + 0.04, p.a)) * pr.w * pr.x;
+}
+void main(){
+  vec2 fpx = vec2(gl_FragCoord.x, res.y - gl_FragCoord.y) * (full / res);
+  float v = 0.0;
+${Array.from({ length: ITEMS }, (_, i) => `  v += lit(tx${i}, bx${i}, pr${i}, tl${i}, fpx);`).join('\n')}
+  gl_FragColor = vec4(min(v, 1.0), 0.0, 0.0, 1.0);
 }`;
 
 const FONT_FAMILY = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -178,7 +189,7 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
   };
   let P;
   try {
-    P = { blur: compile(BLUR_FS), copy: compile(COPY_FS), pack: compile(PACK_FS), scene: compile(SCENE_FS), comp: compile(COMP_FS) };
+    P = { blur: compile(BLUR_FS), copy: compile(COPY_FS), pack: compile(PACK_FS), scene: compile(SCENE_FS), glow: compile(GLOW_FS), comp: compile(COMP_FS) };
   } catch (err) {
     const info = gl.getExtension('WEBGL_debug_renderer_info');
     const gpu = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
@@ -255,9 +266,13 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
   };
 
   let scene = null;
+  let glowA = null;
+  let glowB = null;
   const resize = () => {
-    freeTarget(scene);
+    freeTarget(scene); freeTarget(glowA); freeTarget(glowB);
     scene = target(Math.max(1, Math.round(canvas.width / 2)), Math.max(1, Math.round(canvas.height / 2)));
+    glowA = target(Math.max(1, Math.round(canvas.width / 4)), Math.max(1, Math.round(canvas.height / 4)));
+    glowB = target(glowA.w, glowA.h);
   };
   resize();
 
@@ -338,8 +353,15 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
       u[`tx${i}`] = line.packed;
       u[`bx${i}`] = [it.x - line.pad * it.scale, it.y - line.pad * it.scale, line.w * it.scale, line.h * it.scale];
       u[`pr${i}`] = [it.alpha, it.glass, it.halo, it.litVisible];
-      u[`tl${i}`] = [1 / line.w, 1 / line.h, it.lit, (line.blockH / Math.max(1, line.rows)) * 0.5];
+      u[`tl${i}`] = [1 / line.w, 1 / line.h, it.lit, 0];
     }
+    // The glow: lit letters drawn small, then blurred in place a few times
+    draw(P.glow, glowA, { ...u, res: [glowA.w, glowA.h], full: [canvas.width, canvas.height] });
+    for (let pass = 0; pass < 4; pass++) {
+      draw(P.blur, glowB, { tex: glowA, dir: [1.2 / glowA.w, 0] });
+      draw(P.blur, glowA, { tex: glowB, dir: [0, 1.2 / glowA.h] });
+    }
+    u.glow = glowA;
     draw(P.comp, null, u);
   };
 
@@ -357,7 +379,7 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
       // Resources only, never loseContext(): the browser hands the same context back to the next
       // Zen on this canvas (React's development double-mount does exactly that), and a context lost
       // on purpose stays lost, so every shader after it failed
-      freeTarget(scene);
+      freeTarget(scene); freeTarget(glowA); freeTarget(glowB);
       for (const p of Object.values(P)) gl.deleteProgram(p.program);
       gl.deleteBuffer(quad);
       gl.deleteTexture(empty);
