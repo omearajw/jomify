@@ -8,12 +8,6 @@
 // Both reduce to beat(positionMs) and energy, 0 to 1.
 
 import { log } from '../../services/debugLog';
-import { soundFeaturesFor } from '../../services/soundFeatures';
-
-export async function trackFeatures(spotifyId) {
-  const f = await soundFeaturesFor(spotifyId);
-  return f && f.tempo > 0 ? { tempo: f.tempo, energy: Math.max(0, Math.min(1, f.energy ?? 0.5)) } : null;
-}
 
 // A gentle swell at each beat, rising and falling smoothly (a sharp rise read as a flash)
 export function beatAt(positionMs, tempo) {

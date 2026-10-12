@@ -142,3 +142,33 @@ export function layoutFocus({ focus, blocks, box, big }) {
   }
   return out;
 }
+
+// The chorus, found from the words alone: lines that come back. A line counts if it is sung three
+// times or more, or twice as part of a run of at least two repeated lines (a single repeated
+// "hold on" in a verse is not a chorus). Returns a Set of line indexes.
+const normalise = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9\u00c0-\u024f]+/g, ' ').trim();
+export function chorusLines(lines) {
+  const counts = new Map();
+  const keys = (lines || []).map((l) => (isInstrumental(l) ? '' : normalise(l.text)));
+  for (const k of keys) if (k) counts.set(k, (counts.get(k) || 0) + 1);
+  const repeated = keys.map((k) => Boolean(k) && counts.get(k) >= 2);
+  const out = new Set();
+  keys.forEach((k, i) => {
+    if (!repeated[i]) return;
+    const inRun = repeated[i - 1] || repeated[i + 1];
+    if (counts.get(k) >= 3 || inRun) out.add(i);
+  });
+  return out;
+}
+
+// How far into the song's ending: 0 until the last sung line starts, rising to 1 as it is sung,
+// and staying at 1 after it, so the light can settle like closing credits
+export function endingAt(lines, posMs) {
+  let last = -1;
+  for (let i = (lines || []).length - 1; i >= 0; i--) if (!isInstrumental(lines[i])) { last = i; break; }
+  if (last < 0) return 0;
+  const start = lines[last].timeMs - LYRIC_LEAD_IN_MS;
+  if (posMs < start) return 0;
+  const end = lines[last].endMs || start + Math.max(2500, lines[last].text.length * 120);
+  return Math.max(0, Math.min(1, (posMs - start) / Math.max(1, end - start)));
+}

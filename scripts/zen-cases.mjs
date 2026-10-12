@@ -2,7 +2,7 @@
 import { paletteFromPixels, FALLBACK_PALETTE, SILVER, COOL_SILVER } from '../src/views/ZenMode/palette.js';
 import { focusAt, fillProgress, lineAt, layoutFocus, isInstrumental, faceKey } from '../src/views/ZenMode/lyricFocus.js';
 import { LYRIC_LEAD_IN_MS } from '../src/lib/lrc.js';
-import { wordFill, wordStops, followFill } from '../src/views/ZenMode/lyricFocus.js';
+import { wordFill, wordStops, followFill, chorusLines, endingAt } from '../src/views/ZenMode/lyricFocus.js';
 import { normalizeSpicy } from '../api/_lib/wordLyrics.js';
 
 let pass = 0, fail = 0; const failures = [];
@@ -141,6 +141,27 @@ check('fill: nothing for no line', fillProgress(L, null, 9000) === 0);
   check('follow: settles on it', Math.abs(shown - 0.5) < 0.001);
   check('follow: backwards is immediate', followFill(0.8, 0.2, 1 / 60) === 0.2);
   check('follow: a finished line ends fully lit', followFill(0.997, 1, 1 / 60) === 1);
+}
+
+// The chorus and the ending
+{
+  const at = (texts) => texts.map((text, i) => ({ timeMs: i * 4000, text }));
+  const song = at([
+    'Walking down the road', 'Hold on', 'Seeing all the lights',
+    'Oh we are the night', "We won't let it go", 'Under the sky',
+    'Second verse begins', 'Hold on', 'Something new',
+    'Oh, we are the night!', "We won't let it go", 'Under the sky', '♪'
+  ]);
+  const c = chorusLines(song);
+  check('chorus: the repeated block is found', c.has(3) && c.has(4) && c.has(5) && c.has(9) && c.has(10) && c.has(11));
+  check('chorus: punctuation and case do not matter', c.has(9));
+  check('chorus: a lone repeated line in a verse is not chorus', !c.has(1) && !c.has(7));
+  check('chorus: verses are not chorus', !c.has(0) && !c.has(6));
+  check('chorus: a line sung three times counts on its own', chorusLines(at(['a b', 'x', 'a b', 'y', 'a b'])).has(2));
+  const W = [{ timeMs: 1000, endMs: 3000, text: 'One' }, { timeMs: 5000, endMs: 9000, text: 'Last' }, { timeMs: 12000, text: '♪' }];
+  check('ending: nothing before the last sung line', endingAt(W, 4000) === 0);
+  check('ending: rises through the last line', endingAt(W, 7000) > 0.3 && endingAt(W, 7000) < 0.8);
+  check('ending: stays at 1 after it', endingAt(W, 20000) === 1);
 }
 
 console.log(`\nzen: ${pass} passed, ${fail} failed`);

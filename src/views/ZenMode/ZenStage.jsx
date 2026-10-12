@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createZenRenderer } from './zenGl';
-import { focusAt, fillProgress, layoutFocus, faceKey, SMALL_RATIO, wordFill, followFill, WORD_LEAD_MS } from './lyricFocus';
+import { focusAt, fillProgress, layoutFocus, faceKey, SMALL_RATIO, wordFill, followFill, WORD_LEAD_MS, chorusLines, endingAt } from './lyricFocus';
 import { positionNow } from '../../lib/playbackClock';
 import { FALLBACK_PALETTE } from './palette';
 
@@ -12,12 +12,12 @@ import { FALLBACK_PALETTE } from './palette';
 
 const approach = (v, to, dt, tau) => (tau <= 0 ? to : v + (to - v) * (1 - Math.exp(-dt / tau)));
 
-export default function ZenStage({ lines, linesKey, showLyrics, palette, paused, pulse, boxRef, dotsRef, onLine, onFailed, reducedMotion }) {
+export default function ZenStage({ lines, linesKey, showLyrics, palette, paused, pulse, character, boxRef, dotsRef, onLine, onFailed, reducedMotion }) {
   const canvasRef = useRef(null);
   const live = useRef({});
   // Read by the frame loop, which outlives any one render
   useEffect(() => {
-    live.current = { lines, linesKey, showLyrics, palette: palette || FALLBACK_PALETTE, paused, pulse, onLine, reducedMotion };
+    live.current = { lines, linesKey, showLyrics, palette: palette || FALLBACK_PALETTE, paused, pulse, character, onLine, reducedMotion };
   });
 
   useEffect(() => {
@@ -42,6 +42,10 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
     const items = new Map(); // key -> the line, its texture and where it is drawn this frame
     const colours = (live.current.palette || FALLBACK_PALETTE).map((c) => c.slice());
     let t = 0, speed = 1, dim = 1, intro = 0, beat = 0, big = 60;
+    // The song's character, eased so a new song's scene arrives over a few seconds
+    const mood = { energy: 0.5, valence: 0.5, acoustic: 0, minor: 0, lift: 0 };
+    let ending = 0;
+    let chorus = { key: null, set: new Set() };
     let last = performance.now();
     let lastCurrent = -2;
     let raf = 0;
@@ -56,8 +60,14 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
       const L = live.current;
       const calm = L.reducedMotion ? 0 : 1;
 
-      speed = approach(speed, L.paused ? 0.12 : 1, dt, 0.9);
-      dim = approach(dim, L.paused ? 0.82 : 1, dt, 0.9);
+      const ch = L.character;
+      mood.energy = approach(mood.energy, ch ? ch.energy : 0.5, dt, 2.5);
+      mood.valence = approach(mood.valence, ch ? ch.valence : 0.5, dt, 2.5);
+      mood.acoustic = approach(mood.acoustic, ch ? ch.acousticness : 0, dt, 2.5);
+      mood.minor = approach(mood.minor, ch && ch.mode === 0 ? 1 : 0, dt, 2.5);
+      // Calm songs drift slowly, energetic ones move along
+      speed = approach(speed, L.paused ? 0.12 : 0.55 + 0.95 * mood.energy, dt, 0.9);
+      dim = approach(dim, (L.paused ? 0.82 : 1) * (1 - 0.35 * ending), dt, 0.9);
       intro = approach(intro, 1, dt, 0.7);
       t += dt * speed;
       const target = L.palette || FALLBACK_PALETTE;
@@ -105,6 +115,12 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
         lastCurrent = -2;
         L.onLine?.(null);
       }
+
+      // The chorus opens the light up; the last line lets it settle, like closing credits
+      if (L.lines?.length && chorus.key !== L.linesKey) chorus = { key: L.linesKey, set: chorusLines(L.lines) };
+      const inChorus = Boolean(focus && focus.current !== null && chorus.key === L.linesKey && chorus.set.has(focus.current));
+      mood.lift = approach(mood.lift, inChorus && !L.paused ? 1 : 0, dt, inChorus ? 0.8 : 1.6);
+      ending = approach(ending, L.showLyrics && L.lines?.length ? endingAt(L.lines, pos) : 0, dt, 1.2);
 
       // Breathing dots before the first line and in instrumental breaks
       const dots = dotsRef?.current;
@@ -160,7 +176,7 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
       }
 
       const drawn = [...items.values()].filter((it) => it.alpha > 0.003).sort((a, b) => b.alpha - a.alpha).slice(0, 6);
-      r.render({ t: t + 40, beat, intro, dim, palette: colours, items: drawn, grain: now / 1000 });
+      r.render({ t: t + 40, beat, intro, dim, palette: colours, items: drawn, grain: now / 1000, mood });
     };
     raf = requestAnimationFrame(frame);
 

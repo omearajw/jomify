@@ -27,6 +27,9 @@ void main(){ gl_FragColor = vec4(texture2D(sharp, uv).r, texture2D(bevel, uv).r,
 
 const SCENE_FS = `precision highp float; varying vec2 uv;
 uniform float t, beat, aspect, intro, dim; uniform vec3 c1, c2, c3;
+// The song's character (ReccoBeats): energy, valence, acousticness, minor key; and lift, how much a
+// chorus opens the light up
+uniform float energy, valence, acoustic, minor, lift;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
@@ -34,20 +37,29 @@ float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ v += a *
 void main(){
   vec2 p = vec2(uv.x * aspect, uv.y);
   vec3 col = mix(vec3(0.012, 0.01, 0.025), c3 * 0.06, uv.y);
+  // Happy songs warm the light a little, sad ones cool it; a minor key and low mood dim it a touch,
+  // a chorus brightens it
+  vec3 tint = mix(vec3(0.9, 0.96, 1.1), vec3(1.1, 1.0, 0.88), valence);
+  float bright = mix(0.84, 1.1, valence) * (1.0 - 0.08 * minor) * (1.0 + 0.25 * lift);
   for (int i = 0; i < 3; i++){
     float fi = float(i);
     vec3 c = i == 0 ? c1 : i == 1 ? c2 : mix(c1, c2, 0.5);
     float y = 0.55 + 0.18 * sin(p.x * 1.1 + t * 0.045 + fi * 2.1) + 0.12 * (fbm(vec2(p.x * 0.7 + fi * 3.0, t * 0.025)) - 0.5) - fi * 0.13;
-    float w = 0.09 + 0.05 * fbm(vec2(p.x * 1.3, t * 0.02 + fi));
+    // Quiet songs: wide, soft ribbons; loud ones: tighter, more defined
+    float w = (0.09 + 0.05 * fbm(vec2(p.x * 1.3, t * 0.02 + fi))) * mix(1.45, 0.8, energy) * (1.0 + 0.15 * lift);
     float band = exp(-pow((uv.y - y) / w, 2.0));
     float curtain = 0.55 + 0.45 * fbm(vec2(p.x * 9.0 + t * 0.08, uv.y * 1.5 + fi * 7.0));
     float upper = smoothstep(y - w * 2.5, y + w * 0.4, uv.y);
-    col += c * band * curtain * (0.55 + 0.14 * beat) * (0.6 + 0.4 * upper) * intro;
-    col += c * exp(-pow((uv.y - y) / (w * 4.0), 2.0)) * 0.07 * intro;
+    col += c * tint * band * curtain * (0.55 + 0.14 * beat) * (0.6 + 0.4 * upper) * intro * bright;
+    col += c * tint * exp(-pow((uv.y - y) / (w * 4.0), 2.0)) * 0.07 * intro * bright;
     // Fine filaments along each ribbon: the detail the glass has to bend
     float fil = pow(abs(sin((uv.y - y) * 48.0 + fbm(vec2(p.x * 2.2, fi + t * 0.01)) * 7.0)), 34.0) * smoothstep(0.35, 0.75, fbm(vec2(p.x * 1.6 - t * 0.02, fi * 5.0)));
-    col += mix(c, vec3(1.0), 0.5) * fil * band * 0.3 * intro;
+    // Acoustic songs lose the electric filaments for a softer light
+    col += mix(c, vec3(1.0), 0.5) * fil * band * 0.3 * intro * (1.0 - 0.8 * acoustic);
   }
+  // ...and gain a slow haze, like light through a dusty room
+  float haze = fbm(vec2(p.x * 2.5 - t * 0.015, uv.y * 2.5 + t * 0.01));
+  col += mix(c1, c3, 0.5) * tint * smoothstep(0.45, 0.85, haze) * 0.07 * acoustic * intro * bright;
   gl_FragColor = vec4(col * dim, 1.0);
 }`;
 
@@ -319,9 +331,10 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
 
   // items: [{ line, x, y, scale, alpha, glass, halo, litVisible, lit }] with x, y the top left of the
   // line's text block in device pixels
-  const render = ({ t, beat = 0, intro = 1, dim = 1, palette, items = [], strength = 280, grain = 0 }) => {
+  // mood: the song's character, each 0..1 (see SCENE_FS)
+  const render = ({ t, beat = 0, intro = 1, dim = 1, palette, items = [], strength = 280, grain = 0, mood = {} }) => {
     const [c1, c2, c3] = palette;
-    draw(P.scene, scene, { t, beat, aspect: canvas.width / canvas.height, intro, dim, c1, c2, c3 });
+    draw(P.scene, scene, { t, beat, aspect: canvas.width / canvas.height, intro, dim, c1, c2, c3, energy: mood.energy ?? 0.5, valence: mood.valence ?? 0.5, acoustic: mood.acoustic ?? 0, minor: mood.minor ?? 0, lift: mood.lift ?? 0 });
     const u = { scene, res: [canvas.width, canvas.height], strength: strength * (canvas.width / 2880), grain, c1 };
     for (let i = 0; i < ITEMS; i++) {
       const it = items[i];

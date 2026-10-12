@@ -13,7 +13,8 @@ import Projection from './Projection';
 import ZenStage from './ZenStage';
 import { ZenFocusLyricsLite, ZenPlainLyrics } from './ZenLyricsDom';
 import { FALLBACK_PALETTE, paletteCss, paletteForArt } from './palette';
-import { beatAt, canHearComputer, hearComputer, trackFeatures } from './zenPulse';
+import { beatAt, canHearComputer, hearComputer } from './zenPulse';
+import { soundFeaturesFor } from '../../services/soundFeatures';
 import { usePartyStore } from '../../store/partyStore';
 import { requestedBy } from '../../party/view';
 import { log } from '../../services/debugLog';
@@ -146,7 +147,7 @@ export default function ZenMode() {
   useEffect(() => {
     let cancelled = false;
     const id = currentTrack?.id;
-    trackFeatures(id).then((f) => { if (!cancelled) setFeaturesFor({ id, f }); });
+    soundFeaturesFor(id).then((f) => { if (!cancelled) setFeaturesFor({ id, f }); });
     return () => { cancelled = true; };
   }, [currentTrack?.id]);
   const features = featuresFor && featuresFor.id === currentTrack?.id ? featuresFor.f : null;
@@ -167,7 +168,7 @@ export default function ZenMode() {
   }, [soundNote]);
   const pulse = useCallback((pos) => {
     if (listener.current) return { ...listener.current.level(), live: true };
-    if (features) return { beat: beatAt(pos, features.tempo), energy: features.energy };
+    if (features?.tempo > 0) return { beat: beatAt(pos, features.tempo), energy: features.energy };
     return null;
   }, [features]);
 
@@ -303,6 +304,7 @@ export default function ZenMode() {
           palette={palette}
           paused={isPaused}
           pulse={pulse}
+          character={features}
           boxRef={boxRef}
           dotsRef={dotsRef}
           onLine={onLine}
