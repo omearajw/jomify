@@ -34,7 +34,8 @@ for (const a of DEMO_ALBUMS) {
   if (!lead.images.length) lead.images = a.images;
   const album = { id: a.id, name: a.name, type: 'album', album_type: 'album', uri: `spotify:album:${a.id}`, images: a.images, release_date: a.release_date, release_date_precision: 'day', total_tracks: a.tracks.length, artists: [brief(lead)], external_urls: {}, label: '', popularity: 70 };
   album.trackList = a.tracks.map((t, i) => {
-    const names = t.artists.split(', ').filter(Boolean);
+    // Spotify separates collaborators with a comma and a non-breaking space
+    const names = t.artists.split(/,\s*/).map((n) => n.trim()).filter(Boolean);
     const track = {
       id: t.id, name: t.name, type: 'track', uri: `spotify:track:${t.id}`, duration_ms: t.duration_ms, explicit: t.explicit,
       track_number: i + 1, disc_number: 1, is_playable: true, is_local: false, popularity: 60, external_urls: {},
@@ -98,7 +99,8 @@ export const playlistById = (id) => PLAYLISTS.find((p) => p.id === id) || null;
 
 export const LIKED = new Map([...lateNight, ...sunday, ...gym.slice(0, 8)].map((t, i) => [t.id, day(200 - i)]));
 export const SAVED_ALBUMS = new Set(ALBUMS.map((a) => a.id));
-export const FOLLOWED = new Set([...artists.values()].map((a) => a.id));
+// The albums' own artists; guests on a track (Pharrell on Get Lucky) are not followed
+export const FOLLOWED = new Set(ALBUMS.map((a) => a.artists[0].id));
 
 export function createPlaylist(name, description = '') {
   const id = `demoNew${Date.now().toString(36)}`;
