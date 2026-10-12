@@ -361,7 +361,10 @@ export default function ZenMode() {
           </AnimatePresence>
         </motion.section>
 
-        <AnimatePresence>
+        {/* popLayout: a closing lyrics panel leaves the layout at once and fades where it was, so the
+            cover glides to its final place in one move. Kept in the layout, the panel held its
+            space until it had faded, and the cover jumped the rest of the way when it went. */}
+        <AnimatePresence mode="popLayout">
           {split && (
             <motion.section
               key="lyrics"
