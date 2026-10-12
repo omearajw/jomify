@@ -1,7 +1,7 @@
 // Case table for the Unadded Songs "sort into" ranking.
 // Run with: node scripts/suggest-cases.mjs
 
-import { buildProfile, rankProfiles, scoreTrack, suggestPlaylists, trackGenres, trackTerms, tokensOf, MOOD_WORDS } from '../src/utils/playlistSuggestions.js';
+import { buildProfile, rankProfiles, scoreTrack, suggestPlaylists, trackGenres, trackTerms, tokensOf, MOOD_WORDS, soundProfile, soundSimilarity, describeSound } from '../src/utils/playlistSuggestions.js';
 import { cleanTags } from '../src/utils/lastfmTags.js';
 
 let pass = 0;
@@ -124,6 +124,39 @@ check('keeps real tags, lowercased, in order', cleaned.map((t) => t.name).join()
 check('drops junk, years, decades, duplicates and weak tags', !cleaned.some((t) => ['seen live', '2015', '80s', 'favorites', 'obscure'].includes(t.name)));
 check('drops the artist\'s own name and radio stations', cleanTags([{ name: 'Adele', count: 69 }, { name: 'wsum 91.7 fm madison', count: 100 }, { name: 'soul', count: 50 }], 'Adele').map((t) => t.name).join() === 'soul');
 check('caps the list', cleanTags(Array.from({ length: 30 }, (_, i) => ({ name: 'tag' + i, count: 100 - i }))).length === 10);
+
+section('sound (ReccoBeats)');
+{
+  const F = (energy, valence, acousticness, danceability, tempo, instrumentalness = 0) => ({ energy, valence, acousticness, danceability, tempo, instrumentalness });
+  const sad = F(0.25, 0.18, 0.8, 0.35, 80);
+  const party = F(0.88, 0.8, 0.05, 0.85, 124);
+  // Two playlists by the same artists, so genres cannot tell them apart; only the sound can
+  const mk = (prefix, n, f) => Array.from({ length: n }, (_, i) => [T(prefix + i, A('arctic', 'Arctic Monkeys')), { ...f, energy: Math.min(1, f.energy + (i % 3) * 0.03) }]);
+  const sadRows = mk('sad', 6, sad);
+  const partyRows = mk('party', 6, party);
+  const features = new Map([...sadRows, ...partyRows].map(([t, f]) => [t.id, f]));
+  const entries = rankProfiles([
+    { id: 'pSad', name: 'Sad hours', profile: buildProfile(sadRows.map(([t]) => t), genres, new Map(), features) },
+    { id: 'pParty', name: 'Party', profile: buildProfile(partyRows.map(([t]) => t), genres, new Map(), features) }
+  ]);
+  check('a playlist with enough measured songs gets a sound profile', entries[0].profile.sound && entries[0].profile.sound.count === 6);
+  check('too few measured songs: no sound profile', soundProfile([sad, sad]) === null);
+  const ballad = T('newSad', A('arctic', 'Arctic Monkeys'));
+  features.set('newSad', F(0.3, 0.2, 0.75, 0.3, 84));
+  const top = suggestPlaylists(ballad, genres, entries, { featuresByTrack: features });
+  check('same artist in both: the sad-sounding song goes to the sad playlist', top[0]?.id === 'pSad');
+  check('…and the reason says why, against the other playlist', /(Sounds like it: |sounds )(calm|moody|acoustic)/.test(top[0]?.reason || ''));
+  const banger = T('newParty', A('nobody', 'Someone new'));
+  features.set('newParty', F(0.9, 0.85, 0.02, 0.9, 128));
+  const top2 = suggestPlaylists(banger, genres, entries, { featuresByTrack: features });
+  check('no tags and an unknown artist: the sound alone still suggests', top2[0]?.id === 'pParty' && top2.length === 1);
+  check('…saying so', /^Sounds like it: /.test(top2[0]?.reason || ''));
+  check('a song with no measurements scores as before', suggestPlaylists(T('x', A('nobody', 'N')), genres, entries, { featuresByTrack: features }).length === 0);
+  const sim = soundSimilarity(sad, entries[0].profile.sound);
+  check('similarity is 0..1, near 1 for the playlist\'s own sound', sim > 0.8 && sim <= 1);
+  check('describes how a playlist differs from the others', /energetic|upbeat|danceable/.test(entries[1].profile.soundWords) && !/calm|moody/.test(entries[1].profile.soundWords));
+  check('describes nothing when there is nothing distinctive', describeSound(entries[0].profile.sound, [entries[0].profile.sound]) === null);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) { console.log(failures.map(f => `  - ${f}`).join('\n')); process.exit(1); }

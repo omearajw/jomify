@@ -1,6 +1,6 @@
 // What makes Zen's light breathe with the music. The page cannot hear Spotify (its player is a
 // locked, copy-protected frame), so there are two sources:
-//   tempo: the song's tempo and energy from ReccoBeats (free, no key, by Spotify id). The light
+//   tempo: the song's tempo and energy from ReccoBeats (src/services/soundFeatures). The light
 //          swells on each beat of the song's real BPM, not locked to the exact beat.
 //   sound: what this computer is playing, where the platform allows it: the desktop app (built-in
 //          loopback; on macOS, the system picker and its one-time permission) or a Chromium
@@ -8,24 +8,11 @@
 // Both reduce to beat(positionMs) and energy, 0 to 1.
 
 import { log } from '../../services/debugLog';
+import { soundFeaturesFor } from '../../services/soundFeatures';
 
-const RECCO = 'https://api.reccobeats.com/v1/audio-features';
-const known = new Map(); // spotify id -> { tempo, energy } or null
-
-export function trackFeatures(spotifyId) {
-  if (!spotifyId) return Promise.resolve(null);
-  if (known.has(spotifyId)) return Promise.resolve(known.get(spotifyId));
-  const work = fetch(`${RECCO}?ids=${encodeURIComponent(spotifyId)}`)
-    .then((res) => (res.ok ? res.json() : null))
-    .then((body) => {
-      const f = body?.content?.[0];
-      const found = f && f.tempo > 0 ? { tempo: f.tempo, energy: Math.max(0, Math.min(1, f.energy ?? 0.5)) } : null;
-      known.set(spotifyId, found);
-      return found;
-    })
-    .catch((err) => { log('zen', 'tempo lookup failed', err?.message); known.delete(spotifyId); return null; });
-  known.set(spotifyId, work);
-  return work;
+export async function trackFeatures(spotifyId) {
+  const f = await soundFeaturesFor(spotifyId);
+  return f && f.tempo > 0 ? { tempo: f.tempo, energy: Math.max(0, Math.min(1, f.energy ?? 0.5)) } : null;
 }
 
 // A gentle swell at each beat, rising and falling smoothly (a sharp rise read as a flash)

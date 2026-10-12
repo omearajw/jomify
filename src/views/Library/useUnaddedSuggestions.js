@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { fetchPlaylistSnapshot, fetchPlaylistTrackArtists, fetchArtistsByIds } from '../../services/spotify/api';
 import { buildProfile, rankProfiles, suggestPlaylists } from '../../utils/playlistSuggestions';
 import { ensureTrackTags, tagCache } from '../../services/tags';
+import { ensureSoundFeatures, soundFeatures } from '../../services/soundFeatures';
 
 // Profiles the check playlists and ranks them for each row of Unadded Songs. Playlist track
 // lists are kept per snapshot id (Spotify bumps it on every edit), so reopening the page costs
-// one small request per playlist; artist genres barely change and are kept for a week.
+// one small request per playlist; artist genres barely change and are kept for a week, and song
+// measurements (ReccoBeats) for a month.
 
 const GENRE_CACHE_KEY = 'jomify_artist_genres';
 const GENRE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -86,12 +88,15 @@ export function useUnaddedSuggestions({ token, enabled, checkPlaylistIds, items 
         await ensureGenres(token, loadedPlaylists.flatMap((p) => p.tracks.flatMap((t) => t.artists.map((a) => a.id))));
         if (cancelled) return;
         // Mood comes from Last.fm's per-song tags; without the endpoint the genres still work
-        await ensureTrackTags(loadedPlaylists.flatMap((p) => p.tracks));
+        // Tags and sound measurements together: neither waits on the other, and either failing
+        // leaves the rest working
+        const allTracks = loadedPlaylists.flatMap((p) => p.tracks);
+        await Promise.all([ensureTrackTags(allTracks), ensureSoundFeatures(allTracks.map((t) => t.id))]);
         if (cancelled) return;
         setLoaded({
           key: idsKey,
           status: 'ready',
-          profiles: rankProfiles(loadedPlaylists.map((p) => ({ id: p.id, name: p.name, profile: buildProfile(p.tracks, genreCache, tagCache) })))
+          profiles: rankProfiles(loadedPlaylists.map((p) => ({ id: p.id, name: p.name, profile: buildProfile(p.tracks, genreCache, tagCache, soundFeatures) })))
         });
       } catch (err) {
         console.warn('[unadded] suggestions unavailable:', err?.message || err);
@@ -117,7 +122,7 @@ export function useUnaddedSuggestions({ token, enabled, checkPlaylistIds, items 
     (async () => {
       await ensureGenres(token, rows.flatMap((t) => (t.artists || []).map((a) => a?.id)).filter(Boolean));
       if (cancelled) return;
-      await ensureTrackTags(rows);
+      await Promise.all([ensureTrackTags(rows), ensureSoundFeatures(rows.map((t) => t.id))]);
       if (!cancelled) setGenreVersion((v) => v + 1);
     })().catch((err) => console.warn('[unadded] row tags unavailable:', err?.message || err));
     return () => { cancelled = true; };
@@ -131,7 +136,7 @@ export function useUnaddedSuggestions({ token, enabled, checkPlaylistIds, items 
     for (const item of items || []) {
       const track = item?.track;
       if (!track?.id || out.has(track.id)) continue;
-      out.set(track.id, suggestPlaylists(track, genreCache, profiles, { tagsByTrack: tagCache }));
+      out.set(track.id, suggestPlaylists(track, genreCache, profiles, { tagsByTrack: tagCache, featuresByTrack: soundFeatures }));
     }
     return out;
     // genreVersion is the signal that the cache gained the rows' artists

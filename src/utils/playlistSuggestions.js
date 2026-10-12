@@ -1,6 +1,9 @@
 // Ranks a user's check playlists as homes for a track. Spotify has no genres on tracks (and
 // switched off audio features and recommendations for apps like this one), so a track's tags are
-// its artists' genres.
+// its artists' genres. How a song sounds comes from ReccoBeats instead (src/services/soundFeatures):
+// each playlist gets a sound profile, and a song that sounds like one more than like the others
+// scores for it, which catches what the words miss (a sad song by an "indie rock" artist, a song
+// with no tags at all).
 //
 // Each playlist gets a ranked list of genre words ("rock", "psychedelic", "indie") and full
 // genres, weighted by how much of the playlist carries them and by how distinctive that is
@@ -15,6 +18,15 @@ const ARTIST_BOOST = 1;          // genre score multiplier per unit of artist st
 const ARTIST_ALONE = 0.4;        // score an artist match earns with no genre signal
 const MAX_DISTINCT = 3;          // cap on the "more than the other playlists" multiplier
 const MOOD_BOOST = 1.5;          // mood words count this much more than genre words
+const SOUND_WEIGHT = 2.5;        // a playlist the song clearly sounds like, against the others
+const SOUND_MIN_TRACKS = 4;      // songs with measurements a playlist needs for a sound profile
+
+// The measures that place a song, each on 0..1 (tempo scaled from 60-200 BPM), and how much each
+// counts. Mood and energy say most about where a song belongs; tempo the least.
+const SOUND_DIMS = [
+  ['energy', 1.2], ['valence', 1.2], ['acousticness', 1], ['danceability', 0.8], ['instrumentalness', 0.6], ['tempo', 0.4]
+];
+const dimValue = (f, k) => (k === 'tempo' ? Math.max(0, Math.min(1, (f.tempo - 60) / 140)) : Math.max(0, Math.min(1, f[k])));
 
 // Words that describe how a song feels rather than what it is. They come from Last.fm tags,
 // count extra in the score, and get named in the reason so a mood decision is visible.
@@ -57,8 +69,9 @@ export function trackGenres(track, genresByArtist, tagsByTrack) {
 // tracks: [{ id, name, artists: [{ id, name }] }]; genresByArtist: Map artistId -> [genre];
 // tagsByTrack: Map trackId -> [{ name, count }]. Shares are the (weighted) fraction of the
 // playlist's tracks carrying the word or term.
-export function buildProfile(tracks, genresByArtist, tagsByTrack = new Map()) {
+export function buildProfile(tracks, genresByArtist, tagsByTrack = new Map(), featuresByTrack = new Map()) {
   const artistCounts = new Map();
+  const soundSamples = [];
   const genreShare = new Map();
   const wordShare = new Map();
   let total = 0;
@@ -73,12 +86,63 @@ export function buildProfile(tracks, genresByArtist, tagsByTrack = new Map()) {
       for (const word of tokensOf(term)) if ((wordWeights.get(word) || 0) < weight) wordWeights.set(word, weight);
     }
     for (const [word, weight] of wordWeights) add(wordShare, word, weight);
+    const f = featuresByTrack.get(track.id);
+    if (f) soundSamples.push(f);
   }
   if (total > 0) {
     for (const [k, v] of genreShare) genreShare.set(k, v / total);
     for (const [k, v] of wordShare) wordShare.set(k, v / total);
   }
-  return { total, artistCounts, genreShare, wordShare, rankedWords: [], rankedGenres: [], wordWeight: new Map(), genreWeight: new Map() };
+  return { total, artistCounts, genreShare, wordShare, sound: soundProfile(soundSamples), rankedWords: [], rankedGenres: [], wordWeight: new Map(), genreWeight: new Map() };
+}
+
+// Typical value and spread of each measure. The spread has a floor, so a playlist of near-identical
+// songs does not reject everything a hair different.
+export function soundProfile(samples) {
+  if (samples.length < SOUND_MIN_TRACKS) return null;
+  const mean = {};
+  const spread = {};
+  for (const [k] of SOUND_DIMS) {
+    const v = samples.map((f) => dimValue(f, k));
+    const m = v.reduce((a, b) => a + b, 0) / v.length;
+    const sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length);
+    mean[k] = m;
+    spread[k] = Math.max(0.12, sd);
+  }
+  return { mean, spread, count: samples.length };
+}
+
+// How much a song sounds like a playlist, 0..1: 1 at its typical sound, falling off with distance
+// measured in the playlist's own spread
+export function soundSimilarity(features, sound) {
+  if (!features || !sound) return null;
+  let d2 = 0;
+  let wsum = 0;
+  for (const [k, w] of SOUND_DIMS) {
+    const z = (dimValue(features, k) - sound.mean[k]) / sound.spread[k];
+    d2 += w * z * z;
+    wsum += w;
+  }
+  return Math.exp(-0.5 * (d2 / wsum));
+}
+
+// A few words for how a playlist sounds different from the user's other playlists, for the reason
+// line. Against the others, because "mid-tempo" is true of most playlists and tells you nothing.
+// others: the other playlists' sound profiles; with none, it describes the playlist on its own.
+const SOUND_WORDS = { energy: ['energetic', 'calm'], valence: ['upbeat', 'moody'], acousticness: ['acoustic', null], danceability: ['danceable', null], instrumentalness: ['instrumental', null], tempo: ['faster', 'slower'] };
+export function describeSound(sound, others = []) {
+  if (!sound) return null;
+  const peers = others.filter(Boolean);
+  const words = [];
+  for (const [k] of SOUND_DIMS) {
+    const [up, down] = SOUND_WORDS[k];
+    const base = peers.length ? peers.reduce((a, p) => a + p.mean[k], 0) / peers.length : 0.5;
+    const diff = (sound.mean[k] - base) / (peers.length ? sound.spread[k] : 0.25);
+    const word = diff > 0 ? up : down;
+    if (word && Math.abs(diff) > 0.6) words.push([Math.abs(diff), word]);
+  }
+  words.sort((a, b) => b[0] - a[0]);
+  return words.length ? words.slice(0, 2).map(([, w]) => w).join(', ') : null;
 }
 
 function distinctiveness(share, key, profiles, field) {
@@ -100,6 +164,7 @@ export function rankProfiles(entries) {
       ...entry,
       profile: {
         ...entry.profile,
+        soundWords: describeSound(entry.profile.sound, entries.filter((e) => e !== entry).map((e) => e.profile.sound)),
         rankedWords,
         rankedGenres,
         wordWeight: new Map(rankedWords.map((r) => [r.key, r.weight])),
@@ -109,7 +174,9 @@ export function rankProfiles(entries) {
   });
 }
 
-export function scoreTrack(track, genresByArtist, profile, tagsByTrack) {
+// soundLift: how much more the song sounds like this playlist than like the user's others (0 when
+// no better, or when either side has no measurements)
+export function scoreTrack(track, genresByArtist, profile, tagsByTrack, soundLift = 0) {
   if (!profile || profile.total === 0) return { score: 0, reason: null };
 
   let artistStrength = 0;
@@ -141,7 +208,8 @@ export function scoreTrack(track, genresByArtist, profile, tagsByTrack) {
   }
   for (const genre of genres) genreSignal += EXACT_GENRE_BONUS * (profile.genreWeight.get(genre) || 0);
 
-  const score = genreSignal * (1 + ARTIST_BOOST * artistStrength) + ARTIST_ALONE * artistStrength;
+  const soundSignal = SOUND_WEIGHT * soundLift;
+  const score = (genreSignal + soundSignal) * (1 + ARTIST_BOOST * artistStrength) + ARTIST_ALONE * artistStrength;
 
   const reasons = [];
   if (bestWord) {
@@ -150,15 +218,33 @@ export function scoreTrack(track, genresByArtist, profile, tagsByTrack) {
     // A mood match is the interesting part; say it even when a genre word scored higher
     reasons.push(bestMood && bestMood !== bestWord ? `${label}, ${bestMood}` : label);
   }
+  // Said whenever the sound clearly counted, first when it outweighed the words
+  if (soundLift > 0) {
+    const sound = profile.soundWords ?? describeSound(profile.sound);
+    if (sound && soundSignal >= genreSignal) reasons.unshift(`Sounds like it: ${sound}`);
+    else if (sound) reasons.push(`sounds ${sound}`);
+    if (reasons.length > 1) reasons[1] = reasons[1].charAt(0).toLowerCase() + reasons[1].slice(1);
+  }
   if (matchedArtist) reasons.push(`${reasons.length ? 'already' : 'Already'} has ${matchedArtist.name || 'this artist'}`);
   return { score, reason: reasons.length ? reasons.join(', ') : null };
 }
 
 // entries: ranked [{ id, name, profile }] -> [{ id, name, score, reason }] best first. Anything
 // with a signal is offered: more options beat fewer, even imperfect ones.
-export function suggestPlaylists(track, genresByArtist, entries, { limit = 3, tagsByTrack } = {}) {
+export function suggestPlaylists(track, genresByArtist, entries, { limit = 3, tagsByTrack, featuresByTrack } = {}) {
+  // Sound counts only against the other playlists: if the song sounds a bit like all of them,
+  // that says nothing about which one it belongs in
+  const features = featuresByTrack?.get(track?.id) || null;
+  const sims = entries.map((e) => soundSimilarity(features, e.profile?.sound));
+  const known = sims.filter((v) => v !== null);
+  const meanSim = known.length > 1 ? known.reduce((a, b) => a + b, 0) / known.length : null;
   return entries
-    .map(({ id, name, profile }) => ({ id, name, ...scoreTrack(track, genresByArtist, profile, tagsByTrack) }))
+    .map(({ id, name, profile }, i) => {
+      // An edge this small is noise, not a reason
+      const raw = meanSim === null || sims[i] === null ? 0 : sims[i] - meanSim;
+      const lift = raw > 0.05 ? raw : 0;
+      return { id, name, ...scoreTrack(track, genresByArtist, profile, tagsByTrack, lift) };
+    })
     .filter((s) => s.score > 0)
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
     .slice(0, limit);
