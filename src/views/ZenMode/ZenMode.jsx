@@ -32,6 +32,9 @@ const desktop = () => (typeof window !== 'undefined' ? window.jomifyDesktop : nu
 const usesRealFullscreen = () => !IS_MAC && !desktop()?.setZenFullscreen;
 
 const EASE = [0.16, 1, 0.3, 1];
+// The cover's reflection fades away from the cover (it is flipped, so 'to top' runs downwards on
+// screen) and towards both sides
+const REFLECTION_MASK = 'linear-gradient(to top, black, transparent 28%), linear-gradient(90deg, transparent, black 22%, black 78%, transparent)';
 const GLIDE = { type: 'spring', stiffness: 60, damping: 18, mass: 1 };
 
 function usePrefersReducedMotion() {
@@ -332,9 +335,16 @@ export default function ZenMode() {
                 transition={{ duration: 1.1, ease: EASE, delay: 0.25 }}
               >
                 <div className="relative w-full aspect-square">
+                  {/* The ground the cover stands on, so its reflection has somewhere to be: a pool of
+                      the cover's own light spreading out underneath, and a faint horizon where they meet */}
+                  <div aria-hidden="true" className="absolute left-1/2 top-full w-[190%] h-[60%] -translate-x-1/2 -translate-y-[38%] pointer-events-none" style={{ background: 'radial-gradient(closest-side, color-mix(in srgb, var(--zen-accent) 26%, transparent), color-mix(in srgb, var(--zen-accent) 9%, transparent) 55%, transparent)' }} />
+                  <div aria-hidden="true" className="absolute top-full -left-[18%] -right-[18%] h-px pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent, color-mix(in srgb, var(--zen-accent) 35%, transparent) 25%, color-mix(in srgb, var(--zen-accent) 70%, transparent) 50%, color-mix(in srgb, var(--zen-accent) 35%, transparent) 75%, transparent)', boxShadow: '0 0 12px 0 color-mix(in srgb, var(--zen-accent) 30%, transparent)' }} />
                   <img src={albumArtUrl} alt="" draggable="false" className="absolute inset-0 w-full h-full object-cover rounded-[22px] shadow-[0_40px_90px_-20px_rgba(0,0,0,0.85),0_0_120px_-10px_var(--zen-glow)] transition-shadow duration-1000" />
-                  <div aria-hidden="true" className="absolute inset-0 rounded-[22px] pointer-events-none shadow-[inset_0_0_0_1px_rgba(255,255,255,0.16)] bg-[linear-gradient(135deg,rgba(255,255,255,0.28)_0%,rgba(255,255,255,0.06)_28%,transparent_46%)]" />
-                  <img src={albumArtUrl} alt="" aria-hidden="true" draggable="false" className="absolute left-0 top-full mt-1.5 w-full h-full object-cover rounded-[22px] -scale-y-100 opacity-20 blur-[3px] pointer-events-none [mask-image:linear-gradient(to_top,black,transparent_32%)]" />
+                  {/* The light catching the cover is the scene's light, so it takes the cover's colour */}
+                  <div aria-hidden="true" className="absolute inset-0 rounded-[22px] pointer-events-none" style={{ boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--zen-accent) 26%, transparent)', background: 'linear-gradient(135deg, color-mix(in srgb, var(--zen-accent) 38%, transparent) 0%, color-mix(in srgb, var(--zen-accent) 9%, transparent) 28%, transparent 46%)' }} />
+                  {/* Its reflection in that ground: soft, fading down and out to the sides, so it melts
+                      into the floor instead of hanging under the cover as a second, greyer slab */}
+                  <img src={albumArtUrl} alt="" aria-hidden="true" draggable="false" className="absolute left-0 top-full mt-0.5 w-full h-full object-cover rounded-[22px] -scale-y-100 opacity-[0.22] blur-[3px] pointer-events-none" style={{ maskImage: REFLECTION_MASK, WebkitMaskImage: REFLECTION_MASK, maskComposite: 'intersect', WebkitMaskComposite: 'source-in' }} />
                 </div>
                 <motion.div className="relative z-10 mt-10 w-full text-center" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE, delay: 0.55 }}>
                   <h1 className={`font-semibold tracking-[-0.015em] leading-tight [text-wrap:balance] drop-shadow-[0_2px_30px_rgba(0,0,0,0.6)] ${split ? 'text-3xl' : 'text-4xl md:text-5xl'}`}>{currentTrack.name}</h1>
