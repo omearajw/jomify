@@ -5,5 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // monitor; the main process answers with the window's "simple" fullscreen instead.
 contextBridge.exposeInMainWorld('jomifyDesktop', {
   platform: process.platform,
-  setZenFullscreen: (on) => ipcRenderer.invoke('zen-fullscreen', Boolean(on))
+  setZenFullscreen: (on) => ipcRenderer.invoke('zen-fullscreen', Boolean(on)),
+  // Zen mode can listen to what the computer plays (main.cjs answers its screen-share request)
+  hearsComputer: true
 });

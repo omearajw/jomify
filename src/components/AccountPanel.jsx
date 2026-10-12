@@ -10,6 +10,7 @@ import NotificationToggle from './NotificationToggle';
 import DebugLogPanel from './DebugLogPanel';
 import { disableNotifications } from '../pwa/push';
 import { clearLibraryCache } from '../services/libraryCache';
+import { canHearComputer } from '../views/ZenMode/zenPulse';
 import { Keyboard } from 'lucide-react';
 
 const ENDINGS = [
@@ -27,6 +28,10 @@ const ZEN_EFFECTS = [
   { id: 'auto', label: 'Automatic', hint: 'Full effects; drops to the lighter scene if this device cannot keep up' },
   { id: 'full', label: 'Full', hint: 'Blended layers, blurred lyrics, always-moving backdrop' },
   { id: 'lite', label: 'Lite', hint: 'The same scene without the expensive layers' }
+];
+const ZEN_SOUNDS = [
+  { id: 'tempo', label: "The song's tempo", hint: 'The light swells at the song\u2019s real BPM. Works everywhere, nothing to allow' },
+  { id: 'sound', label: "This computer's sound", hint: 'Listens to what the computer plays. Asks to share your screen with its audio each time Zen opens' }
 ];
 const GRID_SIZES = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']];
 const LIBRARY_SORTS = [['recent', 'Recently played'], ['spotify', 'Spotify order'], ['az', 'A to Z'], ['za', 'Z to A'], ['owner', 'By owner']];
@@ -248,6 +253,7 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
       <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500">App</p>
       <Choice label="Open on" value={playbackSettings?.startupPage || 'resume'} options={STARTS} onChange={(v) => setPlaybackSetting('startupPage', v)} />
       <Choice label="Zen mode effects" value={playbackSettings?.zenEffects || 'auto'} options={ZEN_EFFECTS} onChange={(v) => { setPlaybackSetting('zenEffects', v); if (v !== 'auto') { try { localStorage.removeItem('jomify_zen_lite'); } catch { /* fine */ } } }} />
+      {canHearComputer() && <Choice label="Zen mode moves to" value={playbackSettings?.zenSound || 'tempo'} options={ZEN_SOUNDS} onChange={(v) => setPlaybackSetting('zenSound', v)} />}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-semibold text-white">Library card size</p>

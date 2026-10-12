@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, session, desktopCapturer } = require('electron');
 const express = require('express');
 const path = require('path');
 
@@ -37,7 +37,19 @@ ipcMain.handle('zen-fullscreen', (_event, on) => {
   return true;
 });
 
+// Zen mode listens to what the computer plays by asking to share the screen with its audio. On
+// Windows the loopback is handed straight over. On macOS it works only through the system's own
+// picker (macOS 15+); a source chosen here instead gives a silent track (electron/electron#52738).
+function allowComputerSound() {
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    desktopCapturer.getSources({ types: ['screen'] })
+      .then((sources) => callback(sources[0] ? { video: sources[0], audio: 'loopback' } : null))
+      .catch(() => callback(null));
+  }, { useSystemPicker: true });
+}
+
 app.whenReady().then(() => {
+  allowComputerSound();
   const listener = server.listen(port, host, () => createWindow());
 
   // Previously an unhandled error here (most often the Vite dev server already holding port

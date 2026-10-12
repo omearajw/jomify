@@ -8,7 +8,7 @@
 // hard edges across the screen. Big enough, and blurred enough, that stretching it does not
 // read as pixels.
 
-import { log } from '../services/debugLog';
+import { log } from '../services/debugLog.js';
 
 const SIZE = 256;          // the canvas
 const ART = 160;           // the art inside it, leaving room for the blur and the feather
@@ -28,7 +28,7 @@ function loadImage(src) {
     img.src = src;
   });
 }
-async function loadArt(url) {
+export async function loadArt(url) {
   try {
     return await loadImage(`${url}${url.includes('?') ? '&' : '?'}zen=1`);
   } catch (first) {

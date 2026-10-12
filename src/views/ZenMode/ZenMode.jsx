@@ -1,18 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, Projector } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { findLyrics } from '../../lib/lrc';
-import CinematicLyrics from '../../components/lyrics/CinematicLyrics';
-import AmbientWave from '../../components/lyrics/AmbientWave';
 import { useSlice } from '../../store/selectors';
+import { useProgress } from '../../hooks/useProgress';
+import { formatTime } from '../../utils/formatTime';
 import { getBlurredBackdrop } from '../../utils/blurBackdrop';
 import { togglePlay, next as nextTrack, previous as previousTrack, seek, setVolume as setPlaybackVolume } from '../../services/spotify/playbackController';
 import Projection from './Projection';
+import ZenStage from './ZenStage';
+import { ZenFocusLyricsLite, ZenPlainLyrics } from './ZenLyricsDom';
+import { FALLBACK_PALETTE, paletteCss, paletteForArt } from './palette';
+import { beatAt, canHearComputer, hearComputer, trackFeatures } from './zenPulse';
 import { usePartyStore } from '../../store/partyStore';
 import { requestedBy } from '../../party/view';
+import { log } from '../../services/debugLog';
 import { initialLite, measureFrames, rememberLite, zenEffectsSetting, SLOW_FRAME_MS } from './zenEffects';
+
+// Zen mode: a calm, cinematic room for the song. A WebGL stage draws slow light in the cover's
+// colours and the lyrics as glass that bends it, one line at a time; this component is the
+// cover, the words about the song, and the controls over it. Without WebGL, or on the lite
+// scene, the same layout sits over the pre-blurred cover instead.
 
 // Real fullscreen on macOS moves the window to its own Space and blacks out every other monitor,
 // which is a high price for hiding a tab bar. Zen already fills the viewport, so on a Mac it
@@ -21,25 +31,67 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform
 const desktop = () => (typeof window !== 'undefined' ? window.jomifyDesktop : null);
 const usesRealFullscreen = () => !IS_MAC && !desktop()?.setZenFullscreen;
 
+const EASE = [0.16, 1, 0.3, 1];
+const GLIDE = { type: 'spring', stiffness: 60, damping: 18, mass: 1 };
 
-// How dark the clear cover behind the lyrics is drawn; the glass lyrics use the same shade
-const CLEAR_COVER_SHADE = 'rgba(0, 0, 0, 0.62)';
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  useEffect(() => {
+    if (typeof matchMedia !== 'function') return undefined;
+    const mq = matchMedia('(prefers-reduced-motion: reduce)');
+    const on = () => setReduced(mq.matches);
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
+  return reduced;
+}
+
+// The thin line of light along the bottom: where the song is, and a place to seek
+function ZenProgress() {
+  const { position, duration, track } = useProgress();
+  const [scrub, setScrub] = useState(null);
+  const shown = scrub ?? position;
+  const pct = duration > 0 ? Math.min(100, (shown / duration) * 100) : 0;
+  const commit = () => { if (scrub !== null) { seek(scrub); setScrub(null); } };
+  return (
+    <div className="flex items-center gap-4 text-[11px] font-medium tracking-[0.08em] tabular-nums text-white/55">
+      <span className="w-10 text-right">{formatTime(shown)}</span>
+      <div className="group relative flex-1 h-4 flex items-center">
+        <div className="relative w-full h-[2px] rounded-full bg-white/12">
+          <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-white/25 to-white shadow-[0_0_12px_var(--zen-glow)]" style={{ width: `${pct}%` }} />
+          <div className="absolute top-1/2 w-2.5 h-2.5 -mt-[5px] -ml-[5px] rounded-full bg-white shadow-[0_0_14px_#fff,0_0_34px_var(--zen-glow)] transition-transform group-hover:scale-125" style={{ left: `${pct}%` }} />
+        </div>
+        <input
+          type="range"
+          min="0"
+          max={duration || 100}
+          value={Math.min(shown, duration || 100)}
+          onChange={(e) => setScrub(parseInt(e.target.value, 10))}
+          onPointerUp={commit}
+          onKeyUp={commit}
+          onTouchEnd={commit}
+          disabled={!track}
+          aria-label="Seek"
+          className="absolute inset-0 w-full opacity-0 cursor-pointer"
+        />
+      </div>
+      <span className="w-10">{formatTime(duration)}</span>
+    </div>
+  );
+}
 
 export default function ZenMode() {
-  const { isZenMode, toggleZenMode, savedVolume, setSavedVolume } = useSlice(useUserStore, ['isZenMode', 'toggleZenMode', 'savedVolume', 'setSavedVolume']);
+  const { isZenMode, toggleZenMode, savedVolume, setSavedVolume, playbackSettings } = useSlice(useUserStore, ['isZenMode', 'toggleZenMode', 'savedVolume', 'setSavedVolume', 'playbackSettings']);
   const { playbackState, activeDevice, isLocalActive, remoteVolume } = useSlice(usePlayerStore, ['playbackState', 'activeDevice', 'isLocalActive', 'remoteVolume']);
 
   const [prevVolume, setPrevVolume] = useState(50);
   const [isActive, setIsActive] = useState(true);
-  // The blurred wash is mounted only once the fullscreen transition has settled, so the
-  // viewport reflow and the first backdrop paint don't share the same frames
-  const [backdropReady, setBackdropReady] = useState(false);
-  // { art, url } so a stale blur for the previous track is never shown: derived below by art url
-  const [backdrop, setBackdrop] = useState(null);
-  // The lighter scene: same picture, without the blended layers, blurred text and perpetual
-  // motion that a machine without a working GPU cannot keep up with. Chosen in Settings, or
-  // measured here on the first seconds and remembered for this device.
+  // The lighter scene, for a machine that cannot keep the full one up: chosen in Settings, or
+  // measured here on the first seconds and remembered for this device
   const [lite, setLite] = useState(initialLite);
+  const [glFailed, setGlFailed] = useState(false);
+  const useGl = !lite && !glFailed;
+  const reducedMotion = usePrefersReducedMotion();
 
   // Projection mapping onto a wall: hidden behind a small button and the P key
   const [projecting, setProjecting] = useState(false);
@@ -52,15 +104,13 @@ export default function ZenMode() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  // --- LYRICS STATE ---
   const [showLyrics, setShowLyrics] = useState(false);
   const [plainLyrics, setPlainLyrics] = useState([]);
   const [syncedLyrics, setSyncedLyrics] = useState(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
-  const [lyricsError, setLyricsError] = useState('');
+  const [sungLine, setSungLine] = useState(null);
 
   const currentTrack = playbackState?.track_window?.current_track;
-  // At a party, the guest who asked for this song
   const partyHistory = usePartyStore((st) => st.history);
   const partyUpNext = usePartyStore((st) => st.upNext);
   const requestedByGuest = requestedBy(currentTrack, { history: partyHistory, upNext: partyUpNext });
@@ -68,7 +118,58 @@ export default function ZenMode() {
   const albumArtUrl = currentTrack?.album?.images?.[0]?.url || '';
   const trackId = currentTrack?.id || 'empty';
 
-  // Handle auto-hide UI
+  // The light's colours, from the cover
+  const [palette, setPalette] = useState(FALLBACK_PALETTE);
+  useEffect(() => {
+    let cancelled = false;
+    paletteForArt(albumArtUrl).then((p) => { if (!cancelled) setPalette(p); });
+    return () => { cancelled = true; };
+  }, [albumArtUrl]);
+  const colours = paletteCss(palette);
+
+  // The lite scene's backdrop: the cover, pre-blurred once
+  const [backdrop, setBackdrop] = useState(null);
+  useEffect(() => {
+    if (useGl) return undefined;
+    let cancelled = false;
+    if (albumArtUrl) getBlurredBackdrop(albumArtUrl).then((url) => { if (!cancelled) setBackdrop({ art: albumArtUrl, url }); });
+    return () => { cancelled = true; };
+  }, [albumArtUrl, useGl]);
+  const backdropUrl = backdrop?.art === albumArtUrl ? backdrop.url : null;
+
+  // What the light breathes to: the song's tempo, or this computer's sound when chosen in Settings
+  const soundSetting = playbackSettings?.zenSound === 'sound' && canHearComputer() ? 'sound' : 'tempo';
+  // Kept with the id it belongs to, so a new song never breathes to the last one's tempo
+  const [featuresFor, setFeaturesFor] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    const id = currentTrack?.id;
+    trackFeatures(id).then((f) => { if (!cancelled) setFeaturesFor({ id, f }); });
+    return () => { cancelled = true; };
+  }, [currentTrack?.id]);
+  const features = featuresFor && featuresFor.id === currentTrack?.id ? featuresFor.f : null;
+  const listener = useRef(null);
+  const [soundNote, setSoundNote] = useState('');
+  useEffect(() => {
+    if (soundSetting !== 'sound') return undefined;
+    let stopped = false;
+    hearComputer()
+      .then((l) => { if (stopped) l.stop(); else listener.current = l; })
+      .catch((err) => { log('zen', 'could not listen to the computer', err?.message); if (!stopped) setSoundNote(err?.name === 'NotAllowedError' ? 'Not listening: sharing was cancelled. Following the song’s tempo.' : (err?.message || 'Could not listen to this computer.')); });
+    return () => { stopped = true; listener.current?.stop(); listener.current = null; };
+  }, [soundSetting]);
+  useEffect(() => {
+    if (!soundNote) return undefined;
+    const id = setTimeout(() => setSoundNote(''), 6000);
+    return () => clearTimeout(id);
+  }, [soundNote]);
+  const pulse = useCallback((pos) => {
+    if (listener.current) return { ...listener.current.level(), live: true };
+    if (features) return { beat: beatAt(pos, features.tempo), energy: features.energy };
+    return null;
+  }, [features]);
+
+  // Controls fade away while nobody is touching anything
   useEffect(() => {
     let timeout;
     const resetTimer = () => {
@@ -76,19 +177,10 @@ export default function ZenMode() {
       clearTimeout(timeout);
       timeout = setTimeout(() => setIsActive(false), 3000);
     };
-
-    window.addEventListener('mousemove', resetTimer);
-    window.addEventListener('mousedown', resetTimer);
-    window.addEventListener('keydown', resetTimer);
-    window.addEventListener('touchstart', resetTimer);
-
-    resetTimer(); 
-
+    for (const ev of ['mousemove', 'mousedown', 'keydown', 'touchstart']) window.addEventListener(ev, resetTimer);
+    resetTimer();
     return () => {
-      window.removeEventListener('mousemove', resetTimer);
-      window.removeEventListener('mousedown', resetTimer);
-      window.removeEventListener('keydown', resetTimer);
-      window.removeEventListener('touchstart', resetTimer);
+      for (const ev of ['mousemove', 'mousedown', 'keydown', 'touchstart']) window.removeEventListener(ev, resetTimer);
       clearTimeout(timeout);
     };
   }, []);
@@ -107,39 +199,18 @@ export default function ZenMode() {
     return () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); };
   }, [isZenMode]);
 
-  // The component only exists while ZenMode is open, so this runs once per opening
-  useEffect(() => {
-    let done = false;
-    const ready = () => { if (!done) { done = true; setBackdropReady(true); } };
-    document.addEventListener('fullscreenchange', ready, { once: true });
-    const timer = setTimeout(ready, 350); // fullscreen refused or already active
-    return () => { document.removeEventListener('fullscreenchange', ready); clearTimeout(timer); };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (albumArtUrl) getBlurredBackdrop(albumArtUrl).then((url) => { if (!cancelled) setBackdrop({ art: albumArtUrl, url }); });
-    return () => { cancelled = true; };
-  }, [albumArtUrl]);
-
-  const backdropUrl = backdrop?.art === albumArtUrl ? backdrop.url : null;
-  // With lyrics on, the cover itself fills the screen behind them, lightly blurred and darkened,
-  // so the glass lyrics have detail to refract (they line their own copy up with this layer)
-  const [clearCover, setClearCover] = useState(null);
-  const showClearCover = Boolean(albumArtUrl) && !lite;
-
   // Measure the full scene once it is up; a slow result switches to lite for good on this device
   useEffect(() => {
-    if (!backdropReady || !backdropUrl || lite || zenEffectsSetting() !== 'auto') return undefined;
+    if (!useGl || zenEffectsSetting() !== 'auto') return undefined;
     let cancelled = false;
     const timer = setTimeout(() => {
       measureFrames().then((mean) => {
         if (cancelled || mean === null) return;
-        if (mean > SLOW_FRAME_MS) { rememberLite(true); setLite(true); }
+        if (mean > SLOW_FRAME_MS) { log('zen', 'slow frames; switching to the lite scene', `${mean.toFixed(1)}ms`); rememberLite(true); setLite(true); }
       });
-    }, 800);
+    }, 1500);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [backdropReady, backdropUrl, lite]);
+  }, [useGl]);
 
   useEffect(() => {
     if (!usesRealFullscreen()) return undefined;
@@ -151,394 +222,223 @@ export default function ZenMode() {
   }, [isZenMode, toggleZenMode]);
 
   // Volume goes through the controller, the same as the player bar: it reaches whichever
-  // device is playing. Talking to this computer's player directly, as this used to, did nothing
-  // while the music was on a speaker.
+  // device is playing
   const isRemote = Boolean(activeDevice) && !isLocalActive;
   const volumeValue = isRemote && remoteVolume !== null ? remoteVolume : savedVolume;
   const volumeSupported = !isRemote || activeDevice?.supportsVolume !== false;
-
   const applyVolume = (value) => {
     const clamped = Math.max(0, Math.min(100, value));
     if (clamped > 0) setPrevVolume(clamped);
     if (!isRemote) setSavedVolume(clamped);
     setPlaybackVolume(clamped);
   };
-  const handleVolumeChange = (e) => applyVolume(parseInt(e.target.value, 10));
   const toggleMute = () => {
     if (!volumeSupported) return;
     if (volumeValue > 0) applyVolume(0);
     else applyVolume(prevVolume > 0 ? prevVolume : 50);
   };
 
-  // Escape leaves Zen even when the browser refused fullscreen, in which case there is no
-  // fullscreenchange to react to
+  // Escape leaves Zen even when the browser refused fullscreen
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape' && !document.fullscreenElement) toggleZenMode(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [toggleZenMode]);
 
-  // --- UNIFIED BULLETPROOF LYRICS ENGINE ---
   useEffect(() => {
-    // Nothing to clear here: fetchLyrics resets every lyric state on its next run, and the
-    // panel is hidden while showLyrics is false, so stale state is never visible
-    if (!showLyrics || !currentTrack) return;
-
+    if (!showLyrics || !currentTrack) return undefined;
     let isMounted = true;
     const stop = new AbortController();
-    // Used to pick the right VERSION from lrclib -- the first hit is often a live cut or a remix
     const trackDurationSec = playbackState?.duration ? playbackState.duration / 1000 : null;
-
     const fetchLyrics = async () => {
       setSyncedLyrics(null);
       setPlainLyrics([]);
-      setLyricsError('');
       setLyricsLoading(true);
-
       try {
         const found = await findLyrics(currentTrack, trackDurationSec, { signal: stop.signal });
         if (!isMounted) return;
         if (found.synced) setSyncedLyrics(found.synced);
         else setPlainLyrics(found.plain);
-      } catch (err) {
-        if (!isMounted) return;
-        console.error("Lyrics Engine Error:", err);
-        setLyricsError(err.message || "Failed to load lyrics.");
-      } finally {
+      } catch { /* no lyrics: the cover keeps the stage */ } finally {
         if (isMounted) setLyricsLoading(false);
       }
     };
-
     fetchLyrics();
-
     return () => { isMounted = false; stop.abort(); };
-  // Deliberately keyed on the track id, not the track object or playbackState.duration: those
-  // change on every position tick and would refetch lyrics several times a second
+  // Keyed on the track id, not the track object or playbackState.duration: those change on every
+  // position tick and would refetch lyrics several times a second
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack?.id, showLyrics]);
 
-  const handleSeek = (timeMs) => { seek(timeMs); };
+  const hasSynced = showLyrics && Boolean(syncedLyrics?.length);
+  const hasPlain = showLyrics && !syncedLyrics && plainLyrics.length > 0;
+  const noLyrics = showLyrics && !lyricsLoading && !hasSynced && !hasPlain;
+  const split = showLyrics && !noLyrics;
+  const linesKey = useMemo(() => `${trackId}:${syncedLyrics?.length || 0}:${syncedLyrics?.[0]?.timeMs ?? ''}`, [trackId, syncedLyrics]);
 
-  // --- LYRICS ---
-  // Synced lyrics, glass and centred on the line being sung (shared with the lyrics page)
-  const renderSyncedEngine = () => (
-    <CinematicLyrics key={trackId} lines={syncedLyrics} onSeek={handleSeek} variant="zen" lite={lite} wash={backdropUrl} refract={showClearCover ? { url: albumArtUrl, behind: clearCover } : null} />
-  );
-
-  const renderEditorialLayout = () => {
-    return (
-      <div 
-        style={lite ? undefined : { 
-          maskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)',
-          WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)'
-        }}
-        className="relative z-10 flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] px-10 pt-16 pb-32 scroll-smooth w-full"
-      >
-        {lyricsLoading ? (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center h-full w-full space-y-8 pb-32">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-4 bg-white/10 rounded-full animate-pulse" style={{ width: `${Math.random() * 40 + 30}%` }} />
-            ))}
-          </motion.div>
-        ) : lyricsError || plainLyrics.length === 0 ? (
-          // No lyrics is not an error worth a red icon in Zen mode: the music gets the stage
-          <AmbientWave variant="zen" />
-        ) : (
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            transition={{ duration: 0.7, staggerChildren: 0.05 }}
-            className="flex flex-col text-center pb-32"
-          >
-            {plainLyrics.map((line, i) => {
-              const isHighlight = i % 7 === 0;
-              return (
-                <p 
-                  key={i} 
-                  className={`break-inside-avoid mb-8 transition-all duration-500 hover:text-white ${isHighlight ? 'text-2xl font-black text-white tracking-tight border-l-4 border-[var(--brand-mid)] pl-4 py-1 drop-shadow-[0_0_20px_rgba(255,255,255,0.6)]' : 'text-lg font-medium text-neutral-400 hover:scale-[1.02] origin-center'}`}
-                >
-                  {line || '♪'}
-                </p>
-              );
-            })}
-          </motion.div>
-        )}
-      </div>
-    );
-  };
+  const boxRef = useRef(null);
+  const dotsRef = useRef(null);
+  const onLine = useCallback((text) => setSungLine(text), []);
+  const onFailed = useCallback((reason) => { log('zen', 'WebGL unavailable; using the plain scene', reason); setGlFailed(true); }, []);
 
   if (!isZenMode) return null;
-
-  // The projector takes the whole screen; Zen's own scene stays mounted beneath so coming back
-  // is instant and the lyrics clock keeps its place
+  // The projector takes the whole screen
   if (projecting) return <Projection onClose={() => setProjecting(false)} />;
 
+  const idle = isActive ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none';
+  const artists = currentTrack?.artists?.map((a) => a.name).join(', ') || '';
+
   return (
-    <div className={`fixed inset-0 z-[100] bg-black overflow-hidden flex items-center justify-center font-sans select-none transition-colors duration-700 ${isActive ? '' : 'cursor-none'}`}>
-      
-      {/* ATMOSPHERIC CINEMATIC BACKGROUND & HEAVY DIRTY LENS EFFECT */}
-      <AnimatePresence>
-        {albumArtUrl && backdropReady && (
-          <motion.div
-            key={`bg-${trackId}`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.8, ease: "easeInOut" } }}
-            transition={{ duration: 2, ease: "easeInOut" }}
-            className="absolute inset-0 overflow-hidden pointer-events-none"
-          >
-            {backdropUrl ? (
-              <>
-                {/* A pre-blurred, edge-feathered copy of the art, stretched: same wash, no per-frame
-                    blur, and no edge to see however it turns. The layers are larger than the screen
-                    so the feather sits beyond the corners. */}
-                <div
-                  className={`absolute -inset-[30%] bg-contain bg-center bg-no-repeat opacity-80 ${lite ? '' : 'animate-[pulse_12s_ease-in-out_infinite] will-change-transform'}`}
-                  style={{ backgroundImage: `url(${backdropUrl})` }}
-                />
-                <div
-                  className={`absolute -inset-[45%] bg-contain bg-no-repeat opacity-70 ${lite ? 'rotate-12 bg-[position:40%_55%]' : 'bg-[position:38%_58%] animate-[spin_90s_linear_infinite] will-change-transform'}`}
-                  style={{ backgroundImage: `url(${backdropUrl})` }}
-                />
-              </>
-            ) : (
-              // No CORS on the image: one modest CSS blur on a small box, scaled up, rather than
-              // two full-viewport 150px blurs
-              <div
-                className="absolute left-1/2 top-1/2 w-[60vmax] h-[60vmax] -translate-x-1/2 -translate-y-1/2 scale-[2] bg-cover bg-center opacity-40 blur-[40px] [mask-image:radial-gradient(closest-side,black_40%,transparent_100%)] saturate-[2] animate-[pulse_12s_ease-in-out_infinite] will-change-transform"
-                style={{ backgroundImage: `url(${albumArtUrl})` }}
-              />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/90" />
-            
-            {/* ENHANCED DIRTY LENS / ANAMORPHIC FILM GRAIN & HEAVY VIGNETTE */}
-            <div className={`absolute inset-0 bg-noise pointer-events-none ${lite ? 'opacity-[0.04]' : 'opacity-[0.08] mix-blend-overlay'}`} />
-            <div className="absolute inset-0 bg-radial-vignette opacity-95 pointer-events-none" />
-            <div 
-              className="absolute inset-0 pointer-events-none"
-              style={{ background: 'radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.55) 100%)' }}
-            />
-            {/* A plain tint: as color-dodge, WebKit blew the wash out to hard-edged, posterised red and
-                blue, and Chromium banded it. The wash layers above are brighter to make up its lift */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-[var(--brand-mid)]/10 via-transparent to-blue-500/5 pointer-events-none" />
-
-            {/* Film grain — self-contained inline noise, jittering like real 35mm dirt. A CSS
-                transform keyframe (compositor only) rather than a blended layer re-composited
-                every frame */}
-            {!lite && <div
-              className="absolute -inset-[10%] pointer-events-none opacity-[0.07] animate-grain will-change-transform"
-              style={{
-                backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
-                backgroundSize: '180px 180px',
-              }}
-            />}
-
-            {/* Anamorphic light leak / lens flare sweep: softness from wide gradient stops, not a filter */}
-            {!lite && <motion.div
-              className="absolute inset-y-0 -left-1/3 w-2/3 pointer-events-none mix-blend-screen opacity-[0.12] will-change-transform"
-              style={{
-                background: 'linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.35) 46%, var(--brand-mid) 52%, transparent 72%)',
-              }}
-              animate={{ x: ['-10%', '160%'] }}
-              transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut', repeatDelay: 6 }}
-            />}
-
-            {/* Dust / smudge specks for a lived-in lens */}
-            <div
-              className={`absolute inset-0 pointer-events-none ${lite ? 'opacity-[0.06]' : 'opacity-[0.08] mix-blend-screen'}`}
-              style={{
-                backgroundImage: `
-                  radial-gradient(circle at 18% 24%, rgba(255,255,255,0.9) 0px, transparent 2px),
-                  radial-gradient(circle at 76% 68%, rgba(255,255,255,0.7) 0px, transparent 1.5px),
-                  radial-gradient(circle at 62% 15%, rgba(255,255,255,0.6) 0px, transparent 1px),
-                  radial-gradient(circle at 32% 82%, rgba(255,255,255,0.8) 0px, transparent 2px),
-                  radial-gradient(circle at 88% 40%, rgba(255,255,255,0.5) 0px, transparent 1px)
-                `,
-              }}
-            />
-
-            {/* Chromatic fringe at the extreme edges */}
-            <div
-              className={`absolute inset-0 pointer-events-none ${lite ? 'opacity-[0.25]' : 'mix-blend-screen opacity-[0.35]'}`}
-              style={{
-                background: 'radial-gradient(ellipse at center, transparent 60%, rgba(255,60,90,0.08) 85%, transparent 100%), radial-gradient(ellipse at center, transparent 62%, rgba(60,180,255,0.08) 88%, transparent 100%)',
-              }}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <button 
-        onClick={toggleZenMode}
-        aria-label="Leave Zen mode"
-        title="Leave Zen mode (Esc)"
-        className={`absolute top-8 right-8 z-20 w-12 h-12 flex items-center justify-center bg-white/5 border border-white/10 text-white/60 hover:text-white rounded-full backdrop-blur-xl hover:bg-white/10 hover:scale-105 active:scale-95 transition-all duration-700 shadow-2xl ${isActive ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-      >
-        <Minimize2 className="w-5 h-5" />
-      </button>
-
-      {showClearCover && (
-        <div
-          ref={setClearCover}
-          aria-hidden="true"
-          className={`absolute -inset-5 pointer-events-none bg-cover bg-center blur-[6px] transition-opacity duration-1000 ${showLyrics ? 'opacity-100' : 'opacity-0'}`}
-          style={{ backgroundImage: `linear-gradient(${CLEAR_COVER_SHADE}, ${CLEAR_COVER_SHADE}), url(${albumArtUrl})` }}
+    <div
+      className={`fixed inset-0 z-[100] bg-black overflow-hidden select-none font-sans text-white ${isActive ? '' : 'cursor-none'}`}
+      style={{ '--zen-accent': colours.accent, '--zen-glow': colours.glow }}
+    >
+      {useGl ? (
+        <ZenStage
+          lines={hasSynced ? syncedLyrics : null}
+          linesKey={linesKey}
+          showLyrics={hasSynced}
+          palette={palette}
+          paused={isPaused}
+          pulse={pulse}
+          boxRef={boxRef}
+          dotsRef={dotsRef}
+          onLine={onLine}
+          onFailed={onFailed}
+          reducedMotion={reducedMotion}
         />
+      ) : (
+        <div className="absolute inset-0 pointer-events-none">
+          {backdropUrl && <div className="absolute -inset-[30%] bg-contain bg-center bg-no-repeat opacity-80 transition-opacity duration-1000" style={{ backgroundImage: `url(${backdropUrl})` }} />}
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.75)_100%)]" />
+        </div>
       )}
 
-      {/* DYNAMIC CINEMATIC SPLIT-SCREEN LAYOUT */}
-      <div className="relative z-10 flex flex-col lg:flex-row items-center justify-center w-full max-w-[1800px] mx-auto h-full px-8 lg:px-16 gap-8 lg:gap-16 pb-20">
-        <AnimatePresence mode="wait">
-          {currentTrack ? (
-            <>
-              {/* LEFT COLUMN: ALBUM ART & METADATA */}
-              <motion.div
-                className={`flex flex-col items-center justify-center transition-all duration-700 ${showLyrics ? 'w-full lg:w-5/12 max-w-xl shrink-0' : 'w-full max-w-4xl shrink-0'}`}
-              >
-                <AnimatePresence mode="popLayout">
-                  <motion.div
-                    key={trackId}
-                    initial={lite ? { opacity: 0, y: 22 } : { opacity: 0, y: 22, filter: 'blur(10px)' }}
-                    animate={lite ? { opacity: 1, y: 0 } : { opacity: 1, y: 0, filter: 'blur(0px)' }}
-                    exit={lite ? { opacity: 0, y: -16, transition: { duration: 0.25 } } : { opacity: 0, y: -16, filter: 'blur(10px)', transition: { duration: 0.4, ease: 'easeIn' } }}
-                    transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-                    className="flex flex-col items-center w-full"
-                  >
-                    <div
-                      className={`relative group mb-8 shadow-[0_30px_80px_-15px_rgba(0,0,0,0.95)] rounded-2xl overflow-hidden transition-all duration-700 hover:shadow-[var(--brand-mid)]/20 hover:shadow-[0_35px_90px_-10px_rgba(34,197,94,0.3)] hover:scale-[1.01] ${showLyrics ? 'w-64 h-64 md:w-80 md:h-80' : 'w-72 h-72 md:w-[380px] md:h-[380px]'}`}
-                    >
-                      <img 
-                        src={albumArtUrl} 
-                        alt="" 
-                        className="w-full h-full object-cover rounded-2xl"
-                      />
-                      <div className="absolute inset-0 border border-white/10 rounded-2xl pointer-events-none transition-colors group-hover:border-white/20" />
-                      <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/5 shadow-[inset_0_0_60px_rgba(0,0,0,0.6)] pointer-events-none" />
-                    </div>
-                    
-                    <div className="w-full flex flex-col items-center text-center">
-                      <h1 className={`font-black text-white tracking-tighter mb-2 w-full break-words [text-wrap:balance] leading-tight px-4 drop-shadow-[0_0_25px_rgba(255,255,255,0.5)] drop-shadow-[0_4px_16px_rgba(0,0,0,0.8)] ${showLyrics ? 'text-2xl md:text-3xl lg:text-4xl' : 'text-3xl md:text-5xl lg:text-6xl'}`}>
-                        {currentTrack.name}
-                      </h1>
-                      <h2 className={`font-semibold text-neutral-300 w-full break-words [text-wrap:balance] leading-snug px-4 drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)] ${showLyrics ? 'text-base md:text-lg' : 'text-lg md:text-2xl'}`}>
-                        {currentTrack.artists.map(a => a.name).join(', ')}
-                      </h2>
-                      {requestedByGuest && <p className={`mt-2 font-bold text-[var(--brand-mid)] drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)] ${showLyrics ? 'text-sm md:text-base' : 'text-base md:text-xl'}`}>Requested by {requestedByGuest}</p>}
-                    </div>
-                  </motion.div>
-                </AnimatePresence>
-              </motion.div>
+      {/* Up from black */}
+      <motion.div aria-hidden="true" className="absolute inset-0 z-[5] bg-black pointer-events-none" initial={{ opacity: 1 }} animate={{ opacity: 0 }} transition={{ duration: reducedMotion ? 0.3 : 1.6, ease: 'easeOut' }} />
 
-              {/* RIGHT COLUMN: HYPER-CINEMATIC LYRICS ENGINE */}
-              <AnimatePresence>
-                {showLyrics && (
-                  <motion.div
-                    initial={lite ? { opacity: 0, x: 40 } : { opacity: 0, x: 40, filter: "blur(12px)" }}
-                    animate={lite ? { opacity: 1, x: 0 } : { opacity: 1, x: 0, filter: "blur(0px)" }}
-                    exit={lite ? { opacity: 0, x: 20 } : { opacity: 0, x: 20, filter: "blur(12px)" }}
-                    transition={{ duration: 0.6, ease: "easeOut" }}
-                    className="w-full lg:w-7/12 h-full flex flex-col items-center justify-center py-12 lg:py-24"
-                  >
-                    <AnimatePresence mode="wait">
-                      <motion.div
-                        key={`${trackId}-${syncedLyrics ? 'synced' : 'plain'}`}
-                        initial={{ opacity: 0, y: 16 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -12, transition: { duration: 0.3, ease: 'easeIn' } }}
-                        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                        className="w-full h-full flex flex-col items-center"
-                      >
-                        {syncedLyrics ? renderSyncedEngine() : renderEditorialLayout()}
-                      </motion.div>
-                    </AnimatePresence>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </>
-          ) : (
-            <motion.h1 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              className="text-3xl text-neutral-500 font-bold tracking-tight animate-pulse"
+      <main className={`relative z-10 h-full w-full flex items-center ${split ? 'justify-start' : 'justify-center'} px-[6vw] pt-[6vh] pb-[18vh] gap-[5vw]`}>
+        <motion.section layout transition={reducedMotion ? { duration: 0 } : GLIDE} className="shrink-0 flex flex-col items-center" style={{ width: split ? 'min(30vw, 44vh)' : 'min(34vw, 50vh)' }}>
+          <AnimatePresence mode="popLayout" initial>
+            {currentTrack ? (
+              <motion.div
+                key={trackId}
+                className="w-full flex flex-col items-center"
+                initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24, filter: 'blur(14px)' }}
+                animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, filter: 'blur(0px)' }}
+                exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -18, filter: 'blur(14px)' }}
+                transition={{ duration: 1.1, ease: EASE, delay: 0.25 }}
+              >
+                <div className="relative w-full aspect-square">
+                  <img src={albumArtUrl} alt="" draggable="false" className="absolute inset-0 w-full h-full object-cover rounded-[22px] shadow-[0_40px_90px_-20px_rgba(0,0,0,0.85),0_0_120px_-10px_var(--zen-glow)] transition-shadow duration-1000" />
+                  <div aria-hidden="true" className="absolute inset-0 rounded-[22px] pointer-events-none shadow-[inset_0_0_0_1px_rgba(255,255,255,0.16)] bg-[linear-gradient(135deg,rgba(255,255,255,0.28)_0%,rgba(255,255,255,0.06)_28%,transparent_46%)]" />
+                  <img src={albumArtUrl} alt="" aria-hidden="true" draggable="false" className="absolute left-0 top-full mt-1.5 w-full h-full object-cover rounded-[22px] -scale-y-100 opacity-20 blur-[3px] pointer-events-none [mask-image:linear-gradient(to_top,black,transparent_32%)]" />
+                </div>
+                <motion.div className="relative z-10 mt-10 w-full text-center" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE, delay: 0.55 }}>
+                  <h1 className={`font-semibold tracking-[-0.015em] leading-tight [text-wrap:balance] drop-shadow-[0_2px_30px_rgba(0,0,0,0.6)] ${split ? 'text-3xl' : 'text-4xl md:text-5xl'}`}>{currentTrack.name}</h1>
+                  <motion.p className="mt-3 text-[13px] font-semibold uppercase tracking-[0.38em] text-[var(--zen-accent)] [text-shadow:0_0_18px_var(--zen-glow)] transition-colors duration-1000" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.9, delay: 0.8 }}>{artists}</motion.p>
+                  {requestedByGuest && <p className="mt-2.5 text-xs uppercase tracking-[0.2em] text-white/50">Requested by {requestedByGuest}</p>}
+                  <AnimatePresence>
+                    {noLyrics && <motion.p key="none" className="mt-4 text-xs uppercase tracking-[0.25em] text-white/40" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.8 }}>No lyrics for this one</motion.p>}
+                  </AnimatePresence>
+                </motion.div>
+              </motion.div>
+            ) : (
+              <motion.p key="waiting" className="text-white/40 text-lg tracking-[0.2em] uppercase" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>Waiting for music</motion.p>
+            )}
+          </AnimatePresence>
+        </motion.section>
+
+        <AnimatePresence>
+          {split && (
+            <motion.section
+              key="lyrics"
+              ref={boxRef}
+              aria-label="Lyrics"
+              className="relative flex-1 max-w-[820px] h-[58vh]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.8, ease: EASE }}
             >
-              Awaiting active audio stream...
-            </motion.h1>
+              {hasPlain && <ZenPlainLyrics lines={plainLyrics} />}
+              {hasSynced && !useGl && <ZenFocusLyricsLite lines={syncedLyrics} />}
+              {hasSynced && useGl && (
+                <>
+                  <p className="sr-only" aria-live="off">{sungLine || ''}</p>
+                  <div ref={dotsRef} aria-hidden="true" className="absolute left-0 top-1/2 -translate-y-1/2 flex gap-3 transition-opacity duration-700" style={{ opacity: 0 }}>
+                    {[0, 1, 2].map((k) => (
+                      <span key={k} className="zen-dot w-3.5 h-3.5 rounded-full bg-white" style={{ '--k': k }} />
+                    ))}
+                  </div>
+                </>
+              )}
+              {lyricsLoading && <div className="absolute left-0 top-1/2 -translate-y-1/2 flex gap-3" aria-label="Finding the lyrics">{[0, 1, 2].map((k) => <span key={k} className="w-3 h-3 rounded-full bg-white/40 animate-pulse" style={{ animationDelay: `${k * 200}ms` }} />)}</div>}
+            </motion.section>
           )}
         </AnimatePresence>
-      </div>
+      </main>
 
-      {/* FIXED PLAYBACK CONTROLS */}
-      <div 
-        className={`absolute bottom-[10%] z-20 left-1/2 -translate-x-1/2 flex items-center space-x-8 bg-black/30 border border-white/[0.08] px-8 py-4 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.5)] transition-all duration-700 ease-in-out ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'}`}
-      >
+      <motion.div className="absolute inset-0 z-20 pointer-events-none" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.9, delay: 1.1 }}>
         <button
-          onClick={previousTrack}
-          aria-label="Previous"
-          className="text-white/40 hover:text-white hover:scale-110 active:scale-95 transition-all duration-300"
+          onClick={toggleZenMode}
+          aria-label="Leave Zen mode"
+          title="Leave Zen mode (Esc)"
+          className={`absolute top-8 right-9 w-11 h-11 rounded-full grid place-items-center bg-white/[0.04] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)] text-white/70 hover:text-white hover:bg-white/10 transition-all duration-700 ${idle}`}
         >
-          <SkipBack className="w-6 h-6 fill-current" />
+          <Minimize2 className="w-[18px] h-[18px]" />
         </button>
-        
-        <button
-          onClick={togglePlay}
-          aria-label={playbackState?.paused ? 'Play' : 'Pause'}
-          className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl shadow-black/50"
-        >
-          {isPaused ? (
-            <Play className="w-7 h-7 fill-current ml-1" />
-          ) : (
-            <Pause className="w-7 h-7 fill-current" />
+
+        <div className={`absolute left-1/2 bottom-[58px] -translate-x-1/2 flex items-center gap-7 px-6 py-3 rounded-full bg-gradient-to-b from-white/[0.09] to-white/[0.03] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1),inset_0_1px_0_rgba(255,255,255,0.18),0_20px_50px_-10px_rgba(0,0,0,0.6)] transition-all duration-700 ${idle} ${isActive ? 'translate-y-0' : 'translate-y-3'}`}>
+          <button onClick={previousTrack} aria-label="Previous" className="text-white/75 hover:text-white hover:scale-110 active:scale-95 transition-all">
+            <SkipBack className="w-5 h-5" />
+          </button>
+          <button onClick={togglePlay} aria-label={playbackState?.paused ? 'Play' : 'Pause'} className="w-14 h-14 rounded-full bg-white text-[#0a0810] grid place-items-center shadow-[0_0_40px_var(--zen-glow),0_0_0_6px_rgba(255,255,255,0.06)] hover:scale-105 active:scale-95 transition-all">
+            {isPaused ? <Play className="w-5 h-5 fill-current ml-0.5" /> : <Pause className="w-5 h-5 fill-current" />}
+          </button>
+          <button onClick={nextTrack} aria-label="Next" className="text-white/75 hover:text-white hover:scale-110 active:scale-95 transition-all">
+            <SkipForward className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className={`absolute left-[12%] right-[12%] bottom-6 transition-opacity duration-700 ${idle}`}>
+          <ZenProgress />
+        </div>
+
+        <div className={`absolute right-10 bottom-[52px] flex items-center gap-4 transition-opacity duration-700 ${isActive ? 'opacity-60 hover:opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+          <button
+            onClick={() => setShowLyrics(!showLyrics)}
+            aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+            aria-pressed={showLyrics}
+            className={`transition-colors ${showLyrics ? 'text-[var(--zen-accent)] drop-shadow-[0_0_6px_var(--zen-glow)]' : 'text-white hover:text-white'}`}
+          >
+            <Mic2 className="w-[18px] h-[18px]" />
+          </button>
+          <button onClick={() => setProjecting(true)} aria-label="Projector" title="Projector: map the music onto a wall (P)" className="text-white">
+            <Projector className="w-[18px] h-[18px]" />
+          </button>
+          <button onClick={toggleMute} disabled={!volumeSupported} aria-label={volumeValue === 0 ? 'Unmute' : 'Mute'} className="text-white disabled:opacity-40">
+            {volumeValue === 0 ? <VolumeX className="w-[18px] h-[18px]" /> : <Volume2 className="w-[18px] h-[18px]" />}
+          </button>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={volumeValue}
+            onChange={(e) => applyVolume(parseInt(e.target.value, 10))}
+            disabled={!volumeSupported}
+            aria-label="Volume"
+            className="zen-range w-20"
+            style={{ '--v': `${volumeValue}%` }}
+          />
+        </div>
+
+        <AnimatePresence>
+          {soundNote && (
+            <motion.p key="note" role="status" className="absolute right-10 bottom-24 max-w-xs text-right text-xs text-white/60" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>{soundNote}</motion.p>
           )}
-        </button>
-
-        <button
-          onClick={nextTrack}
-          aria-label="Next"
-          className="text-white/40 hover:text-white hover:scale-110 active:scale-95 transition-all duration-300"
-        >
-          <SkipForward className="w-6 h-6 fill-current" />
-        </button>
-      </div>
-
-      {/* VOLUME & LYRICS TOGGLE */}
-      <div className={`absolute bottom-8 right-8 z-30 flex items-center space-x-3 bg-neutral-950/40 border border-white/5 hover:border-white/10 hover:bg-neutral-900/60 px-4 py-3 rounded-xl transition-all duration-500 group ${isActive ? 'opacity-30 hover:opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-        <button 
-          onClick={() => setShowLyrics(!showLyrics)} 
-          aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
-          aria-pressed={showLyrics}
-          className={`transition-colors ${showLyrics ? 'text-[var(--brand-mid)] drop-shadow-[0_0_8px_rgba(249,19,98,0.5)]' : 'text-white/60 hover:text-white'}`}
-        >
-          <Mic2 className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setProjecting(true)}
-          aria-label="Projector"
-          title="Projector: map the music onto a wall (P)"
-          className="text-white/60 hover:text-white transition-colors"
-        >
-          <Projector className="w-4 h-4" />
-        </button>
-
-        <div className="w-px h-4 bg-white/10 mx-1" />
-
-        <button onClick={toggleMute} disabled={!volumeSupported} aria-label={volumeValue === 0 ? 'Unmute' : 'Mute'} className="text-white/60 hover:text-white transition-colors disabled:opacity-40">
-          {volumeValue === 0 ? (
-            <VolumeX className="w-4 h-4 text-red-400" />
-          ) : (
-            <Volume2 className="w-4 h-4" />
-          )}
-        </button>
-        <input 
-          type="range"
-          min="0"
-          max="100"
-          value={volumeValue}
-          onChange={handleVolumeChange}
-          disabled={!volumeSupported}
-          aria-label="Volume"
-          className="w-0 group-hover:w-20 accent-white h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer transition-all duration-500 ease-out origin-right"
-        />
-      </div>
+        </AnimatePresence>
+      </motion.div>
     </div>
   );
 }

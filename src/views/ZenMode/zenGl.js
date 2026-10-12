@@ -1,0 +1,364 @@
+// Zen mode's picture, drawn by WebGL: slow ribbons of light in the cover's colours, and the lyric
+// lines as glass that bends that light. Everything visual lives here; ZenStage decides what is on
+// screen and where, and hands it over each frame.
+//
+// Each lyric line is drawn once, when it first appears, into one texture holding four things:
+//   r: the letters, sharp           g: the letters slightly blurred, the height of the glass bevel
+//   b: the letters widely blurred   a: reading order, 0 at the first letter to 1 at the last
+// The wide blur is the line's halo, its shadow and, scaled down, the soft text of the lines either
+// side; the reading order lets the sung part glow with a feathered edge that runs along the first
+// row before the second. Nothing about a line is redrawn per frame, only where it is.
+
+const VS = 'attribute vec2 p; varying vec2 uv; void main(){ uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }';
+
+const BLUR_FS = `precision mediump float; uniform sampler2D tex; uniform vec2 dir; varying vec2 uv;
+void main(){ vec4 s = texture2D(tex, uv) * 0.19648;
+  s += (texture2D(tex, uv + dir * 1.41176) + texture2D(tex, uv - dir * 1.41176)) * 0.29691;
+  s += (texture2D(tex, uv + dir * 3.29412) + texture2D(tex, uv - dir * 3.29412)) * 0.09447;
+  s += (texture2D(tex, uv + dir * 5.17647) + texture2D(tex, uv - dir * 5.17647)) * 0.01038;
+  gl_FragColor = s; }`;
+
+const COPY_FS = 'precision mediump float; uniform sampler2D tex; varying vec2 uv; void main(){ gl_FragColor = texture2D(tex, uv); }';
+
+const PACK_FS = `precision mediump float; varying vec2 uv; uniform sampler2D sharp, bevel, soft, order;
+void main(){ gl_FragColor = vec4(texture2D(sharp, uv).r, texture2D(bevel, uv).r, texture2D(soft, uv).r, texture2D(order, uv).r); }`;
+
+const SCENE_FS = `precision highp float; varying vec2 uv;
+uniform float t, beat, aspect, intro, dim; uniform vec3 c1, c2, c3;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
+void main(){
+  vec2 p = vec2(uv.x * aspect, uv.y);
+  vec3 col = mix(vec3(0.012, 0.01, 0.025), c3 * 0.06, uv.y);
+  for (int i = 0; i < 3; i++){
+    float fi = float(i);
+    vec3 c = i == 0 ? c1 : i == 1 ? c2 : mix(c1, c2, 0.5);
+    float y = 0.55 + 0.18 * sin(p.x * 1.1 + t * 0.045 + fi * 2.1) + 0.12 * (fbm(vec2(p.x * 0.7 + fi * 3.0, t * 0.025)) - 0.5) - fi * 0.13;
+    float w = 0.09 + 0.05 * fbm(vec2(p.x * 1.3, t * 0.02 + fi));
+    float band = exp(-pow((uv.y - y) / w, 2.0));
+    float curtain = 0.55 + 0.45 * fbm(vec2(p.x * 9.0 + t * 0.08, uv.y * 1.5 + fi * 7.0));
+    float upper = smoothstep(y - w * 2.5, y + w * 0.4, uv.y);
+    col += c * band * curtain * (0.55 + 0.25 * beat) * (0.6 + 0.4 * upper) * intro;
+    col += c * exp(-pow((uv.y - y) / (w * 4.0), 2.0)) * 0.07 * intro;
+    // Fine filaments along each ribbon: the detail the glass has to bend
+    float fil = pow(abs(sin((uv.y - y) * 48.0 + fbm(vec2(p.x * 2.2, fi + t * 0.01)) * 7.0)), 34.0) * smoothstep(0.35, 0.75, fbm(vec2(p.x * 1.6 - t * 0.02, fi * 5.0)));
+    col += mix(c, vec3(1.0), 0.5) * fil * band * 0.3 * intro;
+  }
+  gl_FragColor = vec4(col * dim, 1.0);
+}`;
+
+// Six faces at once covers a line change: the big face leaving and arriving, and the small ones
+// above and below doing the same. With the scene, seven textures: WebGL1 promises eight.
+const ITEMS = 6;
+const COMP_FS = `precision highp float; varying vec2 uv;
+uniform sampler2D scene; uniform vec2 res; uniform float strength, grain; uniform vec3 c1;
+${Array.from({ length: ITEMS }, (_, i) => `uniform sampler2D tx${i}; uniform vec4 bx${i}, pr${i}, tl${i};`).join('\n')}
+float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float hgt(sampler2D tx, vec2 st){ return smoothstep(0.06, 0.94, texture2D(tx, st).g); }
+// bx: where the line's texture is drawn (left, top, width, height, device pixels)
+// pr: opacity, how much glass (against soft text), halo, how visible the sung glow is
+// tl: one texel of the texture, then how much of the line has been sung
+vec3 item(vec3 col, sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
+  if (pr.x < 0.003) return col;
+  vec2 l = (fpx - bx.xy) / bx.zw;
+  if (l.x < 0.0 || l.y < 0.0 || l.x > 1.0 || l.y > 1.0) return col;
+  vec2 st = vec2(l.x, 1.0 - l.y);
+  vec4 p = texture2D(tx, st);
+  float a = p.r, s = p.b, o = p.a, alpha = pr.x, glass = pr.y;
+  // The head runs past both ends, so the first letter starts unlit and the last ends fully lit
+  float head = mix(-0.06, 1.08, tl.z);
+  float lit = tl.z <= 0.0 ? 0.0 : (1.0 - smoothstep(head - 0.05, head + 0.005, o)) * pr.w;
+  // The glow spills past its row into the next one's band, where reading order jumps from one
+  // row to the next: averaged over a row's height, it fades between rows instead of cutting off
+  float litGlow = 0.0;
+  if (tl.z > 0.0){
+    for (int k = -2; k <= 2; k++){
+      float ok = texture2D(tx, st + vec2(0.0, float(k) * 0.5 * tl.w * tl.y)).a;
+      litGlow += 1.0 - smoothstep(head - 0.05, head + 0.005, ok);
+    }
+    litGlow *= 0.2 * pr.w;
+  }
+  float sh = texture2D(tx, st + vec2(-1.5, 4.0) * tl.xy).b;
+  col *= 1.0 - 0.45 * sh * glass * alpha * (1.0 - a);
+  if (glass > 0.003 && a > 0.003){
+    float dx = hgt(tx, st + vec2(tl.x, 0.0)) - hgt(tx, st - vec2(tl.x, 0.0));
+    float dy = hgt(tx, st + vec2(0.0, tl.y)) - hgt(tx, st - vec2(0.0, tl.y));
+    vec3 n = normalize(vec3(-dx * 3.2, -dy * 3.2, 1.0));
+    vec2 off = (n.xy * strength + (1.0 - n.z) * vec2(0.0, -6.0)) / res;
+    vec3 seen = vec3(texture2D(scene, uv - off * 0.75).r, texture2D(scene, uv - off).g, texture2D(scene, uv - off * 1.32).b);
+    vec3 face = mix(seen * 1.5 + 0.03, vec3(0.30, 0.30, 0.34), 0.24);
+    vec3 hv = normalize(normalize(vec3(-0.6, 0.6, 0.55)) + vec3(0.0, 0.0, 1.0));
+    float spec = pow(max(dot(n, hv), 0.0), 40.0);
+    float rim = pow(1.0 - n.z, 1.4);
+    float lower = max(dot(n.xy, normalize(vec2(0.7, -0.7))), 0.0);
+    vec3 g = face + spec * 0.8 + rim * 0.32 - lower * 0.16;
+    g = mix(g, vec3(1.0) - (1.0 - n.z) * 0.06, lit);
+    col = mix(col, g, a * glass * alpha);
+  }
+  col = mix(col, vec3(0.92, 0.9, 0.96), clamp(s * 1.25, 0.0, 1.0) * (1.0 - glass) * alpha * 0.32);
+  col += (vec3(1.0) * 0.10 + c1 * 0.16) * s * pr.z * alpha * (1.0 - a * glass * 0.5);
+  // Kept off letters still to be sung, so the light never seems to run ahead of the singer
+  col += (vec3(1.0) * 0.42 + c1 * 0.5) * s * litGlow * alpha * (1.0 - a * 0.5) * (1.0 - a * (1.0 - lit) * 0.85);
+  return col;
+}
+void main(){
+  vec2 fpx = vec2(gl_FragCoord.x, res.y - gl_FragCoord.y);
+  vec3 col = texture2D(scene, uv).rgb;
+${Array.from({ length: ITEMS }, (_, i) => `  col = item(col, tx${i}, bx${i}, pr${i}, tl${i}, fpx);`).join('\n')}
+  vec2 q = uv - 0.5;
+  col *= 1.0 - dot(q, q) * 0.9;
+  col += (hash(fpx + fract(grain) * 31.0) - 0.5) * 0.022;
+  col = col / (1.0 + col * 0.25);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const FONT_FAMILY = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+export const lineFont = (px) => `800 ${px}px ${FONT_FAMILY}`;
+
+// Words onto rows no wider than maxW (device pixels)
+export function wrapRows(ctx, text, maxW) {
+  const rows = [];
+  let row = '';
+  for (const word of String(text).split(/\s+/).filter(Boolean)) {
+    const next = row ? `${row} ${word}` : word;
+    if (row && ctx.measureText(next).width > maxW) { rows.push(row); row = word; } else row = next;
+  }
+  if (row) rows.push(row);
+  return rows;
+}
+
+// onFail(reason) says why WebGL could not be used, for the debug log
+// Where each word sits along the wrapped line, as fractions of its reading order (the rows' widths
+// laid end to end). The words are found in the rows by their characters: the line's text is the
+// words joined by single spaces (none before a joined syllable), and rows are its spaces' breaks.
+export function wordStops(ctx, rows, widths, words) {
+  const total = widths.reduce((s, v) => s + v, 0) || 1;
+  const starts = [];
+  let offset = 0;
+  rows.forEach((r, i) => { starts.push(offset); offset += r.length + (i < rows.length - 1 ? 1 : 0); });
+  const before = rows.map((_, i) => widths.slice(0, i).reduce((s, v) => s + v, 0));
+  const place = (c, end) => {
+    let i = rows.length - 1;
+    while (i > 0 && c < starts[i] + (end ? 1 : 0)) i -= 1;
+    const within = Math.max(0, Math.min(rows[i].length, c - starts[i]));
+    return (before[i] + ctx.measureText(rows[i].slice(0, within)).width) / total;
+  };
+  const out = [];
+  let c = 0;
+  words.forEach((w, k) => {
+    if (k > 0 && !w.joined) c += 1;
+    const from = place(c, false);
+    c += w.text.length;
+    out.push({ from, to: place(c, true) });
+  });
+  return out;
+}
+
+export function createZenRenderer(canvas, { onLost, onFail } = {}) {
+  const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, powerPreference: 'high-performance' });
+  if (!gl) { onFail?.('the browser gave no WebGL context'); return null; }
+  if (gl.isContextLost()) { onFail?.('the WebGL context was already lost'); return null; }
+
+  const compile = (fs) => {
+    const program = gl.createProgram();
+    for (const [type, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, fs]]) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, src);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) || 'shader failed');
+      gl.attachShader(program, shader);
+    }
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) || 'link failed');
+    return { program, locs: new Map() };
+  };
+  let P;
+  try {
+    P = { blur: compile(BLUR_FS), copy: compile(COPY_FS), pack: compile(PACK_FS), scene: compile(SCENE_FS), comp: compile(COMP_FS) };
+  } catch (err) {
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const gpu = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    onFail?.(`shader failed on ${gpu}: ${String(err?.message || err).slice(0, 400)}`);
+    return null;
+  }
+
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+  const texture = (source, w, h) => {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    if (source) {
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    } else {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    }
+    return t;
+  };
+  const target = (w, h) => {
+    const t = texture(null, w, h);
+    const f = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    return { t, f, w, h };
+  };
+  const freeTarget = (tg) => { if (tg) { gl.deleteFramebuffer(tg.f); gl.deleteTexture(tg.t); } };
+  const empty = texture(null, 1, 1);
+
+  const draw = (prog, out, uniforms) => {
+    gl.useProgram(prog.program);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, out ? out.f : null);
+    gl.viewport(0, 0, out ? out.w : canvas.width, out ? out.h : canvas.height);
+    const loc = gl.getAttribLocation(prog.program, 'p');
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    let unit = 0;
+    for (const [name, v] of Object.entries(uniforms)) {
+      if (!prog.locs.has(name)) prog.locs.set(name, gl.getUniformLocation(prog.program, name));
+      const u = prog.locs.get(name);
+      if (u === null) continue;
+      if (v instanceof WebGLTexture || (v && v.t instanceof WebGLTexture)) {
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, v.t || v);
+        gl.uniform1i(u, unit);
+        unit += 1;
+      } else if (typeof v === 'number') gl.uniform1f(u, v);
+      else if (v.length === 2) gl.uniform2f(u, v[0], v[1]);
+      else if (v.length === 3) gl.uniform3f(u, v[0], v[1], v[2]);
+      else gl.uniform4f(u, v[0], v[1], v[2], v[3]);
+    }
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  };
+
+  const blur = (src, w, h, spread, passes) => {
+    const a = target(w, h);
+    const b = target(w, h);
+    let from = src;
+    for (let i = 0; i < passes; i++) {
+      draw(P.blur, a, { tex: from, dir: [spread / w, 0] });
+      draw(P.blur, b, { tex: a, dir: [0, spread / h] });
+      from = b;
+    }
+    freeTarget(a);
+    return b;
+  };
+
+  let scene = null;
+  const resize = () => {
+    freeTarget(scene);
+    scene = target(Math.max(1, Math.round(canvas.width / 2)), Math.max(1, Math.round(canvas.height / 2)));
+  };
+  resize();
+
+  // A lyric line's texture. big and maxW in device pixels; the result is measured in them too.
+  // With words (each { text, joined }), it also says where each word starts and ends along the
+  // line's reading order, so the light can follow them.
+  const makeLine = (text, big, maxW, words) => {
+    const measure = document.createElement('canvas').getContext('2d');
+    measure.font = lineFont(big);
+    const rows = wrapRows(measure, text, maxW);
+    const widths = rows.map((r) => measure.measureText(r).width);
+    const stops = words ? wordStops(measure, rows, widths, words) : null;
+    const blockW = Math.ceil(Math.max(1, ...widths));
+    const lh = big * 1.1;
+    const blockH = Math.ceil(rows.length * lh);
+    const pad = Math.round(big * 0.7);
+    const w = blockW + pad * 2;
+    const h = blockH + pad * 2;
+
+    const shapes = document.createElement('canvas');
+    shapes.width = w; shapes.height = h;
+    const sx = shapes.getContext('2d');
+    sx.fillStyle = '#000'; sx.fillRect(0, 0, w, h);
+    sx.font = lineFont(big); sx.textBaseline = 'middle'; sx.fillStyle = '#fff';
+    rows.forEach((r, i) => sx.fillText(r, pad, pad + lh * (i + 0.5)));
+
+    const order = document.createElement('canvas');
+    order.width = w; order.height = h;
+    const ox = order.getContext('2d');
+    const total = widths.reduce((s, v) => s + v, 0) || 1;
+    let done = 0;
+    rows.forEach((_, i) => {
+      const from = done / total;
+      done += widths[i];
+      const to = done / total;
+      const g = ox.createLinearGradient(pad, 0, pad + widths[i], 0);
+      const grey = (v) => { const c = Math.round(v * 255); return `rgb(${c},${c},${c})`; };
+      g.addColorStop(0, grey(from));
+      g.addColorStop(1, grey(to));
+      ox.fillStyle = g;
+      const top = i === 0 ? 0 : pad + lh * i;
+      const bottom = i === rows.length - 1 ? h : pad + lh * (i + 1);
+      ox.fillRect(0, top, w, bottom - top);
+    });
+
+    const sharpT = texture(shapes);
+    const orderT = texture(order);
+    const bevel = blur(sharpT, w, h, big / 110, 2);
+    // The glow: many fine passes at a quarter of the size. Fewer, wider passes skipped texels and
+    // left the halo visibly stepped
+    const quarter = target(Math.max(1, Math.round(w / 4)), Math.max(1, Math.round(h / 4)));
+    draw(P.copy, quarter, { tex: sharpT });
+    const soft = blur(quarter, quarter.w, quarter.h, Math.min(1.1, big / 150), Math.max(4, Math.round(big / 28)));
+    freeTarget(quarter);
+    const packed = target(w, h);
+    draw(P.pack, packed, { sharp: sharpT, bevel, soft, order: orderT });
+    gl.deleteTexture(sharpT);
+    gl.deleteTexture(orderT);
+    freeTarget(bevel);
+    freeTarget(soft);
+    return { packed, w, h, pad, blockW, blockH, rows: rows.length, stops };
+  };
+  const freeLine = (line) => { if (line) freeTarget(line.packed); };
+
+  // items: [{ line, x, y, scale, alpha, glass, halo, litVisible, lit }] with x, y the top left of the
+  // line's text block in device pixels
+  const render = ({ t, beat = 0, intro = 1, dim = 1, palette, items = [], strength = 280, grain = 0 }) => {
+    const [c1, c2, c3] = palette;
+    draw(P.scene, scene, { t, beat, aspect: canvas.width / canvas.height, intro, dim, c1, c2, c3 });
+    const u = { scene, res: [canvas.width, canvas.height], strength: strength * (canvas.width / 2880), grain, c1 };
+    for (let i = 0; i < ITEMS; i++) {
+      const it = items[i];
+      if (!it || !it.line) {
+        u[`tx${i}`] = empty; u[`bx${i}`] = [0, 0, 1, 1]; u[`pr${i}`] = [0, 0, 0, 0]; u[`tl${i}`] = [0, 0, 0, 0];
+        continue;
+      }
+      const { line } = it;
+      u[`tx${i}`] = line.packed;
+      u[`bx${i}`] = [it.x - line.pad * it.scale, it.y - line.pad * it.scale, line.w * it.scale, line.h * it.scale];
+      u[`pr${i}`] = [it.alpha, it.glass, it.halo, it.litVisible];
+      u[`tl${i}`] = [1 / line.w, 1 / line.h, it.lit, (line.blockH / Math.max(1, line.rows)) * 0.5];
+    }
+    draw(P.comp, null, u);
+  };
+
+  const lost = (e) => { e.preventDefault(); onLost?.('the WebGL context was lost'); };
+  canvas.addEventListener('webglcontextlost', lost);
+
+  return {
+    gl,
+    resize,
+    makeLine,
+    freeLine,
+    render,
+    destroy() {
+      canvas.removeEventListener('webglcontextlost', lost);
+      // Resources only, never loseContext(): the browser hands the same context back to the next
+      // Zen on this canvas (React's development double-mount does exactly that), and a context lost
+      // on purpose stays lost, so every shader after it failed
+      freeTarget(scene);
+      for (const p of Object.values(P)) gl.deleteProgram(p.program);
+      gl.deleteBuffer(quad);
+      gl.deleteTexture(empty);
+    }
+  };
+}

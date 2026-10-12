@@ -197,7 +197,7 @@
 }
 .lyric-line.is-near .lyric-glass { color: #fff; text-shadow: none; filter: url(#lyric-glass-s); will-change: transform; }
 /* The glass face, under the filtered bevel: what is behind the letters, bent. On the lyrics page a
-   fixed slice of the wash; in Zen (.lyrics-refract) the clear cover, lined up from script, drawn
+   fixed slice of the wash, drawn
    with the same shade as the cover behind the lyrics and a touch lighter */
 .lyric-refract {
   position: absolute;
@@ -212,11 +212,6 @@
   background-size: 100% 100%, 260% auto;
   background-repeat: no-repeat;
   will-change: transform;
-}
-.lyrics-refract .lyric-refract {
-  background-color: #000;
-  /* Half a grey tint over the cover: frosted enough to read as a solid face, clear enough to see through */
-  background-image: linear-gradient(rgba(82, 82, 92, 0.5), rgba(82, 82, 92, 0.5)), var(--lyric-refract, none);
 }
 @media (min-width: 768px) {
   .lyrics-zen .lyric-line.is-near .lyric-glass { filter: url(#lyric-glass-m); }
@@ -262,3 +257,17 @@
   background: radial-gradient(closest-side, rgba(255, 255, 255, 0.11), color-mix(in srgb, var(--brand-mid) 16%, transparent) 50%, transparent 100%);
   transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1), width 0.55s ease, height 0.55s ease, opacity 0.6s ease;
 }
+
+/* Zen mode's controls and its plain-text lyrics (lite scene, or no WebGL) */
+.zen-range { -webkit-appearance: none; appearance: none; height: 2px; border-radius: 2px; cursor: pointer;
+  background: linear-gradient(to right, #fff var(--v, 50%), rgba(255, 255, 255, 0.2) var(--v, 50%)); }
+.zen-range::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px var(--zen-glow); }
+.zen-range::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 50%; background: #fff; }
+.zen-range:disabled { opacity: 0.4; cursor: default; }
+.zen-lite-line { font-size: clamp(1.05rem, 1.9vw, 1.6rem); transition: font-size 0.8s cubic-bezier(0.16, 1, 0.3, 1), text-shadow 0.8s ease; }
+.zen-lite-line.is-current { font-size: clamp(2.3rem, 5vw, 4.6rem); text-shadow: 0 0 2px #fff, 0 0 18px rgba(255, 255, 255, 0.45), 0 0 40px var(--zen-glow); }
+/* Before the first line and in instrumental breaks: three dots that fill in as the wait runs out */
+.zen-dot { opacity: clamp(0.15, calc(var(--p, 0) * 3 - var(--k)), 1); transform: scale(clamp(0.7, calc(0.7 + (var(--p, 0) * 3 - var(--k)) * 0.3), 1));
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.55), 0 0 30px var(--zen-glow); animation: zen-breathe 3.2s ease-in-out infinite; }
+@keyframes zen-breathe { 50% { filter: brightness(1.25); } }
+@media (prefers-reduced-motion: reduce) { .zen-dot { animation: none; } }

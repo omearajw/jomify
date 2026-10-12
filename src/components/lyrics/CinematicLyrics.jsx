@@ -11,11 +11,8 @@ import AudioWaveform from '../AudioWaveform';
 // (the list is padded by half its own height), and lines further from it fall back in depth.
 // The words near the current line are flat-fronted glass, in two layers. On top, an SVG lighting
 // filter (GLASS_FILTERS) draws only the narrow bevel, highlight, rim, lower edge and shadow, once.
-// Under it, the letters' face shows what is behind them, bent: in Zen (`refract`), the cover that
-// fills the screen behind the lyrics, lined up with it every frame and magnified about each line's
-// centre, so detail jumps inside the letters and meets up again outside; on the lyrics page, a fixed
-// slice of the album wash (`wash`). The two are separate because moving the image under the filter
-// would make WebKit run the filter again on every frame. As the current line is sung it fills with light from
+// Under it, the letters' face shows a fixed, enlarged slice of the album wash (`wash`), bent. (Zen
+// mode draws its own glass in WebGL; this component is the lyrics page's.) As the current line is sung it fills with light from
 // left to right, row by row: a glowing copy of each row the line wrapped to, uncovered by a soft-
 // edged mask on its own layer, so the glass under it is never redrawn. When the next line starts,
 // the fill fades back to glass. A soft light behind the current line follows it down the list.
@@ -33,7 +30,6 @@ const GLASS_RADIUS = 4;
 const FILL_MS_PER_CHAR = 85;
 const FILL_MIN_MS = 800;
 const FILL_FADE_MS = 900;
-const REFRACT_MAGNIFY = 1.07;
 const USER_SCROLL_HOLD_MS = 4000;
 
 const positionMs = () => {
@@ -77,28 +73,6 @@ function fillTiming(lines, i) {
   const start = lines[i].timeMs;
   const gap = (lines[i + 1]?.timeMs ?? Infinity) - start - 150;
   return { start, ms: Math.max(300, Math.min(Math.max(FILL_MIN_MS, lines[i].text.length * FILL_MS_PER_CHAR), gap)) };
-}
-
-// Line each glass line's face up with the image behind it, magnified about the line's centre. Rows
-// are scaled, so screen distances are converted into the face's own units.
-function alignRefraction(root, behind) {
-  const c = behind.getBoundingClientRect();
-  for (const el of root.querySelectorAll('.lyric-line.is-near .lyric-refract')) {
-    const r = el.getBoundingClientRect();
-    const scale = r.width / (el.offsetWidth || 1) || 1;
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    const w = (c.width * REFRACT_MAGNIFY) / scale;
-    const h = (c.height * REFRACT_MAGNIFY) / scale;
-    const x = (cx - (cx - c.left) * REFRACT_MAGNIFY - r.left) / scale;
-    const y = (cy - (cy - c.top) * REFRACT_MAGNIFY - r.top) / scale;
-    const size = `100% 100%, ${w.toFixed(1)}px ${h.toFixed(1)}px`;
-    const position = `0 0, ${x.toFixed(1)}px ${y.toFixed(1)}px`;
-    if (el.dataset.at === position + size) continue;
-    el.dataset.at = position + size;
-    el.style.backgroundSize = size;
-    el.style.backgroundPosition = position;
-  }
 }
 
 // Uncover each row's glowing copy up to its share of p, with a soft leading edge
@@ -159,7 +133,7 @@ const SIZES = {
   page: 'text-3xl md:text-5xl lg:text-6xl'
 };
 
-export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite = false, wash = null, refract = null }) {
+export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite = false, wash = null }) {
   const [active, setActive] = useState(() => lineAt(lines, positionMs()));
   const [pad, setPad] = useState(0);
   const scroller = useRef(null);
@@ -178,8 +152,6 @@ export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite =
   const content = useRef(null);
   const [layoutTick, setLayoutTick] = useState(0);
   const centredLine = useRef(null);
-  const refractNow = useRef(refract);
-  useEffect(() => { refractNow.current = refract; }, [refract]);
 
   // Room above the first line and below the last, so any line can sit in the middle. Taken from
   // the window, never from this box: where no parent fixes the box's height (the lyrics page),
@@ -199,8 +171,6 @@ export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite =
       const pos = positionMs();
       const idx = lineAt(lines, pos);
       if (idx !== last) { last = idx; setActive(idx); }
-      const behind = refractNow.current?.behind;
-      if (behind && scroller.current) alignRefraction(scroller.current, behind);
       const geom = fillGeom.current;
       if (geom && geom.index === idx) paintFill(geom, clamp01((pos - geom.start) / geom.ms));
       if (idx < 0 && dots.current && lines[0]) {
@@ -287,14 +257,14 @@ export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite =
       onTouchMove={heldByUser}
       // min-h-0: a flex child grows to fit its content unless told it may shrink, and a list as tall
       // as itself has nothing to scroll, so centring did nothing
-      className={`relative flex-1 min-h-0 h-full w-full overflow-y-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none] lyrics-${variant} ${lite ? 'lyrics-lite' : ''} ${refract ? 'lyrics-refract' : ''}`}
+      className={`relative flex-1 min-h-0 h-full w-full overflow-y-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none] lyrics-${variant} ${lite ? 'lyrics-lite' : ''}`}
       // An even fade at the very edges only; the line in the middle is what is lit. The page's box
       // ends at the card's edge, so its lower fade is longer or the last line looks cut off
-      style={lite ? undefined : { maskImage: EDGE_FADE[variant] || EDGE_FADE.zen, WebkitMaskImage: EDGE_FADE[variant] || EDGE_FADE.zen, '--lyric-wash': wash ? `url(${wash})` : 'none', '--lyric-refract': refract ? `url(${refract.url})` : 'none' }}
+      style={lite ? undefined : { maskImage: EDGE_FADE[variant] || EDGE_FADE.zen, WebkitMaskImage: EDGE_FADE[variant] || EDGE_FADE.zen, '--lyric-wash': wash ? `url(${wash})` : 'none' }}
     >
       {!lite && <svg width="0" height="0" className="absolute" aria-hidden="true" dangerouslySetInnerHTML={{ __html: GLASS_FILTERS }} />}
       {/* Over the clear cover the light read as a coloured blob; the glowing fill marks the line */}
-      {!lite && !refract && <div ref={light} className="lyric-light" aria-hidden="true" />}
+      {!lite && <div ref={light} className="lyric-light" aria-hidden="true" />}
       <div ref={content} style={{ paddingTop: pad, paddingBottom: pad }} className="max-w-4xl mx-auto px-6 flex flex-col items-center text-center gap-4 md:gap-6">
         {lines.map((line, i) => {
           const isActive = i === active;
@@ -328,7 +298,7 @@ export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite =
                 : (
                   <p className={`lyric-line ${SIZES[variant] || SIZES.zen} ${isActive ? 'is-active' : ''} ${glass ? 'is-near' : ''}`}>
                     {/* The face: on the page, neighbouring lines refract different parts of the wash */}
-                    {glass && <span className="lyric-refract" aria-hidden="true" style={refract ? undefined : { backgroundPosition: `0 0, 50% ${(i * 37) % 100}%` }}>{line.text}</span>}
+                    {glass && <span className="lyric-refract" aria-hidden="true" style={{ backgroundPosition: `0 0, 50% ${(i * 37) % 100}%` }}>{line.text}</span>}
                     <span className="lyric-glass">{line.text}</span>
                     {lit && (
                       <span className={`lyric-fill ${lit === fill ? '' : 'is-fading'}`} aria-hidden="true">

@@ -124,7 +124,22 @@ function bestOf(results, durationSec) {
   return near(synced) || near(withWords) || synced[0] || withWords[0] || null;
 }
 
+// Word-timed lyrics come first when a source is set (the app sets Jomify's own /api/lyrics; the
+// tests and anything without a signed-in user leave it unset). It answers { synced } with each
+// line's words, or null to fall through to lrclib. Its failures never cost the lrclib answer.
+let wordSource = null;
+export function setWordLyricsSource(fn) { wordSource = fn; }
+
 async function lookUp(track, durationSec, opts) {
+  if (wordSource && track?.id) {
+    try {
+      const timed = await wordSource(track, opts);
+      if (timed?.synced?.length) return timed;
+    } catch (err) {
+      if (opts.signal?.aborted) throw err;
+      log('lyrics', 'word-timed lyrics unavailable; using lrclib', err?.message || String(err));
+    }
+  }
   const artist = track?.artists?.[0]?.name || '';
   const fullTitle = String(track?.name || '').trim();
   const album = track?.album?.name || '';

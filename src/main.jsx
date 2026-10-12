@@ -6,6 +6,7 @@ import GuestParty from './views/Party/GuestParty.jsx'
 import PartyScreen from './views/Party/PartyScreen.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { installDebugLog } from './services/debugLog'
+import './services/wordLyrics'
 
 // First, so it hears about everything from start-up onwards
 installDebugLog()
