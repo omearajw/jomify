@@ -57,8 +57,9 @@ export function fillProgress(lines, i, posMs) {
 }
 
 // With word timings: how far along the line the light should be, as a fraction of its reading
-// order. stops[k] is where word k starts and ends along the line (from makeLine). Between words
-// the light rests at the end of the last one sung; through a word it eases out across it.
+// order. stops[k] is where word k starts and ends along the line (wordStops). Between words the
+// light rests at the end of the last one sung; through a word it moves steadily across it (the
+// easing comes from followFill, which smooths the whole path).
 export function wordFill(words, stops, posMs) {
   if (!words?.length || !stops?.length) return null;
   let at = 0;
@@ -67,12 +68,54 @@ export function wordFill(words, stops, posMs) {
     if (posMs < w.startMs) return at;
     const span = Math.max(1, w.endMs - w.startMs);
     const p = Math.min(1, (posMs - w.startMs) / span);
-    at = stops[k].from + (stops[k].to - stops[k].from) * (1 - Math.pow(1 - p, 1.4));
+    at = stops[k].from + (stops[k].to - stops[k].from) * p;
     if (p < 1) return at;
     at = stops[k].to;
   }
   return 1;
 }
+
+// Words light this far ahead of their timestamps: exactly on time reads as late to the eye, and
+// followFill trails its target by about a tenth of a second
+export const WORD_LEAD_MS = 200;
+const FOLLOW_SECONDS = 0.1;
+
+// The light follows where it should be instead of jumping there: it glides on through a word and
+// slows into each stop, so the wait for the next word is a settle rather than a stall then a jump.
+// Backwards (a seek, a new line) it goes at once.
+export function followFill(shown, target, dtSeconds) {
+  if (!Number.isFinite(shown) || target < shown - 0.02 || target <= 0) return target;
+  if (target >= 1 && shown > 0.995) return 1;
+  return shown + (target - shown) * (1 - Math.exp(-dtSeconds / FOLLOW_SECONDS));
+}
+
+// Where each word sits along the wrapped line, as fractions of its reading order (the rows' widths
+// laid end to end). The words are found in the rows by their characters: the line's text is the
+// words joined by single spaces (none before a joined syllable), and rows are its spaces' breaks.
+export function wordStops(ctx, rows, widths, words) {
+  const total = widths.reduce((s, v) => s + v, 0) || 1;
+  const starts = [];
+  let offset = 0;
+  rows.forEach((r, i) => { starts.push(offset); offset += r.length + (i < rows.length - 1 ? 1 : 0); });
+  const before = rows.map((_, i) => widths.slice(0, i).reduce((s, v) => s + v, 0));
+  const place = (c, end) => {
+    let i = rows.length - 1;
+    while (i > 0 && c < starts[i] + (end ? 1 : 0)) i -= 1;
+    const within = Math.max(0, Math.min(rows[i].length, c - starts[i]));
+    return (before[i] + ctx.measureText(rows[i].slice(0, within)).width) / total;
+  };
+  const out = [];
+  let c = 0;
+  words.forEach((w, k) => {
+    if (k > 0 && !w.joined) c += 1;
+    const from = place(c, false);
+    c += w.text.length;
+    out.push({ from, to: place(c, true) });
+  });
+  return out;
+}
+
+
 
 // Where each visible line should be. A line has two faces: big (the line being sung, glass) and
 // small (the lines either side, soft, laid out at their own size so they keep to one or two rows).

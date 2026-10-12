@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '../../store/playerStore';
+import { positionNow } from '../../lib/playbackClock';
 import { focusAt } from './lyricFocus';
 
 // Zen's lyrics without WebGL: the lite scene, or a device whose WebGL failed. The same staging as
 // the glass (one line large, the ones either side small) in plain text, and the same calm motion.
 
-const positionNow = () => {
-  const { playbackState, positionAt } = usePlayerStore.getState();
-  if (!playbackState) return 0;
-  return playbackState.position + (playbackState.paused ? 0 : Date.now() - positionAt);
-};
 
 function useFocus(lines) {
   const [focus, setFocus] = useState(() => focusAt(lines, positionNow()));

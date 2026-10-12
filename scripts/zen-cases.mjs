@@ -2,8 +2,7 @@
 import { paletteFromPixels, FALLBACK_PALETTE, SILVER, COOL_SILVER } from '../src/views/ZenMode/palette.js';
 import { focusAt, fillProgress, lineAt, layoutFocus, isInstrumental, faceKey } from '../src/views/ZenMode/lyricFocus.js';
 import { LYRIC_LEAD_IN_MS } from '../src/lib/lrc.js';
-import { wordFill } from '../src/views/ZenMode/lyricFocus.js';
-import { wordStops } from '../src/views/ZenMode/zenGl.js';
+import { wordFill, wordStops, followFill } from '../src/views/ZenMode/lyricFocus.js';
 import { normalizeSpicy } from '../api/_lib/wordLyrics.js';
 
 let pass = 0, fail = 0; const failures = [];
@@ -131,6 +130,17 @@ check('fill: nothing for no line', fillProgress(L, null, 9000) === 0);
   const g = focusAt(W, 9000);
   check('well into a long silence: a gap, waiting on the next line', g.gap && g.current === null && g.next === 1 && g.prev === 0);
   check('a short pause between lines is not a gap', focusAt(W, 22600).current === 1);
+}
+
+// The light glides: towards where it should be, never past it, and straight back on a seek
+{
+  let shown = 0;
+  for (let i = 0; i < 6; i++) shown = followFill(shown, 0.5, 1 / 60);
+  check('follow: moves towards the target, not all the way at once', shown > 0.05 && shown < 0.5);
+  for (let i = 0; i < 120; i++) shown = followFill(shown, 0.5, 1 / 60);
+  check('follow: settles on it', Math.abs(shown - 0.5) < 0.001);
+  check('follow: backwards is immediate', followFill(0.8, 0.2, 1 / 60) === 0.2);
+  check('follow: a finished line ends fully lit', followFill(0.997, 1, 1 / 60) === 1);
 }
 
 console.log(`\nzen: ${pass} passed, ${fail} failed`);

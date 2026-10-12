@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { usePlayerStore } from '../../store/playerStore';
 import { LYRIC_LEAD_IN_MS } from '../../lib/lrc';
+import { positionNow as positionMs } from '../../lib/playbackClock';
+import { fillProgress, wordFill, wordStops, followFill, WORD_LEAD_MS } from '../../views/ZenMode/lyricFocus';
 import AudioWaveform from '../AudioWaveform';
 
 // Synced lyrics, shared by Zen mode and the lyrics page so the two can't drift apart.
@@ -26,17 +27,9 @@ import AudioWaveform from '../AudioWaveform';
 
 const DEPTH_RADIUS = 10;
 const GLASS_RADIUS = 4;
-// Without word timings, the fill is paced to the line's length, and done before the next line
-const FILL_MS_PER_CHAR = 85;
-const FILL_MIN_MS = 800;
 const FILL_FADE_MS = 900;
 const USER_SCROLL_HOLD_MS = 4000;
 
-const positionMs = () => {
-  const { playbackState, positionAt } = usePlayerStore.getState();
-  if (!playbackState) return 0;
-  return playbackState.position + (playbackState.paused ? 0 : Date.now() - positionAt);
-};
 const lineAt = (lines, pos) => {
   let found = -1;
   for (let i = 0; i < lines.length; i++) { if (lines[i].timeMs <= pos + LYRIC_LEAD_IN_MS) found = i; else break; }
@@ -69,13 +62,15 @@ function visualRows(el) {
   return out.filter(Boolean);
 }
 
-function fillTiming(lines, i) {
-  const start = lines[i].timeMs;
-  const gap = (lines[i + 1]?.timeMs ?? Infinity) - start - 150;
-  return { start, ms: Math.max(300, Math.min(Math.max(FILL_MIN_MS, lines[i].text.length * FILL_MS_PER_CHAR), gap)) };
-}
+// How far the current line's light should be: word by word where the sync has the words (with
+// Zen's lead), otherwise paced to the line's length, the same as Zen
+const fillTarget = (lines, geom, pos) => {
+  const f = wordFill(lines[geom.index]?.words, geom.stops, pos + WORD_LEAD_MS);
+  return f === null ? fillProgress(lines, geom.index, pos) : f;
+};
 
-// Uncover each row's glowing copy up to its share of p, with a soft leading edge
+// Uncover each row's glowing copy up to its share of p, with a soft leading edge that runs ahead of
+// the light (behind it, words were only fully lit after they had been sung)
 function paintFill(geom, p) {
   if (geom.p === p) return;
   geom.p = p;
@@ -84,8 +79,8 @@ function paintFill(geom, p) {
     const f = clamp01(left / part.width);
     left -= part.width;
     const head = part.inset + f * part.width;
-    const a = f >= 1 ? part.box : f <= 0 ? 0 : head - geom.soft;
-    const b = f >= 1 ? part.box : f <= 0 ? 0 : head + geom.soft;
+    const a = f >= 1 ? part.box : f <= 0 ? 0 : head;
+    const b = f >= 1 ? part.box : f <= 0 ? 0 : head + geom.soft * 2;
     part.el.style.setProperty('--fill-a', `${a}px`);
     part.el.style.setProperty('--fill-b', `${b}px`);
   }
@@ -167,12 +162,18 @@ export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite =
   useEffect(() => {
     let raf = 0;
     let last = -2;
-    const tick = () => {
+    let then = performance.now();
+    const tick = (now = performance.now()) => {
+      const dt = Math.min(0.1, (now - then) / 1000);
+      then = now;
       const pos = positionMs();
       const idx = lineAt(lines, pos);
       if (idx !== last) { last = idx; setActive(idx); }
       const geom = fillGeom.current;
-      if (geom && geom.index === idx) paintFill(geom, clamp01((pos - geom.start) / geom.ms));
+      if (geom && geom.index === idx) {
+        geom.shown = followFill(geom.shown, fillTarget(lines, geom, pos), dt);
+        paintFill(geom, geom.shown);
+      }
       if (idx < 0 && dots.current && lines[0]) {
         dots.current.style.setProperty('--p', String(clamp01(pos / Math.max(1, lines[0].timeMs - LYRIC_LEAD_IN_MS))));
       }
@@ -237,9 +238,20 @@ export default function CinematicLyrics({ lines, onSeek, variant = 'zen', lite =
       const inset = parseFloat(cs.paddingLeft) || 0;
       return { el, box: el.offsetWidth, inset, width: Math.max(1, el.offsetWidth - inset - (parseFloat(cs.paddingRight) || 0)) };
     });
-    const soft = (parseFloat(getComputedStyle(host).fontSize) || 40) * 0.4;
-    fillGeom.current = { index: fill.index, parts, total: parts.reduce((sum, part) => sum + part.width, 0), soft, p: -1, ...fillTiming(lines, fill.index) };
-    paintFill(fillGeom.current, clamp01((positionMs() - fillGeom.current.start) / fillGeom.current.ms));
+    const style = getComputedStyle(host);
+    const soft = (parseFloat(style.fontSize) || 40) * 0.4;
+    // Where each word sits along the rows, measured in the line's own font
+    let stops = null;
+    const words = lines[fill.index]?.words;
+    if (words?.length) {
+      const ctx = document.createElement('canvas').getContext('2d');
+      ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      stops = wordStops(ctx, fill.rows, fill.rows.map((r) => ctx.measureText(r).width), words);
+    }
+    const geom = { index: fill.index, parts, total: parts.reduce((sum, part) => sum + part.width, 0), soft, p: -1, stops };
+    geom.shown = fillTarget(lines, geom, positionMs());
+    fillGeom.current = geom;
+    paintFill(geom, geom.shown);
   }, [fill, lines]);
 
   useEffect(() => {

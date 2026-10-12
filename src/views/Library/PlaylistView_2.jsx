@@ -203,14 +203,18 @@ export default function PlaylistView_2() {
 
       const requestedId = activePlaylistId;
       let cancelled = false;
+      let finished = false;
       loadSeven(token, activePlaylistId, setPlaylist, () => cancelled)
+        .then(() => { finished = true; })
         .catch((err) => {
           loadedSevenId.current = null; // let a later attempt retry
           if (cancelled) return;
           console.error(err);
           setLoadError({ id: requestedId, message: err?.message === 'RATE_LIMITED' ? 'Spotify is rate-limiting Jomify; try again in a moment.' : "Couldn't load this Seven." });
         });
-      return () => { cancelled = true; };
+      // A load cut short (a token renewal mid-load, React's development double-run) must start
+      // again on the next run: left marked as loaded, the Seven sat on "Loading…" for good
+      return () => { cancelled = true; if (!finished && loadedSevenId.current === requestedId) loadedSevenId.current = null; };
     }
     return undefined;
   }, [token, activePlaylistId]);

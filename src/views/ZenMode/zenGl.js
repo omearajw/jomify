@@ -9,6 +9,8 @@
 // side; the reading order lets the sung part glow with a feathered edge that runs along the first
 // row before the second. Nothing about a line is redrawn per frame, only where it is.
 
+import { wordStops } from './lyricFocus.js';
+
 const VS = 'attribute vec2 p; varying vec2 uv; void main(){ uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }';
 
 const BLUR_FS = `precision mediump float; uniform sampler2D tex; uniform vec2 dir; varying vec2 uv;
@@ -143,32 +145,6 @@ export function wrapRows(ctx, text, maxW) {
 }
 
 // onFail(reason) says why WebGL could not be used, for the debug log
-// Where each word sits along the wrapped line, as fractions of its reading order (the rows' widths
-// laid end to end). The words are found in the rows by their characters: the line's text is the
-// words joined by single spaces (none before a joined syllable), and rows are its spaces' breaks.
-export function wordStops(ctx, rows, widths, words) {
-  const total = widths.reduce((s, v) => s + v, 0) || 1;
-  const starts = [];
-  let offset = 0;
-  rows.forEach((r, i) => { starts.push(offset); offset += r.length + (i < rows.length - 1 ? 1 : 0); });
-  const before = rows.map((_, i) => widths.slice(0, i).reduce((s, v) => s + v, 0));
-  const place = (c, end) => {
-    let i = rows.length - 1;
-    while (i > 0 && c < starts[i] + (end ? 1 : 0)) i -= 1;
-    const within = Math.max(0, Math.min(rows[i].length, c - starts[i]));
-    return (before[i] + ctx.measureText(rows[i].slice(0, within)).width) / total;
-  };
-  const out = [];
-  let c = 0;
-  words.forEach((w, k) => {
-    if (k > 0 && !w.joined) c += 1;
-    const from = place(c, false);
-    c += w.text.length;
-    out.push({ from, to: place(c, true) });
-  });
-  return out;
-}
-
 export function createZenRenderer(canvas, { onLost, onFail } = {}) {
   const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, powerPreference: 'high-performance' });
   if (!gl) { onFail?.('the browser gave no WebGL context'); return null; }

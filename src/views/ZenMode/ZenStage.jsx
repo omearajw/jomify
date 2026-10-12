@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { usePlayerStore } from '../../store/playerStore';
 import { createZenRenderer } from './zenGl';
-import { focusAt, fillProgress, layoutFocus, faceKey, SMALL_RATIO, wordFill } from './lyricFocus';
+import { focusAt, fillProgress, layoutFocus, faceKey, SMALL_RATIO, wordFill, followFill, WORD_LEAD_MS } from './lyricFocus';
+import { positionNow } from '../../lib/playbackClock';
 import { FALLBACK_PALETTE } from './palette';
 
 // The WebGL stage behind Zen's controls: the light, and the lyric lines as glass. It runs its own
@@ -9,19 +9,6 @@ import { FALLBACK_PALETTE } from './palette';
 // belongs (current, previous, next, or leaving), so a new line, a seek, a song change or lyrics
 // turned off are all the same motion, and any of them can interrupt another.
 
-// This computer's player says when it measured the position; counting from when the update
-// arrived instead runs the lyrics late by however long it took to arrive. A remote device's
-// timestamp means something else (when playback last changed), so it is not used.
-const positionNow = () => {
-  const { playbackState: ps, positionAt } = usePlayerStore.getState();
-  if (!ps) return 0;
-  if (ps.paused) return ps.position;
-  const measured = !ps.remote && Number.isFinite(ps.timestamp) && positionAt - ps.timestamp >= 0 && positionAt - ps.timestamp < 3000 ? ps.timestamp : positionAt;
-  return ps.position + Date.now() - measured;
-};
-
-// Words light this far ahead of their timestamps: exactly on time reads as late to the eye
-const WORD_LEAD_MS = 120;
 
 const approach = (v, to, dt, tau) => (tau <= 0 ? to : v + (to - v) * (1 - Math.exp(-dt / tau)));
 
@@ -165,7 +152,8 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
             // paced to the line's length. The shader's head starts just before the line, so a
             // fraction f of the line is (f + 0.04) / 1.04.
             const f = wordFill(L.lines[it.index].words, it.line.stops, pos + WORD_LEAD_MS);
-            it.lit = f === null ? fillProgress(L.lines, it.index, pos) : f >= 1 ? 1 : f <= 0 ? 0 : (f + 0.04) / 1.04;
+            const target = f === null ? fillProgress(L.lines, it.index, pos) : f >= 1 ? 1 : f <= 0 ? 0 : (f + 0.04) / 1.04;
+            it.lit = followFill(it.lit, target, dt);
           } else if (anchor !== null && it.index < anchor) it.lit = 1;
         }
         if (to.alpha === 0 && it.alpha < 0.01) { r.freeLine(it.line); items.delete(key); }
