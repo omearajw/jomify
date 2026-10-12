@@ -10,8 +10,13 @@
 }
 
 @layer base {
-  body {
+  /* Black belongs to html, not body. The aurora and grain sit behind everything (negative z-index);
+     a body background only stays out of their way while html has none, and index.html gives html
+     black from the first paint, so on body it covered them and left the app flat black. */
+  html {
     background-color: black;
+  }
+  body {
     color: white;
     overflow: hidden;
     /* Installed on a phone: no pull-to-refresh bounce, no grey tap flash, and no iOS

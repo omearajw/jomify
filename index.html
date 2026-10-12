@@ -16,7 +16,9 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- Black from the first paint: if the app's stylesheet never arrives the page must not be a
          blank white sheet with nothing to say -->
-    <style>html, body { background: #000; color: #fff; margin: 0; }</style>
+    <!-- Black on html only: the app paints its aurora glow and grain behind everything (negative
+         z-index), and a background on body is painted over that, which left the app flat black -->
+    <style>html { background: #000; } body { background: transparent; color: #fff; margin: 0; }</style>
     <script>
       // Demo mode (/demo, or a tab already in it): before any of the app runs, give it its own
       // storage for this tab only and a demo session. It has to be here: the app's code is bundled
