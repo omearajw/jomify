@@ -267,3 +267,13 @@ and full; on the queue or the lyrics it scrolls them and never opens the sheet; 
 sheet it scrolls the library. Swipe down from the top is the notification shade, so nothing of
 Jomify's lives there. *Why:* round 5/5b; the rail-then-sheet disconnect Jack noticed, and the
 drag ambiguity he raised.
+
+**2026-10-13 — Modes take everything but the queue column.** Sevens, Unadded and Party (on the
+Mac) take the screen the way the library does at full width: the column becomes the strip (song,
+play/skip, queue), so every take-over has one shape and the music is always in the same place.
+Entered from the rail; leaving returns you to exactly where you were. On the phone the sheet goes
+to full and the mode fills it. *Why:* round 6; consistency over the extra quarter of width.
+*To test in the prototype:* Jack felt twice (rounds 1 and 6) that the strip on the right is the
+consistent choice but a bar along the bottom might be lighter. Try the column for a week; if it
+feels like wasted space while organising or in Sevens, the bottom bar is the fallback and the
+decision is reopened.
