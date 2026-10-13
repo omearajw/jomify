@@ -179,7 +179,7 @@ uniform sampler2D room; uniform vec2 res; uniform float t, fade, dim;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 vec3 soft(vec2 p){
   // a small blur, the lens never quite sharp
-  vec2 e = 1.15 / res;
+  vec2 e = 0.8 / res;
   vec3 c = texture2D(room, p).rgb * 0.36;
   c += (texture2D(room, p + vec2(e.x, 0.0)).rgb + texture2D(room, p - vec2(e.x, 0.0)).rgb + texture2D(room, p + vec2(0.0, e.y)).rgb + texture2D(room, p - vec2(0.0, e.y)).rgb) * 0.16;
   return c;
@@ -187,22 +187,22 @@ vec3 soft(vec2 p){
 void main(){
   vec2 q = uv - 0.5;
   // colour fringing, worse towards the edges
-  vec2 shift = q * 0.0035 + vec2(0.0012, 0.0);
+  vec2 shift = q * 0.0016 + vec2(0.0005, 0.0);
   float r = soft(uv + shift).r, g = soft(uv).g, b = soft(uv - shift).b;
   vec3 col = vec3(r, g, b);
   // tape: hard contrast, whites that blow out, blacks that hold, a cool green cast in the greys
   // and a touch of warmth in the highlights, a little less colour overall
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
-  col = mix(vec3(lum), col, 0.8);
-  col = (col - 0.5) * 1.35 + 0.5 + 0.02;
-  col = mix(col, col * vec3(0.95, 1.02, 1.0), smoothstep(0.7, 0.1, lum));
-  col = mix(col, col * vec3(1.04, 1.0, 0.94), smoothstep(0.55, 1.0, lum));
-  col = 1.0 - exp(-max(col, 0.0) * 1.6);
+  col = mix(vec3(lum), col, 0.9);
+  col = (col - 0.5) * 1.12 + 0.5 + 0.03;
+  col = mix(col, col * vec3(0.97, 1.01, 1.0), smoothstep(0.7, 0.1, lum));
+  col = mix(col, col * vec3(1.02, 1.0, 0.97), smoothstep(0.55, 1.0, lum));
+  col = 1.0 - exp(-max(col, 0.0) * 2.3);
   // the comb of interlaced lines, and the tape's own noise
   float line = 0.5 + 0.5 * sin((uv.y * res.y + floor(t * 30.0)) * 3.14159);
-  col *= 1.0 - 0.06 * line;
-  col += (hash(uv * res + fract(t) * 7.0) - 0.5) * 0.045;
-  vec2 v = q * vec2(1.0, 1.15); col *= 1.0 - dot(v, v) * 0.55;
+  col *= 1.0 - 0.025 * line;
+  col += (hash(uv * res + fract(t) * 7.0) - 0.5) * 0.025;
+  vec2 v = q * vec2(1.0, 1.15); col *= 1.0 - dot(v, v) * 0.32;
   gl_FragColor = vec4(clamp(col * dim, 0.0, 1.0), fade);
 }`;
 
@@ -213,7 +213,7 @@ export function createRoomScene(r) {
   // the room is drawn a little under the scene's size: the camera was never that sharp
   let tape = null;
   const tapeFor = (out) => {
-    const w = Math.max(1, Math.round(out.w * 0.7)), h = Math.max(1, Math.round(out.h * 0.7));
+    const w = Math.max(1, Math.round(out.w * 0.85)), h = Math.max(1, Math.round(out.h * 0.85));
     if (!tape || tape.w !== w || tape.h !== h) { r.freeTarget(tape); tape = r.makeTarget(w, h); }
     return tape;
   };

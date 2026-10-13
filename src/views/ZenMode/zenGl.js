@@ -77,7 +77,7 @@ vec2 warp(vec2 fpx){
   return tilt.zw + vec2(d.x * w / tilt.y, d.y * w);
 }`;
 const COMP_FS = `precision highp float; varying vec2 uv;
-uniform sampler2D scene, glow; uniform vec2 res; uniform float strength, grain, glowGain; uniform vec3 c1, tint;
+uniform sampler2D scene, glow; uniform vec2 res; uniform float strength, grain, glowGain, disperse; uniform vec3 c1, tint;
 ${Array.from({ length: ITEMS }, (_, i) => `uniform sampler2D tx${i}; uniform vec4 bx${i}, pr${i}, tl${i};`).join('\n')}
 ${STAGE_GLSL}
 float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -112,7 +112,8 @@ vec3 item(vec3 col, sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
     float dy = hgt(tx, st + vec2(0.0, tl.y)) - hgt(tx, st - vec2(0.0, tl.y));
     vec3 n = normalize(vec3(-dx * 3.2, -dy * 3.2, 1.0));
     vec2 off = (n.xy * strength + (1.0 - n.z) * vec2(0.0, -6.0)) / res;
-    vec3 seen = vec3(texture2D(scene, uv - off * 0.75).r, texture2D(scene, uv - off).g, texture2D(scene, uv - off * 1.32).b);
+    // the glass splits colours a little; on a scene with hard edges that read as fringes, so a scene turns it down
+    vec3 seen = vec3(texture2D(scene, uv - off * (1.0 - 0.25 * disperse)).r, texture2D(scene, uv - off).g, texture2D(scene, uv - off * (1.0 + 0.32 * disperse)).b);
     vec3 face = mix(seen * 1.5 + 0.03, vec3(0.30, 0.30, 0.34), 0.24);
     vec3 hv = normalize(normalize(vec3(-0.6, 0.6, 0.55)) + vec3(0.0, 0.0, 1.0));
     float spec = pow(max(dot(n, hv), 0.0), 40.0);
@@ -365,11 +366,11 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
   // scene fading over it, or replacing it)
   // stage: how the lines stand in a song's scene: { tilt: [tan/focal, cos, pivotX, pivotY], mirror: [floorY, strength] }
   // tint: the colour in the lines' glow (the palette's first colour unless given); glowGain scales the glow
-  const render = ({ t, beat = 0, intro = 1, dim = 1, palette, items = [], strength = 280, grain = 0, mood = {}, drawScene = null, stage = null, tint = null, glowGain = 1 }) => {
+  const render = ({ t, beat = 0, intro = 1, dim = 1, palette, items = [], strength = 280, grain = 0, mood = {}, drawScene = null, stage = null, tint = null, glowGain = 1, disperse = 1 }) => {
     const [c1, c2, c3] = palette;
     draw(P.scene, scene, { t, beat, aspect: canvas.width / canvas.height, intro, dim, c1, c2, c3, energy: mood.energy ?? 0.5, valence: mood.valence ?? 0.5, acoustic: mood.acoustic ?? 0, minor: mood.minor ?? 0, lift: mood.lift ?? 0 });
     drawScene?.();
-    const u = { scene, res: [canvas.width, canvas.height], strength: strength * (canvas.width / 2880), grain, c1, tint: tint || c1, glowGain, tilt: stage?.tilt || [0, 1, 0, 0], mirror: stage?.mirror || [-1, 0] };
+    const u = { scene, res: [canvas.width, canvas.height], strength: strength * (canvas.width / 2880), grain, c1, tint: tint || c1, glowGain, disperse, tilt: stage?.tilt || [0, 1, 0, 0], mirror: stage?.mirror || [-1, 0] };
     for (let i = 0; i < ITEMS; i++) {
       const it = items[i];
       if (!it || !it.line) {

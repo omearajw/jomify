@@ -211,15 +211,18 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
       const drawn = [...items.values()].filter((it) => it.alpha > 0.003).sort((a, b) => b.alpha - a.alpha).slice(0, 6);
       // In a scene the lines stand in the room: turned a little towards its middle about the lyric
       // column's centre, reflected in the floor, their glow cooled and quietened so they read
-      let stage = null, tint = null, glowGain = 1;
+      let stage = null, tint = null, glowGain = 1, disperse = 1, strength = 280;
       if (sceneFade > 0.003 && box) {
         const angle = (14 * Math.PI / 180) * sceneFade * calm;
         const focal = canvas.height * 820 / 900;
         stage = { tilt: [-Math.tan(angle) / focal, Math.cos(angle), (box.left + box.width / 2) * dpr, (box.top + box.height / 2) * dpr], mirror: [canvas.height * 0.667, 0.3 * sceneFade] };
         tint = colours[0].map((v, i) => v + ([0.8, 0.85, 1.0][i] - v) * sceneFade);
         glowGain = 1 - 0.45 * sceneFade;
+        // the room's hard edges would show through the glass as colour fringes
+        disperse = 1 - 0.85 * sceneFade;
+        strength = 280 * (1 - 0.5 * sceneFade);
       }
-      r.render({ t: t + 40, beat, intro, dim, palette: colours, items: drawn, grain: now / 1000, mood, drawScene, stage, tint, glowGain });
+      r.render({ t: t + 40, beat, intro, dim, palette: colours, items: drawn, grain: now / 1000, mood, drawScene, stage, tint, glowGain, disperse, strength });
     };
     raf = requestAnimationFrame(frame);
 
