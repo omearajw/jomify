@@ -281,9 +281,8 @@ export default function ZenMode() {
 
   const boxRef = useRef(null);
   const dotsRef = useRef(null);
-  const coverRef = useRef(null);
-  // A song with a scene of its own: the stage says when the cover has flown into it ('scene'),
-  // when it is on its way back ('leaving') and when the usual layout is wanted again ('off')
+  // A song with a scene of its own: the stage says when it is up ('scene'), when it is going
+  // ('leaving') and when the usual layout is wanted again ('off')
   const [scenePhase, setScenePhase] = useState('off');
   const onScene = useCallback(({ phase }) => setScenePhase(phase), []);
   const onLine = useCallback((text) => setSungLine(text), []);
@@ -295,12 +294,9 @@ export default function ZenMode() {
 
   const idle = isActive ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none';
   const artists = currentTrack?.artists?.map((a) => a.name).join(', ') || '';
-  // In a song's scene the cover is in the room, the words about the song sit bottom left, and the
-  // lyrics keep to the right, right-aligned
-  const inScene = useGl && scenePhase === 'scene';
-  const handingBack = useGl && scenePhase === 'leaving';
-  // The name and artist move to the caption as soon as the cover sets off for the room
-  const captionOn = useGl && (scenePhase === 'flying' || scenePhase === 'scene');
+  // In a song's scene the cover, name and artist sit small at the bottom left, out of the room's
+  // way, and the lyrics keep to the right, right-aligned
+  const inScene = useGl && (scenePhase === 'scene' || scenePhase === 'leaving');
 
   return (
     <div
@@ -323,8 +319,6 @@ export default function ZenMode() {
           reducedMotion={reducedMotion}
           track={currentTrack}
           durationMs={playbackState?.duration || null}
-          coverRef={coverRef}
-          coverUrl={albumArtUrl}
           onScene={onScene}
           lyricAlign={inScene ? 'right' : 'left'}
         />
@@ -345,19 +339,18 @@ export default function ZenMode() {
               <motion.div
                 key={trackId}
                 className="w-full flex flex-col items-center"
-                initial={handingBack ? false : reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24, filter: 'blur(14px)' }}
+                initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24, filter: 'blur(14px)' }}
                 animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, filter: 'blur(0px)' }}
                 exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -18, filter: 'blur(14px)' }}
                 transition={{ duration: 1.1, ease: EASE, delay: 0.25 }}
               >
-                {/* The stage flies this cover into a song's scene and back by its transform; while it
-                    is on its way back it starts hidden, where the stage will land it */}
-                <div ref={coverRef} className="relative w-full aspect-square" style={handingBack ? { opacity: 0 } : undefined}>
+                {/* The same cover, by layoutId, glides to the caption when a song's scene comes up */}
+                <motion.div layoutId="zen-cover" className="relative w-full aspect-square">
                   <img src={albumArtUrl} alt="" draggable="false" className="absolute inset-0 w-full h-full object-cover rounded-[22px] shadow-[0_40px_90px_-20px_rgba(0,0,0,0.85),0_0_120px_-10px_var(--zen-glow)] transition-shadow duration-1000" />
                   {/* The light catching the cover is the scene's light, so it takes the cover's colour */}
                   <div aria-hidden="true" className="absolute inset-0 rounded-[22px] pointer-events-none" style={{ boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--zen-accent) 26%, transparent)', background: 'linear-gradient(135deg, color-mix(in srgb, var(--zen-accent) 38%, transparent) 0%, color-mix(in srgb, var(--zen-accent) 9%, transparent) 28%, transparent 46%)' }} />
-                </div>
-                <motion.div className="relative z-10 mt-10 w-full text-center" initial={{ opacity: 0, y: 10 }} animate={{ opacity: captionOn ? 0 : 1, y: 0 }} transition={{ duration: 0.9, ease: EASE, delay: captionOn ? 0 : 0.55 }}>
+                </motion.div>
+                <motion.div className="relative z-10 mt-10 w-full text-center" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE, delay: 0.55 }}>
                   <h1 className={`font-semibold tracking-[-0.015em] leading-tight [text-wrap:balance] drop-shadow-[0_2px_30px_rgba(0,0,0,0.6)] ${split ? 'text-3xl' : 'text-4xl md:text-5xl'}`}>{currentTrack.name}</h1>
                   <motion.p className="mt-3 text-[13px] font-semibold uppercase tracking-[0.38em] text-[var(--zen-accent)] [text-shadow:0_0_18px_var(--zen-glow)] transition-colors duration-1000" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.9, delay: 0.8 }}>{artists}</motion.p>
                   {requestedByGuest && <p className="mt-2.5 text-xs uppercase tracking-[0.2em] text-white/50">Requested by {requestedByGuest}</p>}
@@ -405,10 +398,13 @@ export default function ZenMode() {
         </AnimatePresence>
       </main>
 
-      {/* In a scene, the song's name and artist keep to the bottom left, out of the room's way */}
+      {/* In a scene, the cover, name and artist keep to the bottom left, out of the room's way */}
       <AnimatePresence>
-        {captionOn && currentTrack && (
+        {inScene && currentTrack && (
           <motion.div key={`caption-${trackId}`} className="absolute left-[6vw] bottom-[17vh] z-10 max-w-[38vw]" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.9, ease: EASE }}>
+            <motion.div layoutId="zen-cover" className="relative mb-5 aspect-square" style={{ width: 'min(13vw, 19vh)' }}>
+              <img src={albumArtUrl} alt="" draggable="false" className="absolute inset-0 w-full h-full object-cover rounded-[14px] shadow-[0_24px_50px_-16px_rgba(0,0,0,0.85)]" />
+            </motion.div>
             <h1 className="text-2xl md:text-3xl font-semibold tracking-[-0.015em] leading-tight [text-wrap:balance] drop-shadow-[0_2px_30px_rgba(0,0,0,0.7)]">{currentTrack.name}</h1>
             <p className="mt-2 text-[12px] font-semibold uppercase tracking-[0.38em] text-[var(--zen-accent)] [text-shadow:0_0_18px_var(--zen-glow)]">{artists}</p>
             {requestedByGuest && <p className="mt-2 text-xs uppercase tracking-[0.2em] text-white/50">Requested by {requestedByGuest}</p>}

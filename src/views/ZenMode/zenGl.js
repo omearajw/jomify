@@ -66,10 +66,29 @@ void main(){
 // Six faces at once covers a line change: the big face leaving and arriving, and the small ones
 // above and below doing the same. With the scene and the glow, eight textures: all WebGL1 promises.
 const ITEMS = 6;
+// Lines can stand in a scene: tilt turns them a little about a vertical axis through a pivot
+// (tan(angle)/focal per device pixel, cos(angle), pivot x, pivot y), and mirror reflects them,
+// faintly, in a floor line (its y in device pixels, how strong; y below 0 is off)
+const STAGE_GLSL = `uniform vec4 tilt; uniform vec2 mirror;
+vec2 warp(vec2 fpx){
+  if (tilt.y >= 0.9999) return fpx;
+  vec2 d = fpx - tilt.zw;
+  float w = 1.0 / (1.0 - d.x * tilt.x);
+  return tilt.zw + vec2(d.x * w / tilt.y, d.y * w);
+}`;
 const COMP_FS = `precision highp float; varying vec2 uv;
-uniform sampler2D scene, glow; uniform vec2 res; uniform float strength, grain; uniform vec3 c1;
+uniform sampler2D scene, glow; uniform vec2 res; uniform float strength, grain, glowGain; uniform vec3 c1, tint;
 ${Array.from({ length: ITEMS }, (_, i) => `uniform sampler2D tx${i}; uniform vec4 bx${i}, pr${i}, tl${i};`).join('\n')}
+${STAGE_GLSL}
 float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+// A line's reflection: its soft shape, dim, fading with distance from the floor line
+float ghost(sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
+  if (pr.x < 0.003) return 0.0;
+  vec2 l = (fpx - bx.xy) / bx.zw;
+  if (l.x < 0.0 || l.y < 0.0 || l.x > 1.0 || l.y > 1.0) return 0.0;
+  vec4 p = texture2D(tx, vec2(l.x, 1.0 - l.y));
+  return (p.r * 0.5 + p.b * 0.5) * pr.x * (0.5 + 0.5 * pr.y);
+}
 float hgt(sampler2D tx, vec2 st){ return smoothstep(0.06, 0.94, texture2D(tx, st).g); }
 // bx: where the line's texture is drawn (left, top, width, height, device pixels)
 // pr: opacity, how much glass (against soft text), halo, how visible the sung glow is
@@ -104,15 +123,23 @@ vec3 item(vec3 col, sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
     col = mix(col, g, a * glass * alpha);
   }
   col = mix(col, vec3(0.92, 0.9, 0.96), clamp(s * 1.25, 0.0, 1.0) * (1.0 - glass) * alpha * 0.32);
-  col += (vec3(1.0) * 0.06 + c1 * 0.1) * s * pr.z * alpha * (1.0 - a * glass * 0.5);
+  col += (vec3(1.0) * 0.06 + tint * 0.1) * s * pr.z * alpha * (1.0 - a * glass * 0.5) * glowGain;
   return col;
 }
 void main(){
   vec2 fpx = vec2(gl_FragCoord.x, res.y - gl_FragCoord.y);
   vec3 col = texture2D(scene, uv).rgb;
-${Array.from({ length: ITEMS }, (_, i) => `  col = item(col, tx${i}, bx${i}, pr${i}, tl${i}, fpx);`).join('\n')}
+  if (mirror.y > 0.003 && fpx.y > mirror.x) {
+    vec2 m = warp(vec2(fpx.x, 2.0 * mirror.x - fpx.y));
+    float fall = 1.0 - clamp((fpx.y - mirror.x) / (0.3 * res.y), 0.0, 1.0);
+    float g = 0.0;
+${Array.from({ length: ITEMS }, (_, i) => `    g += ghost(tx${i}, bx${i}, pr${i}, tl${i}, m);`).join('\n')}
+    col = mix(col, vec3(0.78, 0.82, 0.9), clamp(g, 0.0, 1.0) * mirror.y * fall * fall);
+  }
+  vec2 wpx = warp(fpx);
+${Array.from({ length: ITEMS }, (_, i) => `  col = item(col, tx${i}, bx${i}, pr${i}, tl${i}, wpx);`).join('\n')}
   // The sung words' glow: their letters, blurred as a whole (see GLOW_FS)
-  col += (vec3(1.0) * 0.42 + c1 * 0.5) * texture2D(glow, uv).r * 0.6;
+  col += (vec3(1.0) * 0.42 + tint * 0.5) * texture2D(glow, uv).r * 0.6 * glowGain;
   vec2 q = uv - 0.5;
   col *= 1.0 - dot(q, q) * 0.9;
   col += (hash(fpx + fract(grain) * 31.0) - 0.5) * 0.022;
@@ -126,6 +153,7 @@ ${Array.from({ length: ITEMS }, (_, i) => `  col = item(col, tx${i}, bx${i}, pr$
 const GLOW_FS = `precision highp float; varying vec2 uv;
 uniform vec2 res, full;
 ${Array.from({ length: ITEMS }, (_, i) => `uniform sampler2D tx${i}; uniform vec4 bx${i}, pr${i}, tl${i};`).join('\n')}
+${STAGE_GLSL}
 float lit(sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
   if (pr.x < 0.003 || tl.z <= 0.0 || pr.w < 0.003) return 0.0;
   vec2 l = (fpx - bx.xy) / bx.zw;
@@ -135,7 +163,7 @@ float lit(sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
   return p.r * (1.0 - smoothstep(head, head + 0.04, p.a)) * pr.w * pr.x;
 }
 void main(){
-  vec2 fpx = vec2(gl_FragCoord.x, res.y - gl_FragCoord.y) * (full / res);
+  vec2 fpx = warp(vec2(gl_FragCoord.x, res.y - gl_FragCoord.y) * (full / res));
   float v = 0.0;
 ${Array.from({ length: ITEMS }, (_, i) => `  v += lit(tx${i}, bx${i}, pr${i}, tl${i}, fpx);`).join('\n')}
   gl_FragColor = vec4(min(v, 1.0), 0.0, 0.0, 1.0);
@@ -335,11 +363,13 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
   // mood: the song's character, each 0..1 (see SCENE_FS)
   // drawScene, when given, draws the backdrop into the scene target after the light (a song's own
   // scene fading over it, or replacing it)
-  const render = ({ t, beat = 0, intro = 1, dim = 1, palette, items = [], strength = 280, grain = 0, mood = {}, drawScene = null }) => {
+  // stage: how the lines stand in a song's scene: { tilt: [tan/focal, cos, pivotX, pivotY], mirror: [floorY, strength] }
+  // tint: the colour in the lines' glow (the palette's first colour unless given); glowGain scales the glow
+  const render = ({ t, beat = 0, intro = 1, dim = 1, palette, items = [], strength = 280, grain = 0, mood = {}, drawScene = null, stage = null, tint = null, glowGain = 1 }) => {
     const [c1, c2, c3] = palette;
     draw(P.scene, scene, { t, beat, aspect: canvas.width / canvas.height, intro, dim, c1, c2, c3, energy: mood.energy ?? 0.5, valence: mood.valence ?? 0.5, acoustic: mood.acoustic ?? 0, minor: mood.minor ?? 0, lift: mood.lift ?? 0 });
     drawScene?.();
-    const u = { scene, res: [canvas.width, canvas.height], strength: strength * (canvas.width / 2880), grain, c1 };
+    const u = { scene, res: [canvas.width, canvas.height], strength: strength * (canvas.width / 2880), grain, c1, tint: tint || c1, glowGain, tilt: stage?.tilt || [0, 1, 0, 0], mirror: stage?.mirror || [-1, 0] };
     for (let i = 0; i < ITEMS; i++) {
       const it = items[i];
       if (!it || !it.line) {
@@ -377,6 +407,8 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
     freeProgram: (p) => gl.deleteProgram(p.program),
     drawWith: draw,
     sceneTarget: () => scene,
+    makeTarget: target,
+    freeTarget,
     makeTexture: (source) => texture(source),
     emptyTexture: empty,
     destroy() {

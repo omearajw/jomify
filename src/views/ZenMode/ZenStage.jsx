@@ -13,14 +13,14 @@ import { sceneFor } from './scenes';
 
 const approach = (v, to, dt, tau) => (tau <= 0 ? to : v + (to - v) * (1 - Math.exp(-dt / tau)));
 
-// A song's own scene (scenes/): the stage fades it over the light, carries the cover from the
-// screen onto the scene and back, and tells Zen when the handover is done so the layout can follow
-export default function ZenStage({ lines, linesKey, showLyrics, palette, paused, pulse, character, boxRef, dotsRef, onLine, onFailed, reducedMotion, track, durationMs, coverRef, coverUrl, onScene, lyricAlign }) {
+// A song's own scene (scenes/): the stage fades it up over the light and tells Zen when it is
+// there ('scene'), when it is going ('leaving') and when the usual layout is wanted again ('off')
+export default function ZenStage({ lines, linesKey, showLyrics, palette, paused, pulse, character, boxRef, dotsRef, onLine, onFailed, reducedMotion, track, durationMs, onScene, lyricAlign }) {
   const canvasRef = useRef(null);
   const live = useRef({});
   // Read by the frame loop, which outlives any one render
   useEffect(() => {
-    live.current = { lines, linesKey, showLyrics, palette: palette || FALLBACK_PALETTE, paused, pulse, character, onLine, reducedMotion, track, durationMs, coverRef, coverUrl, onScene, lyricAlign };
+    live.current = { lines, linesKey, showLyrics, palette: palette || FALLBACK_PALETTE, paused, pulse, character, onLine, reducedMotion, track, durationMs, onScene, lyricAlign };
   });
 
   useEffect(() => {
@@ -53,16 +53,9 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
     let lastCurrent = -2;
     let raf = 0;
 
-    // The song's scene, if it has one. fade runs 0..1 as it comes up over the light; the cover's
-    // handover: 'screen' (the DOM cover where Zen put it), 'flying' (carried towards the sleeve),
-    // 'scene' (the sleeve drawn in the room), and back. The DOM cover is moved by its transform
-    // alone, so React's layout never sees it move.
-    let scene = null; // { def, room, trackId, schedule, fade, hand, flyAt, from }
-    const HANDOVER_MS = 1400;
-    const coverImage = { url: null, img: null };
-    const easeFly = (u) => 1 - Math.pow(1 - u, 3);
+    // The song's scene, if it has one; fade runs 0..1 as it comes up over the light
+    let scene = null; // { def, room, trackId, schedule, linesKey, fade, leaving }
     const endScene = () => { if (!scene) return; scene.room.destroy(); scene = null; };
-    const coverEl = () => live.current.coverRef?.current;
 
     const frame = (now) => {
       raf = requestAnimationFrame(frame);
@@ -90,71 +83,33 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
       const pos = positionNow();
       const sensed = L.pulse?.(pos);
 
-      // Which scene the song wants, and the handover of the cover between the screen and the room
-      const want = sceneFor(L.track);
-      const trackId = L.track?.id || null;
-      if (scene && (!want || scene.trackId !== trackId) && scene.hand !== 'leaving' && scene.hand !== 'returning') {
-        // the song has changed: the sleeve hands the cover back to the screen as the room fades
-        scene.hand = 'leaving'; scene.flyAt = now; scene.leaveFrom = null;
-        L.onScene?.({ phase: 'leaving' });
-      }
-      if (!scene && want) {
-        try {
-          scene = { def: want, room: want.create(r), trackId, schedule: null, fade: 0, hand: 'screen', flyAt: now, from: null, linesKey: null };
-          L.onScene?.({ phase: 'entering' });
-        } catch (err) { fail(`scene failed: ${err?.message || err}`); }
-      }
-      let drawScene = null;
-      if (scene) {
-        const sc = scene;
-        const leaving = sc.hand === 'leaving' || sc.hand === 'returning';
-        sc.fade = approach(sc.fade, leaving ? 0 : 1, dt, leaving ? 0.9 : 1.1);
-        if (sc.schedule === null || sc.linesKey !== L.linesKey) { sc.schedule = sc.def.schedule({ lines: L.lines, durationMs: L.durationMs, trackId }); sc.linesKey = L.linesKey; }
-        const state = sc.def.stateAt(sc.schedule, pos);
-        // the cover's picture, for the sleeve
-        if (L.coverUrl && coverImage.url !== L.coverUrl) {
-          coverImage.url = L.coverUrl; coverImage.img = null;
-          const img = new Image(); img.crossOrigin = 'anonymous'; img.onload = () => { if (coverImage.url === L.coverUrl) coverImage.img = img; }; img.src = L.coverUrl;
-        }
-        if (coverImage.img) sc.room.setCover(coverImage.img, coverImage.url);
-        const el = coverEl();
-        const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
-        const box = sc.def.sleeveScreenBox(state.two, cssW, cssH);
-        // The handover: the DOM cover flies from where Zen laid it out to the sleeve's place on
-        // screen, then the sleeve takes over; and the reverse on the way out
-        const flyTo = (fromRect, u) => {
-          if (!el || !fromRect) return;
-          const e = easeFly(u);
-          const sx = box.w / fromRect.width, sy = box.h / fromRect.height;
-          const tx = (box.x - fromRect.left) * e, ty = (box.y - fromRect.top) * e;
-          el.style.transformOrigin = '0 0';
-          el.style.transform = `translate(${tx}px, ${ty}px) scale(${1 + (sx - 1) * e}, ${1 + (sy - 1) * e})`;
-          el.style.opacity = String(1 - Math.max(0, (e - 0.85) / 0.15));
-        };
-        if (sc.hand === 'screen' && sc.fade > 0.35 && el) { sc.hand = 'flying'; sc.flyAt = now; sc.from = el.getBoundingClientRect(); L.onScene?.({ phase: 'flying' }); }
-        if (sc.hand === 'flying') {
-          const u = Math.min(1, (now - sc.flyAt) / (calm ? HANDOVER_MS : 1));
-          flyTo(sc.from, u);
-          if (u >= 1) { sc.hand = 'scene'; L.onScene?.({ phase: 'scene' }); }
-        }
-        if (sc.hand === 'leaving') {
-          // the screen's cover is laid out again (hidden) first; once it has a place, fly back to it
-          if (el && !sc.leaveFrom) { const rect = el.getBoundingClientRect(); if (rect.width > 0) { sc.leaveFrom = rect; sc.flyAt = now; sc.hand = 'returning'; } }
-        }
-        if (sc.hand === 'returning') {
-          const u = Math.min(1, (now - sc.flyAt) / (calm ? HANDOVER_MS : 1));
-          flyTo(sc.leaveFrom, 1 - u);
-          if (u >= 1) { if (el) { el.style.transform = ''; el.style.opacity = ''; } L.onScene?.({ phase: 'off' }); endScene(); }
-        }
-        if (scene) {
-          const sleeve = sc.hand === 'scene' || sc.hand === 'leaving' ? 1 : sc.hand === 'flying' ? Math.max(0, ((now - sc.flyAt) / HANDOVER_MS - 0.85) / 0.15) : sc.hand === 'returning' ? Math.max(0, 1 - ((now - sc.flyAt) / HANDOVER_MS) / 0.15) : 0;
-          const fade = sc.fade, roomDim = dim;
-          drawScene = () => sc.room.draw({ state, t: now / 1000, fade, dim: roomDim, sleeve: Math.min(1, sleeve) });
-        }
-      }
-
       // Subtle: energy decides how much it breathes, but never more than a slight lift
       beat = approach(beat, (sensed?.beat ?? 0) * (0.35 + 0.4 * (sensed?.energy ?? 0.5)), dt, sensed?.live ? 0.08 : 0.12);
+
+      // Which scene the song wants
+      const want = sceneFor(L.track);
+      const trackId = L.track?.id || null;
+      if (scene && (!want || scene.trackId !== trackId) && !scene.leaving) { scene.leaving = true; L.onScene?.({ phase: 'leaving' }); }
+      if (!scene && want) {
+        try { scene = { def: want, room: want.create(r), trackId, schedule: null, linesKey: null, fade: 0, leaving: false, told: false }; } catch (err) { fail(`scene failed: ${err?.message || err}`); }
+      }
+      let drawScene = null;
+      let sceneFade = 0;
+      if (scene) {
+        const sc = scene;
+        // on the way out the room goes dark before it has gone, like a cut
+        sc.fade = approach(sc.fade, sc.leaving ? 0 : 1, dt, sc.leaving ? 1.3 : 1.1);
+        sc.dark = approach(sc.dark ?? 0, sc.leaving ? 1 : 0, dt, 0.7);
+        if (!sc.leaving && !sc.told && sc.fade > 0.35) { sc.told = true; L.onScene?.({ phase: 'scene' }); }
+        if (sc.leaving && sc.fade < 0.02) { L.onScene?.({ phase: 'off' }); endScene(); }
+        else {
+          if (sc.schedule === null || sc.linesKey !== L.linesKey) { sc.schedule = sc.def.schedule({ lines: L.lines, durationMs: L.durationMs, trackId }); sc.linesKey = L.linesKey; }
+          const state = sc.def.stateAt(sc.schedule, pos);
+          const fade = sc.fade, roomDim = dim * (1 - 0.75 * sc.dark);
+          sceneFade = fade * (1 - sc.dark);
+          drawScene = () => sc.room.draw({ state, t: now / 1000, fade, dim: roomDim });
+        }
+      }
 
       // Which faces belong on stage, and where
       const box = boxRef?.current?.getBoundingClientRect();
@@ -254,7 +209,17 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
       }
 
       const drawn = [...items.values()].filter((it) => it.alpha > 0.003).sort((a, b) => b.alpha - a.alpha).slice(0, 6);
-      r.render({ t: t + 40, beat, intro, dim, palette: colours, items: drawn, grain: now / 1000, mood, drawScene });
+      // In a scene the lines stand in the room: turned a little towards its middle about the lyric
+      // column's centre, reflected in the floor, their glow cooled and quietened so they read
+      let stage = null, tint = null, glowGain = 1;
+      if (sceneFade > 0.003 && box) {
+        const angle = (14 * Math.PI / 180) * sceneFade * calm;
+        const focal = canvas.height * 820 / 900;
+        stage = { tilt: [-Math.tan(angle) / focal, Math.cos(angle), (box.left + box.width / 2) * dpr, (box.top + box.height / 2) * dpr], mirror: [canvas.height * 0.667, 0.3 * sceneFade] };
+        tint = colours[0].map((v, i) => v + ([0.8, 0.85, 1.0][i] - v) * sceneFade);
+        glowGain = 1 - 0.45 * sceneFade;
+      }
+      r.render({ t: t + 40, beat, intro, dim, palette: colours, items: drawn, grain: now / 1000, mood, drawScene, stage, tint, glowGain });
     };
     raf = requestAnimationFrame(frame);
 
