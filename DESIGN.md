@@ -441,3 +441,20 @@ back. No idle timeout: the Mac might be the thing on the table or the thing in y
 it must not change by itself. The host's phone is the Party mode in the sheet with the same huge
 controls; the guest page and a dedicated wall screen are outside the layout and unchanged.
 *Why:* Party round 1; Jack chose C without the idle switch.
+
+## 10. Lyrics and Zen
+
+**2026-10-13 — Zen is the room with the chrome gone.** The lyrics live in the room (between the
+song name and the controls on the Mac; the middle of the phone's room, the queue stepping aside).
+Zen is a state of that room: the same lyrics, word-fill and art, with the layer, rail, column and
+controls faded out and the light — or a song's own scene — behind; one key in, one key out; the
+controls appear on a reach, as they do today. The lyrics toggle is one toggle for both. The
+separate full lyrics page goes: the room's lyrics panel scrolls and seeks on a tap, which was the
+page's whole job. *Why:* rounds 3–5 already put the lyrics in the room; a separate Zen page would
+be the same thing with a different frame.
+
+---
+
+**The layout is settled end to end (13 Oct 2026).** Next phase: the visual language, starting
+with the room at rest in real colour and type, built outward from Zen's light; then the layers
+and modes inherit it; then a prototype of the room and the library layer to live with for a week.
