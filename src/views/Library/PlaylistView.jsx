@@ -1137,7 +1137,7 @@ export default function PlaylistView() {
       <div className="flex items-center gap-2 md:gap-4">
         <button
           type="button"
-          onClick={() => handleTrackSelect(0)}
+          onClick={() => (isShuffled ? handleShufflePlay() : handleTrackSelect(0))}
           aria-label={`Play ${view.name}`}
           className="w-12 h-12 md:w-14 md:h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-xl shrink-0"
         >

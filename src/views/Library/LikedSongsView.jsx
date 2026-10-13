@@ -257,7 +257,7 @@ export default function LikedSongsView() {
 
       {/* Action Bar (Play & Shuffle) */}
       <div className="flex items-center space-x-4 mb-4 md:mb-8 pl-1 md:pl-4">
-        <button onClick={() => handleTrackSelect(0)} aria-label="Play Liked Songs" className="w-12 h-12 md:w-14 md:h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-xl">
+        <button onClick={() => (isShuffled ? handleShufflePlay() : handleTrackSelect(0))} aria-label="Play Liked Songs" className="w-12 h-12 md:w-14 md:h-14 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-xl">
           <Play className="w-6 h-6 fill-current ml-1" />
         </button>
         <button onClick={handleShufflePlay} aria-label="Shuffle play" title="Shuffle play" className={`w-11 h-11 flex items-center justify-center hover:scale-110 transition-all ${isShuffled ? 'text-[var(--brand-mid)]' : 'text-neutral-400 hover:text-white'}`}>

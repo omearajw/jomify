@@ -797,7 +797,7 @@ const turnIndicator = useMemo(() => {
           )}
           <button
             type="button"
-            onClick={playFromTop}
+            onClick={() => (isShuffled ? shufflePlay() : playFromTop())}
             aria-label={`Play ${view.name}`}
             className="w-12 h-12 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-xl shrink-0"
           >
