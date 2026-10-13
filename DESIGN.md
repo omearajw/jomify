@@ -472,3 +472,16 @@ show it, so from round 3 the look is judged as a living page: what moves, how sl
 Round 3 is the room in motion: the light drifting in the cover's colours, lines arriving and
 leaving over about a second with a long ease-out, words filling, the cover breathing, nothing
 with an edge, nothing that cuts.
+
+**Round 4 — the system, not the room (13 Oct 2026).** Jack's correction: the room at rest is
+nearly Zen already; the design problem is how the overlapping parts look and work together. So
+one language, chosen rather than offered, applied across the states on one living page: the
+room; the library half in (the room reflows, the column narrows and stays); full with a playlist
+open (the room becomes the strip); Sevens building; Unadded filing. The language: one colour,
+the light from the cover; everything else off-white at four strengths (the thing, its detail,
+its facts, its hairlines); the layer and each mode a single plane of slightly lighter dark that
+slides over the room with no border, shadow or radius, a hair of light at its edge; Inter Tight
+for anything read, JetBrains Mono small and capped for facts and labels; one tempo (1100 ms long
+ease-out across the screen, 700 ms in place); lists are rows on hairlines everywhere, the playing
+row alone in full white; buttons rare (Play a white disc, Send a white pill, tiles a lighter
+plane). To be judged on whether it holds together, not on any one screen.
