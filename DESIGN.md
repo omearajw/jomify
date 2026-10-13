@@ -277,3 +277,44 @@ to full and the mode fills it. *Why:* round 6; consistency over the extra quarte
 consistent choice but a bar along the bottom might be lighter. Try the column for a week; if it
 feels like wasted space while organising or in Sevens, the bottom bar is the fallback and the
 decision is reopened.
+
+## 6. The library layer
+
+What the layer has to do, from §2, in the order it matters:
+
+1. **Get to a playlist you play often in one tap** — pins. The thing the layer opens on.
+2. **Find a playlist among many** — folders (nested, yours), search within the library, sort
+   (recently played / Spotify order / A–Z / by owner), a filter (playlists / albums / artists /
+   folders), grid size.
+3. **Open a playlist and play it** — the open playlist inside the layer: play / shuffle, rows,
+   sort the rows, reorder by hand, select many, the row menu (queue, add elsewhere, remove),
+   edit details, share; a collaborative playlist's colours and "requested by".
+4. **Liked Songs** — the one list that is not a playlist, and the biggest.
+5. **Albums and artists** — saved albums; artist pages (top songs, discography, follow).
+6. **Search Spotify** — the second scope, from the same field: songs, albums, artists, playlists;
+   play or queue a result; recent searches.
+7. **Organise** — new folder, move playlists between folders, pin/unpin, import Spotify's folder
+   tree (once). The ten-minute job that wants full width.
+8. **"Made for you"** — Spotify-owned playlists, blocked for this app; shown with a note, or not.
+
+Things the layer's shape must answer: what it opens on (pins? the last place you were?); how
+half differs from full (the same thing narrower, or fewer things?); whether a playlist opens
+*inside* the layer (a push, with a way back) or beside the library; where search lives and how it
+shows two scopes; and whether more than one thing can be open at once (the parked tabs).
+
+**2026-10-13 — The library layer is two columns.** A narrow tree on the left — pins, folders,
+Liked Songs, albums, artists, with the search field at its head — and whatever is open on the
+right: a playlist, search results, an album, an artist. At half only the tree shows (the quick
+"find it" state); at full the right column appears for reading and organising. Nothing is pushed;
+the tree stays in view while a playlist is open, because organising means moving songs between
+the two. The desk (tabs on the right) is rejected: chrome that is empty most of the time. *Why:*
+library round 1.
+
+**2026-10-13 — The right column opens on what you last had open, within a while.** Pulling the
+layer to full shows the playlist (or search, album, artist) you were in when you closed it, if
+that was recent — a few hours; after longer it opens on pins and recently played instead. A
+setting offers "Open the library on: what I was doing / pins", default what I was doing. The
+same rule as "Open on: resume" at launch and the party rejoin window. *Why:* library round 2;
+"quick" says the thing you were doing is the thing you want, and pins are already in the tree.
+On the phone the right column opens *over* the tree (a push with a way back): there is no room
+for two columns, so the phone library is the shelf in shape, with the same tree at its head.
