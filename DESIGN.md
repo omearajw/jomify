@@ -458,3 +458,17 @@ be the same thing with a different frame.
 **The layout is settled end to end (13 Oct 2026).** Next phase: the visual language, starting
 with the room at rest in real colour and type, built outward from Zen's light; then the layers
 and modes inherit it; then a prototype of the room and the library layer to live with for a week.
+
+## 11. The look
+
+**What the first rounds taught (13 Oct 2026).** Five stills of the room were tried: the cover's
+light (Zen's answer everywhere), paper and ink, cold glass with the brand gradient, and a flat
+dark editorial take with the brand's three colours as solids. None landed. What did come out:
+dark, not light (easier on the eyes; a light mode only if it is not blinding); flat beats glow,
+but cold does not carry; the brand colours work as flat solids and plum is a ground, not an
+accent; and — the real finding — the brief is **relaxing, cinematic, smooth**, which is a property
+of *motion and time*, not of colour or corners. "Smooth" means slow, not round. A still cannot
+show it, so from round 3 the look is judged as a living page: what moves, how slowly, what holds.
+Round 3 is the room in motion: the light drifting in the cover's colours, lines arriving and
+leaving over about a second with a long ease-out, words filling, the cover breathing, nothing
+with an edge, nothing that cuts.
