@@ -432,3 +432,12 @@ Three screens for three people, in three places. They share a party, not a shape
 What the round must answer: only the Mac, really — whether Party on the Mac is the host view in
 the mode's frame, the wall display, or a switch between them; and whether the host's phone view
 changes at all under the new layout (it is already its own full-screen thing with huge controls).
+
+**2026-10-13 — Party on the Mac is the host view, with the display one deliberate switch away.**
+Entering Party on the Mac shows the host view in the mode's frame (controls, requests, set-up,
+the column still there). A key or a button turns the Mac into the wall display — the QR, what is
+playing and who asked, what is next, nothing to press — and a key or a tap brings the host view
+back. No idle timeout: the Mac might be the thing on the table or the thing in your hands, and
+it must not change by itself. The host's phone is the Party mode in the sheet with the same huge
+controls; the guest page and a dedicated wall screen are outside the layout and unchanged.
+*Why:* Party round 1; Jack chose C without the idle switch.
