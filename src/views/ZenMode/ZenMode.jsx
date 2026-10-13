@@ -281,6 +281,11 @@ export default function ZenMode() {
 
   const boxRef = useRef(null);
   const dotsRef = useRef(null);
+  const coverRef = useRef(null);
+  // A song with a scene of its own: the stage says when the cover has flown into it ('scene'),
+  // when it is on its way back ('leaving') and when the usual layout is wanted again ('off')
+  const [scenePhase, setScenePhase] = useState('off');
+  const onScene = useCallback(({ phase }) => setScenePhase(phase), []);
   const onLine = useCallback((text) => setSungLine(text), []);
   const onFailed = useCallback((reason) => { log('zen', 'WebGL unavailable; using the plain scene', reason); setGlFailed(true); }, []);
 
@@ -290,6 +295,12 @@ export default function ZenMode() {
 
   const idle = isActive ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none';
   const artists = currentTrack?.artists?.map((a) => a.name).join(', ') || '';
+  // In a song's scene the cover is in the room, the words about the song sit bottom left, and the
+  // lyrics keep to the right, right-aligned
+  const inScene = useGl && scenePhase === 'scene';
+  const handingBack = useGl && scenePhase === 'leaving';
+  // The name and artist move to the caption as soon as the cover sets off for the room
+  const captionOn = useGl && (scenePhase === 'flying' || scenePhase === 'scene');
 
   return (
     <div
@@ -310,6 +321,12 @@ export default function ZenMode() {
           onLine={onLine}
           onFailed={onFailed}
           reducedMotion={reducedMotion}
+          track={currentTrack}
+          durationMs={playbackState?.duration || null}
+          coverRef={coverRef}
+          coverUrl={albumArtUrl}
+          onScene={onScene}
+          lyricAlign={inScene ? 'right' : 'left'}
         />
       ) : (
         <div className="absolute inset-0 pointer-events-none">
@@ -321,24 +338,26 @@ export default function ZenMode() {
       {/* Up from black */}
       <motion.div aria-hidden="true" className="absolute inset-0 z-[5] bg-black pointer-events-none" initial={{ opacity: 1 }} animate={{ opacity: 0 }} transition={{ duration: reducedMotion ? 0.3 : 1.6, ease: 'easeOut' }} />
 
-      <main className={`relative z-10 h-full w-full flex items-center ${split ? 'justify-start' : 'justify-center'} px-[6vw] pt-[6vh] pb-[18vh] gap-[5vw]`}>
-        <motion.section layout transition={reducedMotion ? { duration: 0 } : GLIDE} className="shrink-0 flex flex-col items-center" style={{ width: split ? 'min(30vw, 44vh)' : 'min(34vw, 50vh)' }}>
+      <main className={`relative z-10 h-full w-full flex items-center ${inScene ? 'justify-end' : split ? 'justify-start' : 'justify-center'} px-[6vw] pt-[6vh] pb-[18vh] gap-[5vw]`}>
+        {!inScene && <motion.section layout transition={reducedMotion ? { duration: 0 } : GLIDE} className="shrink-0 flex flex-col items-center" style={{ width: split ? 'min(30vw, 44vh)' : 'min(34vw, 50vh)' }}>
           <AnimatePresence mode="popLayout" initial>
             {currentTrack ? (
               <motion.div
                 key={trackId}
                 className="w-full flex flex-col items-center"
-                initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24, filter: 'blur(14px)' }}
+                initial={handingBack ? false : reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24, filter: 'blur(14px)' }}
                 animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, filter: 'blur(0px)' }}
                 exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -18, filter: 'blur(14px)' }}
                 transition={{ duration: 1.1, ease: EASE, delay: 0.25 }}
               >
-                <div className="relative w-full aspect-square">
+                {/* The stage flies this cover into a song's scene and back by its transform; while it
+                    is on its way back it starts hidden, where the stage will land it */}
+                <div ref={coverRef} className="relative w-full aspect-square" style={handingBack ? { opacity: 0 } : undefined}>
                   <img src={albumArtUrl} alt="" draggable="false" className="absolute inset-0 w-full h-full object-cover rounded-[22px] shadow-[0_40px_90px_-20px_rgba(0,0,0,0.85),0_0_120px_-10px_var(--zen-glow)] transition-shadow duration-1000" />
                   {/* The light catching the cover is the scene's light, so it takes the cover's colour */}
                   <div aria-hidden="true" className="absolute inset-0 rounded-[22px] pointer-events-none" style={{ boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--zen-accent) 26%, transparent)', background: 'linear-gradient(135deg, color-mix(in srgb, var(--zen-accent) 38%, transparent) 0%, color-mix(in srgb, var(--zen-accent) 9%, transparent) 28%, transparent 46%)' }} />
                 </div>
-                <motion.div className="relative z-10 mt-10 w-full text-center" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE, delay: 0.55 }}>
+                <motion.div className="relative z-10 mt-10 w-full text-center" initial={{ opacity: 0, y: 10 }} animate={{ opacity: captionOn ? 0 : 1, y: 0 }} transition={{ duration: 0.9, ease: EASE, delay: captionOn ? 0 : 0.55 }}>
                   <h1 className={`font-semibold tracking-[-0.015em] leading-tight [text-wrap:balance] drop-shadow-[0_2px_30px_rgba(0,0,0,0.6)] ${split ? 'text-3xl' : 'text-4xl md:text-5xl'}`}>{currentTrack.name}</h1>
                   <motion.p className="mt-3 text-[13px] font-semibold uppercase tracking-[0.38em] text-[var(--zen-accent)] [text-shadow:0_0_18px_var(--zen-glow)] transition-colors duration-1000" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.9, delay: 0.8 }}>{artists}</motion.p>
                   {requestedByGuest && <p className="mt-2.5 text-xs uppercase tracking-[0.2em] text-white/50">Requested by {requestedByGuest}</p>}
@@ -351,7 +370,7 @@ export default function ZenMode() {
               <motion.p key="waiting" className="text-white/40 text-lg tracking-[0.2em] uppercase" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>Waiting for music</motion.p>
             )}
           </AnimatePresence>
-        </motion.section>
+        </motion.section>}
 
         {/* popLayout: a closing lyrics panel leaves the layout at once and fades where it was, so the
             cover glides to its final place in one move. Kept in the layout, the panel held its
@@ -362,7 +381,7 @@ export default function ZenMode() {
               key="lyrics"
               ref={boxRef}
               aria-label="Lyrics"
-              className="relative flex-1 max-w-[820px] h-[58vh]"
+              className={`relative flex-1 h-[58vh] ${inScene ? 'max-w-[560px] text-right' : 'max-w-[820px]'}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -373,18 +392,29 @@ export default function ZenMode() {
               {hasSynced && useGl && (
                 <>
                   <p className="sr-only" aria-live="off">{sungLine || ''}</p>
-                  <div ref={dotsRef} aria-hidden="true" className="absolute left-0 top-1/2 -translate-y-1/2 flex gap-3 transition-opacity duration-700" style={{ opacity: 0 }}>
+                  <div ref={dotsRef} aria-hidden="true" className={`absolute ${inScene ? 'right-0' : 'left-0'} top-1/2 -translate-y-1/2 flex gap-3 transition-opacity duration-700`} style={{ opacity: 0 }}>
                     {[0, 1, 2].map((k) => (
                       <span key={k} className="zen-dot w-3.5 h-3.5 rounded-full bg-white" style={{ '--k': k }} />
                     ))}
                   </div>
                 </>
               )}
-              {lyricsLoading && <div className="absolute left-0 top-1/2 -translate-y-1/2 flex gap-3" aria-label="Finding the lyrics">{[0, 1, 2].map((k) => <span key={k} className="w-3 h-3 rounded-full bg-white/40 animate-pulse" style={{ animationDelay: `${k * 200}ms` }} />)}</div>}
+              {lyricsLoading && <div className={`absolute ${inScene ? 'right-0' : 'left-0'} top-1/2 -translate-y-1/2 flex gap-3`} aria-label="Finding the lyrics">{[0, 1, 2].map((k) => <span key={k} className="w-3 h-3 rounded-full bg-white/40 animate-pulse" style={{ animationDelay: `${k * 200}ms` }} />)}</div>}
             </motion.section>
           )}
         </AnimatePresence>
       </main>
+
+      {/* In a scene, the song's name and artist keep to the bottom left, out of the room's way */}
+      <AnimatePresence>
+        {captionOn && currentTrack && (
+          <motion.div key={`caption-${trackId}`} className="absolute left-[6vw] bottom-[17vh] z-10 max-w-[38vw]" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.9, ease: EASE }}>
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-[-0.015em] leading-tight [text-wrap:balance] drop-shadow-[0_2px_30px_rgba(0,0,0,0.7)]">{currentTrack.name}</h1>
+            <p className="mt-2 text-[12px] font-semibold uppercase tracking-[0.38em] text-[var(--zen-accent)] [text-shadow:0_0_18px_var(--zen-glow)]">{artists}</p>
+            {requestedByGuest && <p className="mt-2 text-xs uppercase tracking-[0.2em] text-white/50">Requested by {requestedByGuest}</p>}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <motion.div className="absolute inset-0 z-20 pointer-events-none" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.9, delay: 1.1 }}>
         <button

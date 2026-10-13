@@ -214,8 +214,9 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
   const freeTarget = (tg) => { if (tg) { gl.deleteFramebuffer(tg.f); gl.deleteTexture(tg.t); } };
   const empty = texture(null, 1, 1);
 
-  const draw = (prog, out, uniforms) => {
+  const draw = (prog, out, uniforms, { blend = false } = {}) => {
     gl.useProgram(prog.program);
+    if (blend) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); } else gl.disable(gl.BLEND);
     gl.bindFramebuffer(gl.FRAMEBUFFER, out ? out.f : null);
     gl.viewport(0, 0, out ? out.w : canvas.width, out ? out.h : canvas.height);
     const loc = gl.getAttribLocation(prog.program, 'p');
@@ -332,9 +333,12 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
   // items: [{ line, x, y, scale, alpha, glass, halo, litVisible, lit }] with x, y the top left of the
   // line's text block in device pixels
   // mood: the song's character, each 0..1 (see SCENE_FS)
-  const render = ({ t, beat = 0, intro = 1, dim = 1, palette, items = [], strength = 280, grain = 0, mood = {} }) => {
+  // drawScene, when given, draws the backdrop into the scene target after the light (a song's own
+  // scene fading over it, or replacing it)
+  const render = ({ t, beat = 0, intro = 1, dim = 1, palette, items = [], strength = 280, grain = 0, mood = {}, drawScene = null }) => {
     const [c1, c2, c3] = palette;
     draw(P.scene, scene, { t, beat, aspect: canvas.width / canvas.height, intro, dim, c1, c2, c3, energy: mood.energy ?? 0.5, valence: mood.valence ?? 0.5, acoustic: mood.acoustic ?? 0, minor: mood.minor ?? 0, lift: mood.lift ?? 0 });
+    drawScene?.();
     const u = { scene, res: [canvas.width, canvas.height], strength: strength * (canvas.width / 2880), grain, c1 };
     for (let i = 0; i < ITEMS; i++) {
       const it = items[i];
@@ -368,6 +372,13 @@ export function createZenRenderer(canvas, { onLost, onFail } = {}) {
     makeLine,
     freeLine,
     render,
+    // For a song's own scene: its program, drawn into the scene target
+    compileProgram: compile,
+    freeProgram: (p) => gl.deleteProgram(p.program),
+    drawWith: draw,
+    sceneTarget: () => scene,
+    makeTexture: (source) => texture(source),
+    emptyTexture: empty,
     destroy() {
       canvas.removeEventListener('webglcontextlost', lost);
       // Resources only, never loseContext(): the browser hands the same context back to the next

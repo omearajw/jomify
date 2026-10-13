@@ -164,5 +164,38 @@ check('fill: nothing for no line', fillProgress(L, null, 9000) === 0);
   check('ending: stays at 1 after it', endingAt(W, 20000) === 1);
 }
 
+
+
+// ---- the Virtual Insanity room's choreography ----
+{
+  const { buildSchedule, stateAt, corners, overlap, SOFAS, ROOM } = await import('../src/views/ZenMode/scenes/planner.js');
+  const song = Array.from({ length: 60 }, (_, i) => ({ timeMs: 8000 + i * 4200, text: `line ${i}` }));
+  const sched = buildSchedule({ lines: song, durationMs: 260000, seed: 'spotify:track:vi' });
+  const fixedBox = corners({ x: 0, z: 0 }, 0, SOFAS.fixed.W, { ...SOFAS.fixed.view, a: 0 });
+  const inRoom = (pts) => pts.every((q) => Math.abs(q.x) <= ROOM.wall + 1 && q.z >= ROOM.back - 1);
+  let collisions = 0, jumps = 0, prev = null, sawBig = false;
+  for (let t = 0; t < 260000; t += 100) {
+    const st = stateAt(sched, t);
+    const two = corners({ x: 0, z: 0 }, 0, SOFAS.loose.W, { x: st.two.x, z: st.two.z, a: st.two.yaw });
+    if (!inRoom(two) || overlap(two, fixedBox)) collisions++;
+    if (st.big) {
+      sawBig = true;
+      const big = corners({ x: 0, z: 0 }, 0, SOFAS.big.W, { x: st.big.x, z: st.big.z, a: st.big.yaw });
+      if (st.big.z < -120 && (!inRoom(big) || overlap(big, fixedBox) || overlap(big, two))) collisions++;
+    }
+    // the fastest move covers about 70 units in 100ms; a re-anchoring mistake would jump hundreds
+    if (prev && Math.hypot(st.two.x - prev.x, st.two.z - prev.z) > 90) jumps++;
+    prev = st.two;
+  }
+  check('the sofas never meet a wall or each other through the whole song', collisions === 0);
+  check('the two-seater never jumps between frames', jumps === 0);
+  check('the big sofa visits once', sawBig && sched.bigEnter && sched.bigLeave && sched.bigLeave.at > sched.bigEnter.at + 30000);
+  check('the big sofa comes in after the two-seater is against a side wall', (() => { const st = stateAt(sched, sched.bigEnter.at); const e = Math.abs(st.two.x); return e > ROOM.wall - 400; })());
+  check('every move ends square: a heading that is a multiple of 90', sched.moves.every((m) => Math.abs(m.end.a / 90 - Math.round(m.end.a / 90)) < 1e-9));
+  check('moves take between five and eleven seconds', sched.moves.every((m) => m.ms >= 5200 && m.ms <= 11000));
+  check('the same seed gives the same room', JSON.stringify(buildSchedule({ lines: song, durationMs: 260000, seed: 'spotify:track:vi' })) === JSON.stringify(sched));
+  const without = buildSchedule({ lines: null, durationMs: 200000, seed: 'x' });
+  check('without line timings the room still moves', without.moves.length > 8);
+}
 console.log(`\nzen: ${pass} passed, ${fail} failed`);
 if (fail) { console.log(failures.join('\n')); process.exit(1); }

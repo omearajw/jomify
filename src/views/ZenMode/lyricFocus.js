@@ -124,8 +124,10 @@ export function wordStops(ctx, rows, widths, words) {
 // same way, in the units of box.
 export const SMALL_RATIO = 0.4;
 export const faceKey = (index, face) => `${index}:${face}`;
-export function layoutFocus({ focus, blocks, box, big }) {
+export function layoutFocus({ focus, blocks, box, big, align = 'left' }) {
   const out = {};
+  // right-aligned, each face sits against the box's right edge
+  const xFor = (key) => (align === 'right' && blocks[key] ? box.x + box.w - blocks[key].w : box.x);
   const gap = big * 0.55;
   const centreY = box.y + box.h / 2;
   const cur = focus.current;
@@ -133,12 +135,12 @@ export function layoutFocus({ focus, blocks, box, big }) {
   const curTop = centreY - curH / 2;
   const curBottom = curTop + curH;
   const smallH = (i) => blocks[faceKey(i, 'small')]?.h ?? big * SMALL_RATIO * 1.1;
-  if (cur !== null) out[faceKey(cur, 'big')] = { x: box.x, y: curTop, scale: 1, alpha: 1, glass: 1, halo: 1, litVisible: 1 };
+  if (cur !== null) out[faceKey(cur, 'big')] = { x: xFor(faceKey(cur, 'big')), y: curTop, scale: 1, alpha: 1, glass: 1, halo: 1, litVisible: 1 };
   if (focus.prev !== null && focus.prev !== cur) {
-    out[faceKey(focus.prev, 'small')] = { x: box.x, y: curTop - gap - smallH(focus.prev), scale: 1, alpha: 1, glass: 0, halo: 0, litVisible: 0 };
+    out[faceKey(focus.prev, 'small')] = { x: xFor(faceKey(focus.prev, 'small')), y: curTop - gap - smallH(focus.prev), scale: 1, alpha: 1, glass: 0, halo: 0, litVisible: 0 };
   }
   if (focus.next !== null && focus.next !== cur) {
-    out[faceKey(focus.next, 'small')] = { x: box.x, y: curBottom + gap, scale: 1, alpha: 1, glass: 0, halo: 0, litVisible: 0 };
+    out[faceKey(focus.next, 'small')] = { x: xFor(faceKey(focus.next, 'small')), y: curBottom + gap, scale: 1, alpha: 1, glass: 0, halo: 0, litVisible: 0 };
   }
   return out;
 }
