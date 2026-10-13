@@ -1,10 +1,30 @@
 // The 2026 endpoint migration layer: shapes are normalised and the fallback behaves.
-import { normalizeEntry, normalizePage, normalizePlaylist, bothPlaylistFields, bothPageFields, swapItemsPath, isPlaylistItemsUrl, playlistItemsUrl, withFallback, newEndpointRefused } from '../src/services/spotify/compat.js';
+import { isUnplayable } from '../src/utils/spotifyUri.js';
+import { normalizeEntry, normalizePage, normalizePlaylist, normalizeTrack, withMarket, bothPlaylistFields, bothPageFields, swapItemsPath, isPlaylistItemsUrl, playlistItemsUrl, withFallback, newEndpointRefused } from '../src/services/spotify/compat.js';
 
 let pass = 0, fail = 0; const failures = [];
 const check = (name, cond) => { if (cond) pass++; else { fail++; failures.push(name); console.log('  FAIL ', name); } };
 
 check('an entry with item gains track', normalizeEntry({ item: { id: 'a' } }).track?.id === 'a');
+
+// Relinking and availability
+{
+  const relinked = { id: 'gb1', uri: 'spotify:track:gb1', is_playable: true, linked_from: { id: 'us1', uri: 'spotify:track:us1' } };
+  const t = normalizeTrack(relinked);
+  check('a relinked song keeps the uri the playlist holds', t.uri === 'spotify:track:us1' && t.id === 'us1');
+  check('and remembers what it was relinked to', t.relinked_to.uri === 'spotify:track:gb1');
+  check('a plain song is untouched', normalizeTrack({ id: 'x', uri: 'u' }).relinked_to === undefined);
+  check('entries normalise their songs', normalizeEntry({ item: relinked }).track.uri === 'spotify:track:us1');
+  check('withMarket adds the market', withMarket('https://api.spotify.com/v1/playlists/p/items?offset=100') === 'https://api.spotify.com/v1/playlists/p/items?offset=100&market=from_token');
+  check('withMarket starts the query when there is none', withMarket('https://api.spotify.com/v1/me/tracks').endsWith('/me/tracks?market=from_token'));
+  check('withMarket leaves a market alone', withMarket('https://x/y?market=GB') === 'https://x/y?market=GB');
+  check('an original pressing missing from GB plays once Spotify says is_playable', isUnplayable({ is_playable: true, available_markets: ['US'] }, 'GB') === false);
+  check('Spotify saying not playable wins', isUnplayable({ is_playable: false, available_markets: ['GB'] }, 'GB') === true);
+  check('without is_playable the market list decides', isUnplayable({ available_markets: ['US'] }, 'GB') === true);
+  check('an empty market list is unplayable', isUnplayable({ available_markets: [] }, 'GB') === true);
+  check('a local file never plays', isUnplayable({ is_local: true, is_playable: true }, 'GB') === true);
+  check('nothing known counts as playable', isUnplayable({ id: 'x' }, 'GB') === false);
+}
 check('an entry with track is left alone', normalizeEntry({ track: { id: 'a' } }).item === undefined);
 check('a null entry survives', normalizeEntry(null) === null);
 check('a page maps its entries', normalizePage({ items: [{ item: { id: 'x' } }], next: null }).items[0].track.id === 'x');

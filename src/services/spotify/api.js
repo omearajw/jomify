@@ -5,7 +5,7 @@ import { log } from '../debugLog';
 import { toSpotifyDescription } from '../../utils/strings';
 import {
   API, withFallback, newEndpointRefused, markNewEndpointRefused, playlistItemsUrl, swapItemsPath, isPlaylistItemsUrl, bothPlaylistFields, bothPageFields,
-  normalizePage, normalizePlaylist,
+  normalizePage, normalizePlaylist, withMarket,
   LIBRARY_BATCH, trackUri, albumUri, userUri, playlistUri, artistUri, libraryUrl, libraryContainsUrl
 } from './compat';
 
@@ -212,7 +212,7 @@ export async function fetchPlaylistSummary(token, playlistId) {
 // A page of a playlist's songs by URL: one Spotify handed back as `next`, or one built with
 // playlistItemsUrl. Tries the URL under the new name first, the old name if that is refused.
 export async function fetchPlaylistItemsPage(token, url) {
-  const request = (u) => spotifyFetch(u, { method: 'GET', headers: auth(token) });
+  const request = (u) => spotifyFetch(withMarket(u), { method: 'GET', headers: auth(token) });
   const response = isPlaylistItemsUrl(url)
     ? await withFallback('playlist items', () => request(swapItemsPath(url, false)), () => request(swapItemsPath(url, true)))
     : await request(url);
@@ -272,7 +272,7 @@ export async function fetchUserPlaylists(token) {
 }
 
 export async function fetchPlaylistDetails(token, playlistId) {
-  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+  const response = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}?market=from_token`, {
     method: "GET",
     headers: { Authorization: "Bearer " + token }
   });
@@ -417,7 +417,7 @@ export async function uploadPlaylistCoverImage(token, playlistId, imageFile) {
 // The next page of anything paginated: liked songs, an album's tracks, a playlist's songs
 export async function fetchMoreTracks(token, nextUrl) {
   if (isPlaylistItemsUrl(nextUrl)) return fetchPlaylistItemsPage(token, nextUrl);
-  const response = await spotifyFetch(nextUrl, {
+  const response = await spotifyFetch(withMarket(nextUrl), {
     method: "GET",
     headers: auth(token)
   });
@@ -556,14 +556,14 @@ export async function toggleTrackLike(token, trackId, isCurrentlyLiked) {
 }
 
 export async function fetchInitialLikedSongs(token) {
-  const url = "https://" + "api.spotify.com/v1/me/tracks?limit=50";
+  const url = "https://" + "api.spotify.com/v1/me/tracks?limit=50&market=from_token";
   const response = await spotifyFetch(url, {
     method: "GET",
     headers: { Authorization: "Bearer " + token }
   });
   
   if (!response.ok) throw new Error("Failed to fetch initial liked songs");
-  return await response.json();
+  return normalizePage(await response.json());
 }
 
 export async function toggleShuffleState(token, deviceId, state) {

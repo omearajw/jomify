@@ -79,13 +79,16 @@ export function isSameTrack(a, b) {
   return title !== '' && artist !== '' && title === cleanString(b.name) && artist === leadArtist(b);
 }
 
-// Whether Spotify can play a song for this listener. Local files never play elsewhere, and a
-// song pulled from the catalogue (or not licensed in the listener's country) has an empty or
-// non-matching available_markets list. Spotify only sends is_playable when asked with a
-// market, so the fields that are always there decide; anything unknown counts as playable.
+// Whether Spotify can play a song for this listener. Local files never play elsewhere. Asked
+// with a market (playlists, liked songs, albums), Spotify answers is_playable itself, having
+// relinked a pressing that is not licensed here to one that is; that answer wins. Without it
+// (older cached rows, Sevens metadata) the available_markets list decides, and anything unknown
+// counts as playable. A song's original pressing can be missing from the listener's market while
+// the song plays fine, which is why the list alone was greying rows Spotify plays.
 export function isUnplayable(track, country) {
   if (!track) return false;
-  if (track.is_local || track.is_playable === false) return true;
+  if (track.is_local) return true;
+  if (typeof track.is_playable === 'boolean') return !track.is_playable;
   const markets = track.available_markets;
   if (!Array.isArray(markets)) return false;
   if (markets.length === 0) return true;

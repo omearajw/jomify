@@ -67,12 +67,26 @@ export const bothPageFields = (fields) => fields.replace(/\btrack(\((?:[^()]|\([
 
 // --- Shapes -----------------------------------------------------------------------------------
 
+// Asked with a market, Spotify relinks a song whose pressing is not licensed there to one that
+// is, and says so in linked_from. The playlist holds the original, so removing, liking and
+// matching must use the original's uri and id; playback relinks by itself. is_playable is kept.
+export function normalizeTrack(track) {
+  if (!track || typeof track !== 'object' || !track.linked_from) return track;
+  const { linked_from: from } = track;
+  return { ...track, uri: from.uri || track.uri, id: from.id || track.id, relinked_to: { uri: track.uri, id: track.id } };
+}
+
 // One entry of a playlist page: the song is under `item` now and `track` before; give it both
 export function normalizeEntry(entry) {
   if (!entry || typeof entry !== 'object') return entry;
-  if (entry.track === undefined && entry.item !== undefined) return { ...entry, track: entry.item };
-  return entry;
+  const track = normalizeTrack(entry.track === undefined ? entry.item : entry.track);
+  if (track === undefined) return entry;
+  return { ...entry, track };
 }
+
+// Songs are asked for with the listener's market, so Spotify says which ones it can play here
+// (is_playable) instead of leaving the app to guess from available_markets
+export const withMarket = (url) => (/[?&]market=/.test(url) ? url : `${url}${url.includes('?') ? '&' : '?'}market=from_token`);
 
 // A page of entries (items/next/total/offset/limit)
 export function normalizePage(page) {

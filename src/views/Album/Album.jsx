@@ -53,7 +53,7 @@ export default function Album() {
 
         // An error payload is truthy, so without this check a 404 rendered a header full of
         // `undefined` instead of "not found".
-        const albumRes = await spotifyFetch(`https://api.spotify.com/v1/albums/${currentAlbumId}`, {
+        const albumRes = await spotifyFetch(`https://api.spotify.com/v1/albums/${currentAlbumId}?market=from_token`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (!albumRes.ok) {
