@@ -485,3 +485,17 @@ for anything read, JetBrains Mono small and capped for facts and labels; one tem
 ease-out across the screen, 700 ms in place); lists are rows on hairlines everywhere, the playing
 row alone in full white; buttons rare (Play a white disc, Send a white pill, tiles a lighter
 plane). To be judged on whether it holds together, not on any one screen.
+
+**2026-10-13 — The look is decided: the system from round 4.** One colour (the light, from the
+cover), off-white at four strengths; planes that slide over the lit room, no borders or panels;
+Inter Tight to read, JetBrains Mono for facts; one tempo; one row design; rare buttons. Jack:
+"that is REALLY nice… keep it closer to what the actual app has as the current Zen mode." So the
+light behind everything is Zen's real stage — its ribbons in the cover's palette, the glass
+lyrics with the word fill — not the page's stand-in canvas; the room *is* Zen with its chrome on.
+Zen itself is then the same room with the chrome faded, as §10 says.
+
+---
+
+**Design settled, end to end (13 Oct 2026).** Next: the prototype. Build the room and the library
+layer for real on this language, run it on the Mac and the phone for a week, and keep a notes
+file of every irritation; then the modes inherit it.
