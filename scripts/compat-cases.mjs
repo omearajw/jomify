@@ -1,5 +1,5 @@
 // The 2026 endpoint migration layer: shapes are normalised and the fallback behaves.
-import { isUnplayable } from '../src/utils/spotifyUri.js';
+import { isUnplayable, needsCheck, idsToCheck, applyPlayability } from '../src/utils/spotifyUri.js';
 import { normalizeEntry, normalizePage, normalizePlaylist, normalizeTrack, withMarket, bothPlaylistFields, bothPageFields, swapItemsPath, isPlaylistItemsUrl, playlistItemsUrl, withFallback, newEndpointRefused } from '../src/services/spotify/compat.js';
 
 let pass = 0, fail = 0; const failures = [];
@@ -24,6 +24,14 @@ check('an entry with item gains track', normalizeEntry({ item: { id: 'a' } }).tr
   check('an empty market list is unplayable', isUnplayable({ available_markets: [] }, 'GB') === true);
   check('a local file never plays', isUnplayable({ is_local: true, is_playable: true }, 'GB') === true);
   check('nothing known counts as playable', isUnplayable({ id: 'x' }, 'GB') === false);
+  // confirming greyed rows by id
+  const rows = [{ track: { id: 'a', uri: 'spotify:track:a', available_markets: ['US'] } }, { track: { id: 'b', uri: 'spotify:track:b', available_markets: ['GB'] } }, { track: { id: 'c', uri: 'spotify:track:c', is_playable: false } }, { track: { id: 'd', uri: 'spotify:track:d', is_local: true } }];
+  check('only rows greyed by the market list alone are asked about', JSON.stringify(idsToCheck(rows, 'GB')) === JSON.stringify(['a']));
+  check('a row Spotify already answered for is not asked again', needsCheck(rows[2].track, 'GB') === false);
+  const patched = applyPlayability(rows, { a: { is_playable: true, linked_from: { id: 'a0' } } });
+  check('an answer patches the row and keeps its uri', patched[0].track.is_playable === true && patched[0].track.uri === 'spotify:track:a' && isUnplayable(patched[0].track, 'GB') === false);
+  check('other rows keep their identity', patched[1] === rows[1] && patched[2] === rows[2]);
+  check('no answers leaves the array itself', applyPlayability(rows, {}) === rows);
 }
 check('an entry with track is left alone', normalizeEntry({ track: { id: 'a' } }).item === undefined);
 check('a null entry survives', normalizeEntry(null) === null);

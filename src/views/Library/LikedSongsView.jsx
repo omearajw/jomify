@@ -12,7 +12,8 @@ import { rowButtonProps } from '../../utils/a11y';
 import MoreButton from '../../components/MoreButton';
 import { Skeleton, SkeletonRows } from '../../components/Skeleton';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
-import { isSameTrack, isUnplayable } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable, applyPlayability } from '../../utils/spotifyUri';
+import { confirmPlayability } from '../../services/playability';
 import { toast } from '../../store/toastStore';
 import { toggleTrackLike } from '../../services/spotify/api';
 import { useSelection } from '../../hooks/useSelection';
@@ -60,6 +61,15 @@ export default function LikedSongsView() {
   const [loadError, setLoadError] = useState('');
   const [reloadNonce, setReloadNonce] = useState(0);
 
+  const country = useUserStore((s) => s.profile?.country);
+  // Rows greyed on a market list alone are confirmed with Spotify and patched
+  const confirmRows = (items) => {
+    confirmPlayability(token, items, country).then((answers) => {
+      if (!Object.keys(answers).length) return;
+      setTrackData((prev) => (prev ? { ...prev, items: applyPlayability(prev.items, answers) } : prev));
+    });
+  };
+
   useEffect(() => {
     if (token) {
       // Load once: the token rotates hourly and refetching here used to reset the scroll
@@ -69,6 +79,7 @@ export default function LikedSongsView() {
       fetchInitialLikedSongs(token).then((data) => {
         setTrackData(data);
         setVisibleCount(ROW_PAGE);
+        confirmRows(data.items);
         
         // Globally mark as liked
         const updates = {};
@@ -105,6 +116,7 @@ export default function LikedSongsView() {
             next: nextData.next
           };
         });
+        confirmRows(nextData.items);
         
         const updates = {};
         nextData.items.forEach(item => { if (item.track?.id) updates[item.track.id] = true; });
@@ -136,7 +148,6 @@ export default function LikedSongsView() {
   const needle = find.trim().toLowerCase();
   const items = sortLiked(liveItems, sortMode).filter((item) => matchesQuery(item.track, needle));
 
-  const country = useUserStore((s) => s.profile?.country);
 
   // Several rows at once, keyed by uri in display order
   const rowKeys = items.map((item) => item.track?.uri).filter(Boolean);

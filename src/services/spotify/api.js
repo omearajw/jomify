@@ -197,6 +197,23 @@ async function fetchEach(token, path, ids, label) {
   return results.filter(Boolean);
 }
 export const fetchAlbumsByIds = (token, ids) => fetchEach(token, 'albums', ids, 'albums');
+
+// Whether Spotify can play these songs in the listener's market, by id: the one request that is
+// sure to honour the market and answer is_playable (relinking a pressing that is not licensed
+// here to one that is). Returns id -> { is_playable, linked_from }; ids it could not ask about
+// are left out.
+export async function fetchPlayability(token, ids) {
+  const unique = [...new Set((ids || []).filter(Boolean))];
+  const out = {};
+  for (let i = 0; i < unique.length; i += 50) {
+    const chunk = unique.slice(i, i + 50);
+    const response = await spotifyFetch(`${API}/tracks?ids=${chunk.join(',')}&market=from_token`, { headers: auth(token) });
+    if (!response.ok) { log('api', `playability check refused with ${response.status}`); break; }
+    const body = await response.json();
+    for (const t of body?.tracks || []) if (t?.id) { out[t.linked_from?.id || t.id] = { is_playable: t.is_playable !== false, linked_from: t.linked_from || null }; if (t.linked_from?.id) out[t.id] = out[t.linked_from.id]; }
+  }
+  return out;
+}
 export const fetchArtistsByIds = (token, ids) => fetchEach(token, 'artists', ids, 'artists');
 
 // Name, art and owner only; enough for a card without paying for the whole track list

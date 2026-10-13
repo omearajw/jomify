@@ -94,3 +94,24 @@ export function isUnplayable(track, country) {
   if (markets.length === 0) return true;
   return Boolean(country) && !markets.includes(country);
 }
+
+// A row the market list greyed without Spotify having said is_playable either way: one worth
+// asking Spotify about by id (see services/playability.js)
+export const needsCheck = (track, country) => Boolean(track && !track.is_local && typeof track.is_playable !== 'boolean' && isUnplayable(track, country));
+
+// Those rows' ids, once each
+export const idsToCheck = (items, country) => [...new Set((items || []).map((it) => it?.track).filter((t) => needsCheck(t, country)).map((t) => t.id).filter(Boolean))];
+
+// The items with Spotify's answers (id -> { is_playable, linked_from }) written in; untouched
+// rows keep their identity, and the array does too when nothing changed
+export function applyPlayability(items, answers) {
+  if (!answers || !Object.keys(answers).length) return items;
+  let changed = false;
+  const out = items.map((it) => {
+    const a = it?.track?.id ? answers[it.track.id] : null;
+    if (!a) return it;
+    changed = true;
+    return { ...it, track: { ...it.track, is_playable: a.is_playable, relinked_to: a.linked_from ? { id: it.track.id, uri: it.track.uri } : it.track.relinked_to } };
+  });
+  return changed ? out : items;
+}

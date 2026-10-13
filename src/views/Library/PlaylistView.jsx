@@ -24,7 +24,8 @@ import { rowButtonProps } from '../../utils/a11y';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { artUrl } from '../../utils/images';
 import { scrollParent } from '../../utils/dom';
-import { isSameTrack, isUnplayable, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable, applyPlayability, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
+import { confirmPlayability } from '../../services/playability';
 import { useSelection } from '../../hooks/useSelection';
 import SelectionBar from '../../components/SelectionBar';
 
@@ -503,6 +504,7 @@ export default function PlaylistView() {
           if (!data) return;
           setPlaylist(data);
           checkLikesForChunk(data.tracks.items);
+          confirmRows(data.tracks.items);
 
           // Custom order pages in as you scroll (see the sentinel below); a sorted view needs
           // every track to sort honestly, so it still loads the lot
@@ -524,6 +526,14 @@ export default function PlaylistView() {
   // --- BACKGROUND STREAMING ---
   // A declaration so the load effect above can call it: declarations hoist, and it only runs
   // after mount anyway
+  // Rows the page greyed on a market list alone are confirmed with Spotify and patched
+  function confirmRows(items) {
+    confirmPlayability(token, items, country).then((answers) => {
+      if (!Object.keys(answers).length) return;
+      setPlaylist((prev) => (prev ? { ...prev, tracks: { ...prev.tracks, items: applyPlayability(prev.tracks.items, answers) } } : prev));
+    });
+  }
+
   async function loadRestOfTracks(initialNextUrl, maxPages = Infinity) {
     isFetchingMore.current = true;
     setFetchingMore(true);
@@ -558,6 +568,7 @@ export default function PlaylistView() {
           return [...prev, ...nextData.items.filter((i) => i?.track?.uri && !seen.has(i.track.uri))];
         });
         checkLikesForChunk(nextData.items);
+        confirmRows(nextData.items);
         nextUrl = nextData.next;
         if (++pagesLoaded >= maxPages && !wantAllPages.current) break;
       } catch {
