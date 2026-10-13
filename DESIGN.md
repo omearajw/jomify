@@ -394,3 +394,14 @@ ones large; drag the card onto a tile or tap it to file the song. What the mode 
 What the mode's shape must answer: whether filing is a *list* you work down (every song visible,
 a suggestion beside each) or a *deck* (one card at a time, tiles to file onto) — or both, and
 which the mode opens on.
+
+**2026-10-13 — Unadded: the playing song is the card.** The pile is a playlist you play; entering
+the mode plays it from where you left it. The mode's screen is the targets: the check playlists
+as tiles, the two the suggestions rank highest for the playing song large, the rest small; under
+them, the rest of the pile as a list with its own suggestion chips, for a quick filing without
+playing and to see what is coming (tap a row to play it next). To file, drag the playing song
+out of the column onto a tile, or tap the tile; a second tile may be tapped before moving on; it
+leaves the pile and the next plays. Skip is the column's skip, remembered. "Find songs" and
+"Check playlists ▾" at the top. On the phone the drag is up from the song strip. The list, the
+deck and both were drawn first; this take, Jack's, uses the column instead of drawing a card.
+*Why:* Unadded round 2.
