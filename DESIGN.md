@@ -329,3 +329,32 @@ is the surface, for the visual-language phase: the cover's colour washing the he
 does, a facts line that says "with Dad · your turn", the collaborator colours, the Play button.
 Selecting rows turns the actions bar into the selection's actions (N selected · Add to… · Queue ·
 Remove · Done). *Why:* library rounds 3 and 4.
+
+**Decided by default (library):** search is one field at the head of the tree; results are one
+list, "In your library" first, "On Spotify" (songs, then playlists · albums · artists) below.
+The tree at half holds pins, folders, Liked Songs · Albums · Artists; sort, filter and grid
+size belong to the "All playlists" section at full, not to the tree.
+
+## 7. Sevens
+
+The shared playlists with Dad: you each add seven songs in turn. What the mode has to do:
+
+1. **Whose turn** — across every Seven, at a glance (today: the Home banner). The one Sevens
+   fact that matters when you are not in Sevens.
+2. **Build the batch** — stage up to seven songs, see how many are staged, order them (move up
+   and down, drag), remove one, send the batch. The job the mode exists for.
+3. **Find songs for the batch** — from the pool (another playlist of yours, chosen per Seven,
+   searched within) or from Spotify; each candidate marked if it is already in this Seven, or
+   was ever sent to this partner on any Seven ("used").
+4. **Read the Seven** — the batches so far, newest last: who added each, when, the seven rows,
+   collaborator colours; play from any row; the playlist's own Play and Shuffle.
+5. **Set up and settle** — which playlist is a Seven and with whom (the partner found from who
+   added what), the pool playlist, how the pairing is shown; the Sevens page that lists them all.
+
+Not Sevens: sort mode belongs to Unadded (one song at a time as a card, filed onto playlist
+tiles).
+
+What the mode's shape must answer: whether building and reading are one screen or two; where the
+pool sits relative to the batch (beside, beneath, a sheet); what the mode opens on — the batch if
+it is your turn, the Seven if it is not; and what the Sevens page (all of them) is for beyond
+"whose turn".
