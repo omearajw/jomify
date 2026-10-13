@@ -3,17 +3,26 @@
 // (store/queueStore.js) and hands Spotify one song at a time: the head of the queue, fifteen
 // seconds before the current song ends, or the moment before a skip. A handed-over song is
 // confirmed when it is heard playing; one that Spotify forgot is handed over again.
-// Party mode has its own conductor and tells this one to stand down.
+//
+// Only one of the listener's devices carries the queue out. The device the music plays on does
+// it (its own player is the active device); another Jomify playing means that one does it and
+// this one stands down; with the music on a device that is no Jomify (an Alexa, the Spotify app)
+// or on nothing, the devices share a lease from the server and the holder does it. A device in a
+// party stands down altogether: the party conductor runs the music there.
 import { usePlayerStore } from '../store/playerStore';
 import { useUserStore } from '../store/userStore';
 import { useQueueStore } from '../store/queueStore';
+import { usePartyStore } from '../store/partyStore';
 import { addToQueue, fetchQueue, playUris } from './spotify/api';
+import { askLease } from './queueLease';
 import { positionNow } from '../lib/playbackClock';
 import { log } from './debugLog';
 import { feedDue, resolveFed, isItem, indexOfTrack } from './queueLogic';
 
 const TICK_MS = 1000;
+const LEASE_RENEW_MS = 10000;
 let timer = null;
+let lease = { held: null, at: 0, asking: null }; // the server's answer, and when
 let fed = null;         // { item, at }: the song handed to Spotify, awaiting its start
 let feeding = null;     // the hand-over in flight
 let lastFailAt = 0;
@@ -26,6 +35,23 @@ const currentTrack = () => player().playbackState?.track_window?.current_track |
 const deviceId = () => player().activeDevice?.id || null;
 
 export const handedOver = () => fed?.item || null;
+
+const isJomifyDevice = (d) => Boolean(d?.name && /^Jomify\b/.test(d.name));
+
+// Whether this device carries out the queue right now (see the note at the top)
+export async function inCharge() {
+  if (suspended || usePartyStore.getState().code) return false;
+  const p = player();
+  if (p.isLocalActive) return true;
+  if (p.activeDevice && !p.activeDevice.isLocal && isJomifyDevice(p.activeDevice)) return false;
+  const now = Date.now();
+  if (now - lease.at > LEASE_RENEW_MS && !lease.asking) {
+    lease.asking = askLease(queue().instanceId).then((held) => { lease = { held, at: Date.now(), asking: null }; if (held === false) fed = null; });
+  }
+  if (lease.held === null && lease.at === 0) await lease.asking;
+  // the server could not say: carry on rather than let the music stop
+  return lease.held !== false;
+}
 
 // Is the song already waiting in Spotify's queue? Then it need not be handed over twice
 async function alreadyQueued(t, item) {
@@ -93,6 +119,7 @@ export function onDeviceReset(why) {
 
 async function tick() {
   if (suspended || !token()) return;
+  if (!(await inCharge())) return;
   const now = Date.now();
   const cur = currentTrack();
   if (fed) {
@@ -112,7 +139,7 @@ async function tick() {
 // Something was just queued: with nothing playing at all, start it now rather than wait for a
 // song end that is not coming
 export async function nudge() {
-  if (suspended) return;
+  if (suspended || usePartyStore.getState().code) return;
   const t = token();
   const item = queue().items[0];
   const st = player().playbackState;
@@ -123,9 +150,10 @@ export async function nudge() {
   } catch (err) { log('queue', `could not start ${item.name}`, err?.message || String(err)); }
 }
 
-// Before a skip: the next song goes in first, so the skip lands on it and not on the playlist
+// Before a skip: the next song goes in first, so the skip lands on it and not on the playlist.
+// The skip was pressed here, so this device acts even without the lease.
 export async function beforeSkip() {
-  if (suspended || fed || !queue().items.length) return;
+  if (suspended || usePartyStore.getState().code || fed || !queue().items.length) return;
   await feed('skip', { waitUntilQueued: true });
 }
 
@@ -155,4 +183,6 @@ export function start() {
 }
 export function stop() {
   clearInterval(timer); timer = null; fed = null; feeding = null;
+  if (lease.held) askLease(queue().instanceId, { release: true });
+  lease = { held: null, at: 0, asking: null };
 }

@@ -14,8 +14,12 @@ function manualFromOldStore() {
   } catch { return []; }
 }
 
+const newInstanceId = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`);
+
 export const useQueueStore = create(persist((set) => ({
   items: [],
+  // this install, for the lease on carrying out the queue
+  instanceId: newInstanceId(),
   add: (tracks) => set((s) => ({ items: [...s.items, ...(Array.isArray(tracks) ? tracks : [tracks]).filter((t) => t?.uri).map(slimTrack)] })),
   addNext: (tracks) => set((s) => ({ items: [...(Array.isArray(tracks) ? tracks : [tracks]).filter((t) => t?.uri).map(slimTrack), ...s.items] })),
   remove: (key) => set((s) => ({ items: removeKey(s.items, key) })),
@@ -24,9 +28,9 @@ export const useQueueStore = create(persist((set) => ({
 }), {
   name: 'jomify-queue',
   version: 1,
-  partialize: (s) => ({ items: s.items }),
+  partialize: (s) => ({ items: s.items, instanceId: s.instanceId }),
   merge: (persisted, current) => {
     const items = persisted?.items?.length ? persisted.items : manualFromOldStore();
-    return { ...current, items };
+    return { ...current, items, instanceId: persisted?.instanceId || current.instanceId };
   }
 }));
