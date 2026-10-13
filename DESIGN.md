@@ -405,3 +405,30 @@ leaves the pile and the next plays. Skip is the column's skip, remembered. "Find
 "Check playlists ▾" at the top. On the phone the drag is up from the song strip. The list, the
 deck and both were drawn first; this take, Jack's, uses the column instead of drawing a card.
 *Why:* Unadded round 2.
+*Two refinements, agreed:* the pile is Jomify's own playlist, kept out of the library's list (it
+exists on Spotify so it plays and syncs; the mode is the only place it shows); and the song that
+just ended stays as a small "last: ⟵ *name*" ghost under the tiles for about ten seconds,
+draggable like the current one, so a late decision needs no back button.
+
+## 9. Party
+
+Three screens for three people, in three places. They share a party, not a shape.
+
+1. **The host's phone** — the controls that matter, huge: pause, skip, volume; add a song;
+   the requests in their fair order with who asked, pin, remove, block, pause requests; the QR
+   code to show people; and the set-up (which device plays, which speaker, the fallback
+   playlist, a check that it all works). Today a full-screen view; in the new layout the Party
+   mode on the phone.
+2. **The guest's phone** — no account, just the code: pick a name, see what is playing and who
+   asked for it, find a song, request it, vote, see where it sits. A page outside the app's
+   layout altogether (`/p/<code>`); the room, the layers and the rail do not exist for it.
+3. **The screen on the wall** — a TV or spare laptop: the join QR, what is playing and who asked,
+   what comes next. No buttons. Also outside the layout; it is a display, not an app.
+4. **The Mac** — the host's laptop is usually the device the music plays from (the conductor).
+   What it shows while a party runs: the Party mode in the layout (the host's controls at
+   desktop size, plus the set-up), with the room's column still there; or, with one key, the
+   wall display itself.
+
+What the round must answer: only the Mac, really — whether Party on the Mac is the host view in
+the mode's frame, the wall display, or a switch between them; and whether the host's phone view
+changes at all under the new layout (it is already its own full-screen thing with huge controls).
