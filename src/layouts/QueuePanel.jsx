@@ -12,46 +12,31 @@ import { formatTime } from '../utils/formatTime';
 import { X, ListPlus } from 'lucide-react';
 import MoreButton from '../components/MoreButton';
 import { cleanString } from '../utils/strings';
-import { isSameTrack } from '../utils/spotifyUri';
+import { useQueueStore } from '../store/queueStore';
+import { withoutQueued } from '../services/queueLogic';
 
 // The queue endpoint returns episode objects whenever a podcast is queued. They have `show`
 // instead of `album`, and rendering them as tracks used to throw and blank the whole app.
 const isRenderableTrack = (item) => Boolean(item) && item.type !== 'episode';
 
-const removeManualMatchesFromQueue = (queueTracks, manualTracks) => {
-  const remaining = [...queueTracks];
-
-  for (let manualIndex = manualTracks.length - 1; manualIndex >= 0; manualIndex -= 1) {
-    const manualTrack = manualTracks[manualIndex];
-
-    for (let queueIndex = remaining.length - 1; queueIndex >= 0; queueIndex -= 1) {
-      if (isSameTrack(remaining[queueIndex], manualTrack)) {
-        remaining.splice(queueIndex, 1);
-        break;
-      }
-    }
-  }
-
-  return remaining;
-};
-
 export default function QueuePanel() {
-  const { token, isQueueOpen, toggleQueue, queueRefreshTrigger, manuallyQueuedTracks, queueData, setQueueData, setContextMenu } = useSlice(useUserStore, ['token', 'isQueueOpen', 'toggleQueue', 'queueRefreshTrigger', 'manuallyQueuedTracks', 'queueData', 'setQueueData', 'setContextMenu']);
+  const { token, isQueueOpen, toggleQueue, queueRefreshTrigger, queueData, setQueueData, setContextMenu } = useSlice(useUserStore, ['token', 'isQueueOpen', 'toggleQueue', 'queueRefreshTrigger', 'queueData', 'setQueueData', 'setContextMenu']);
+  // Jomify's own queue: the songs added by hand, in the order Jomify will hand them to Spotify
+  const queued = useQueueStore((s) => s.items);
+  const removeQueued = useQueueStore((s) => s.remove);
   const currentTrackUid = usePlayerStore((s) => s.playbackState?.track_window?.current_track?.uid);
   const contextUri = usePlayerStore((s) => s.playbackState?.context?.uri || null);
 
-  const manualQueueEntries = useMemo(() => manuallyQueuedTracks.map((track, index) => ({
-    key: `manual-${index}-${track?.uri || track?.id || cleanString(track?.name)}`,
-    track,
-  })), [manuallyQueuedTracks]);
+  const manualQueueEntries = useMemo(() => queued.map((track) => ({ key: track.key, track })), [queued]);
 
+  // What Spotify will play after Jomify's queue: its own queue, less the songs Jomify is holding
   const regularQueueEntries = useMemo(() => {
     const tracksOnly = (queueData?.queue || []).filter(isRenderableTrack);
-    return removeManualMatchesFromQueue(tracksOnly, manuallyQueuedTracks).map((track, index) => ({
+    return withoutQueued(tracksOnly, queued).map((track, index) => ({
       key: `queue-${index}-${track.id || cleanString(track.name)}`,
       track
     }));
-  }, [queueData?.queue, manuallyQueuedTracks]);
+  }, [queueData?.queue, queued]);
 
   // "Play from here". Spotify's API can't jump within a queue, so the queue is remade from that
   // song: a song of the playing context starts the context there (the rest follows); a song you
@@ -144,6 +129,9 @@ export default function QueuePanel() {
                   <span className="text-neutral-500 text-xs opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity">
                     {formatTime(track.duration_ms)}
                   </span>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); removeQueued(key); }} aria-label={`Remove ${track.name} from the queue`} title="Remove from queue" className="w-7 h-7 grid place-items-center rounded-full text-neutral-500 hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                   <MoreButton onOpen={(e) => openTrackMenu(e, track)} />
                 </div>
               ))}

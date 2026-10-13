@@ -4,6 +4,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { hostApi, guestApi } from './client';
 import { addToQueue, playContext, fetchQueue, fetchDevices, transferPlayback, resumePlayback } from '../services/spotify/api';
 import { playOn, togglePlay, next as skipNext, setShuffle, requestFastPlaybackUpdates, PLAYER_NAME, onUserPause, userPausedAt } from '../services/spotify/playbackController';
+import { setSuspended as suspendQueue } from '../services/queueConductor';
 import { log } from '../services/debugLog';
 
 // The host device that keeps the party going. It heartbeats so the server has a live token and
@@ -328,6 +329,7 @@ const onVisible = () => { if (document.visibilityState === 'visible' && timers &
 export function startConductor() {
   if (timers) return;
   fed = null; pausedSince = 0; silentSince = 0; hostPaused = false;
+  suspendQueue(true);
   timers = { hb: setInterval(heartbeat, HEARTBEAT_MS), tick: setInterval(() => { tick().catch(() => {}); }, TICK_MS) };
   heartbeat();
   // Song changes reach the projector and the guests within a couple of seconds, not five
@@ -350,6 +352,7 @@ export function startConductor() {
 export function stopConductor() {
   if (!timers) return;
   clearInterval(timers.hb); clearInterval(timers.tick); timers = null;
+  suspendQueue(false);
   unsubscribeChanges?.(); unsubscribeChanges = null; clearTimeout(changeTimer);
   releaseFastUpdates?.(); releaseFastUpdates = null;
   speakerOk = null; fellBack = false;

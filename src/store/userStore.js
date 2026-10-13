@@ -488,53 +488,12 @@ export const useUserStore = create(
           playlistSortSettings: {},
           unaddedCheckPlaylists: [],
           friends: [],
-          likedTracks: {},
-          manuallyQueuedTracks: []
+          likedTracks: {}
         } : {})
       }),
 
       queueRefreshTrigger: 0,
       triggerQueueRefresh: () => set((state) => ({ queueRefreshTrigger: state.queueRefreshTrigger + 1 })),
-
-      // Only what the queue panel renders and the matcher needs. Full Spotify track objects
-      // (every image size, full album and artist payloads) were being written to localStorage
-      // for a list that doesn't even outlive the Spotify queue.
-      manuallyQueuedTracks: [],
-      addManuallyQueuedTrack: (track) => set((state) => ({
-        manuallyQueuedTracks: [...state.manuallyQueuedTracks, {
-          id: track.id,
-          uri: track.uri,
-          name: track.name,
-          duration_ms: track.duration_ms,
-          linked_from: track.linked_from ? { id: track.linked_from.id, uri: track.linked_from.uri } : undefined,
-          artists: (track.artists || []).map(a => ({ id: a.id, name: a.name, uri: a.uri })),
-          album: track.album ? {
-            id: track.album.id,
-            name: track.album.name,
-            images: track.album.images?.[0] ? [track.album.images[0]] : []
-          } : undefined
-        }]
-      })),
-      
-      // Matches on identity only. The old fuzzy clause compared the part of the name before any
-      // "-" or "(", so "Song" and "Song - Live" by the same artist collided and playing one
-      // removed the other. Spotify's relinking is the one legitimate case where the playing
-      // track's id differs from what was queued, and it tells us via linked_from.
-      consumeManuallyQueuedTrack: (playingTrack) => set((state) => {
-        if (!playingTrack) return state;
-        const linked = playingTrack.linked_from;
-        const index = state.manuallyQueuedTracks.findIndex(t =>
-          (t.id && t.id === playingTrack.id) ||
-          (t.uri && t.uri === playingTrack.uri) ||
-          (linked && ((t.uri && t.uri === linked.uri) || (t.id && t.id === linked.id)))
-        );
-        if (index > -1) {
-          const newTracks = [...state.manuallyQueuedTracks];
-          newTracks.splice(index, 1);
-          return { manuallyQueuedTracks: newTracks };
-        }
-        return state;
-      }),
 
       queueData: null,
       setQueueData: (data) => set((state) => ({
@@ -741,7 +700,6 @@ export const useUserStore = create(
         libraryGridSize: state.libraryGridSize,
         librarySort: state.librarySort,
         pinnedItems: state.pinnedItems, // SAVES YOUR SANDBOX
-        manuallyQueuedTracks: state.manuallyQueuedTracks,
         playlistSortSettings: state.playlistSortSettings,
         stagedSeven : state.stagedSeven,
         sevens: state.sevens,

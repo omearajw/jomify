@@ -24,6 +24,7 @@
     "test:projector": "node scripts/projector-cases.mjs",
     "test:lyrics": "node scripts/lyrics-cases.mjs",
     "test:zen": "node scripts/zen-cases.mjs",
+    "test:queue": "node scripts/queue-cases.mjs",
     "preview": "vite preview",
     "build-app": "vite build && electron-builder -w"
   },

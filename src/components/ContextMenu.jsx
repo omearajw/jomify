@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
+import { useQueueStore } from '../store/queueStore';
+import { nudge as nudgeQueue } from '../services/queueConductor';
 import { playOn } from '../services/spotify/playbackController';
 import {
-  addToQueue, addTracksToPlaylist, removeTrackFromPlaylist, removeTracksFromPlaylist, unfollowPlaylist, unsaveAlbum, saveAlbumToLibrary,
-  followPlaylist, fetchPlaylistSummary, fetchAlbumsByIds, fetchAlbumTrackUris, playContext, toggleTrackLike, checkTracksLiked,
+  addTracksToPlaylist, removeTrackFromPlaylist, removeTracksFromPlaylist, unfollowPlaylist, unsaveAlbum, saveAlbumToLibrary,
+  followPlaylist, fetchPlaylistSummary, fetchAlbumsByIds, fetchAlbumTracks, fetchAlbumTrackUris, playContext, toggleTrackLike, checkTracksLiked,
   followArtists, unfollowArtists
 } from '../services/spotify/api';
 import { shareSpotifyLink } from '../services/share';
@@ -75,7 +77,6 @@ import { getUnfolderedItems } from '../utils/library';
 export default function ContextMenu() {
   const {
     contextMenu, setContextMenu, token, triggerQueueRefresh,
-    addManuallyQueuedTrack,
     playlists, albums, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId,
     removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder, renameFolder, createFolder, moveFolder,
     reorderFolders, reorderPlaylistInFolder,
@@ -84,7 +85,6 @@ export default function ContextMenu() {
     navigateToPlaylist, requestEditPlaylist
   } = useSlice(useUserStore, [
     'contextMenu', 'setContextMenu', 'token', 'triggerQueueRefresh',
-    'addManuallyQueuedTrack',
     'playlists', 'albums', 'customFolders', 'profile', 'deletePlaylist', 'deleteFolder', 'setCurrentView', 'setActivePlaylistId',
     'removeAlbumFromLibrary', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'renameFolder', 'createFolder', 'moveFolder',
     'reorderFolders', 'reorderPlaylistInFolder',
@@ -341,23 +341,16 @@ export default function ContextMenu() {
   const trackList = manyTracks || (contextMenu?.track ? [contextMenu.track] : []);
   const describeMany = (list) => (list.length === 1 ? `"${list[0].name}"` : `${list.length} songs`);
 
-  const handleAddToQueue = async () => {
+  // Jomify holds the queue and hands Spotify each song when it is due (services/queueConductor.js)
+  const handleAddToQueue = () => {
     const list = trackList;
     if (!token || list.length === 0) return;
     closeMenu();
-    // Finding a device, waiting for this browser's player and asking where to play are the same
-    // as for a play. With no device this used to open the picker and then forget the song.
-    await playOn(async (deviceId) => {
-      for (const track of list) {
-        await addToQueue(token, deviceId, track.uri);
-        // Only record the entry once Spotify has accepted it. It's persisted, so a failed add
-        // used to leave a phantom in the queue panel that survived restarts.
-        addManuallyQueuedTrack(track);
-      }
-      setTimeout(() => triggerQueueRefresh(), 750);
-      toast(`Queued ${describeMany(list)}`, { tone: 'success' });
-      contextMenu.onDone?.();
-    }, { track: list[0], quiet: true }).catch(() => toast("Couldn't add to the queue", { tone: 'error' }));
+    useQueueStore.getState().add(list);
+    nudgeQueue();
+    triggerQueueRefresh();
+    toast(`Queued ${describeMany(list)}`, { tone: 'success' });
+    contextMenu.onDone?.();
   };
 
   const menuAlbumId = contextMenu?.albumId || null;
@@ -412,15 +405,15 @@ export default function ContextMenu() {
     playOn((deviceId) => playContext(token, deviceId, uri));
   };
 
-  // Spotify's queue takes one song per request; an album goes in song by song
   const handleQueueAlbum = async () => {
     if (!token || !menuAlbumId) return;
     closeMenu();
     try {
-      const uris = await fetchAlbumTrackUris(token, menuAlbumId);
-      await playOn(async (deviceId) => { for (const uri of uris) await addToQueue(token, deviceId, uri); }, { quiet: true });
+      const tracks = await fetchAlbumTracks(token, menuAlbumId);
+      useQueueStore.getState().add(tracks);
+      nudgeQueue();
       triggerQueueRefresh();
-      toast(`Added ${uris.length} song${uris.length === 1 ? '' : 's'} to the queue`, { tone: 'success' });
+      toast(`Added ${tracks.length} song${tracks.length === 1 ? '' : 's'} to the queue`, { tone: 'success' });
     } catch (err) {
       console.error(err);
       toast("Couldn't add the album to the queue", { tone: 'error' });

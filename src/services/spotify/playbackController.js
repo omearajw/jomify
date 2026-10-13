@@ -21,6 +21,7 @@ import {
 import { toSdkShape, toSdkTrack, resolveDeviceId, REPEAT_NAMES, describePlatform, playerNameFor, localDeviceLabel, sliderGain, startupGain } from './playbackAdapter';
 import { isMobileViewport } from '../../hooks/useMediaQuery';
 import { ensureFreshToken } from './session';
+import * as queueConductor from '../queueConductor';
 import { log } from '../debugLog';
 
 const SDK_SCRIPT_ID = 'spotify-player-script';
@@ -97,7 +98,7 @@ let activationInstalled = false;
 function noteNowPlaying(track) {
   if (!track) return;
   const store = useUserStore.getState();
-  store.consumeManuallyQueuedTrack(track);
+  queueConductor.onNowPlaying(track);
   const t = token();
   if (t && track.id && store.likedTracks?.[track.id] === undefined) {
     checkTracksLiked(t, [track.id]).then(store.setLikedTracks).catch(() => {});
@@ -128,6 +129,8 @@ function applyRemoteState(state) {
   const device = state.device || null;
   const isLocal = Boolean(device?.id && device.id === store.deviceId);
   if ((device?.id || null) !== (store.activeDevice?.id || null)) {
+    // Spotify's queue stayed on the old device; whatever Jomify handed it goes over again
+    if (store.activeDevice) queueConductor.onDeviceReset(`playback moved to ${device?.name || 'nowhere'}`);
     log('playback', 'playing on', device ? `${isLocal ? THIS_BROWSER : device.name} (${device.type})` : 'nothing');
   }
   store.setActiveDevice(device ? {
@@ -554,6 +557,7 @@ function initLocalPlayer() {
       lastReadyAt = readyAt;
       if (readyCount > 1) reconnectedAt = readyAt;
       log('sdk', readyCount === 1 ? 'ready on Spotify Connect' : 'back on Spotify Connect', `device ${String(device_id).slice(0, 8)}${readyCount > 1 ? `, connection ${readyCount}` : ''}`);
+      if (readyCount > 1) queueConductor.onDeviceReset("this browser's player came back");
       const s = player();
       s.setDeviceId(device_id);
       s.setSdkStatus('ready');
@@ -891,6 +895,7 @@ export function startPlaybackController() {
   initLocalPlayer();
   installActivation();
   installMediaSession();
+  queueConductor.start();
   if (!polling) {
     polling = true;
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -900,6 +905,7 @@ export function startPlaybackController() {
   return () => {
     polling = false;
     clearTimeout(pollTimer);
+    queueConductor.stop();
     document.removeEventListener('visibilitychange', onVisibilityChange);
   };
 }
@@ -1027,6 +1033,8 @@ export async function playOn(play, { track, quiet = false } = {}) {
   try {
     await play(target);
     rememberDevice(target);
+    // A new context or song may have taken Spotify's queue with it; Jomify's is handed over again
+    if (!quiet) queueConductor.onDeviceReset('something new was played');
     if (!quiet) confirmPlayback();
   } catch (err) {
     // Whatever was shown optimistically was a guess; let Spotify correct it
@@ -1234,14 +1242,23 @@ async function playHereInstead(why, play) {
   useUserStore.getState().setDevicePickerOpen(true);
 }
 
-export function next() {
-  lastIntentAt = Date.now();
-  localPlayedThisSession = true;
-  activateLocalPlayer();
+// The skip itself, with no queue handling: what the conductor uses for a second skip
+function skipNow() {
   const sdk = localSdk();
   log('transport', 'next', sdk ? 'this browser' : 'remote device');
   if (sdk) return sdk.nextTrack().catch(console.error);
   return remote(skipToNext);
+}
+export async function next() {
+  lastIntentAt = Date.now();
+  localPlayedThisSession = true;
+  activateLocalPlayer();
+  // The head of Jomify's queue goes to Spotify first, so the skip lands on it, not on the playlist
+  await queueConductor.beforeSkip();
+  lastIntentAt = Date.now();
+  const done = skipNow();
+  queueConductor.afterSkip(() => { lastIntentAt = Date.now(); skipNow(); });
+  return done;
 }
 
 export function previous() {

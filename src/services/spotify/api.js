@@ -863,6 +863,24 @@ export async function fetchArtistAlbums(token, artistId, group, { maxPages = 6 }
   return out;
 }
 
+// Every track of an album as a song the queue can show: the album's own name and art go on each
+export async function fetchAlbumTracks(token, albumId) {
+  const response = await spotifyFetch(`${API}/albums/${encodeURIComponent(albumId)}?market=from_token`, { method: 'GET', headers: auth(token) });
+  if (!response.ok) throw statusError('Failed to fetch the album', response);
+  const album = await response.json();
+  const items = [...(album.tracks?.items || [])];
+  let url = album.tracks?.next;
+  while (url) {
+    const page = await spotifyFetch(url, { method: 'GET', headers: auth(token) });
+    if (!page.ok) throw statusError("Failed to fetch the album's tracks", page);
+    const data = await page.json();
+    items.push(...(data.items || []));
+    url = data.next;
+  }
+  const slim = { id: album.id, name: album.name, images: album.images || [] };
+  return items.filter((t) => t?.uri).map((t) => ({ ...t, album: slim }));
+}
+
 // Every track of an album, for queueing or adding the whole record somewhere
 export async function fetchAlbumTrackUris(token, albumId) {
   const uris = [];
