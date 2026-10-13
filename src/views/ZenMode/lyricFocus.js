@@ -6,9 +6,11 @@ import { LYRIC_LEAD_IN_MS } from '../../lib/lrc.js';
 
 export const isInstrumental = (line) => !line?.text || line.text.trim() === '♪' || /instrumental/i.test(line.text);
 
-// Without word timings, the fill is paced to the line's length and finishes before the next line
-const FILL_MS_PER_CHAR = 85;
-const FILL_MIN_MS = 800;
+// Without word timings, the fill is paced to the line's length and finishes before the next line.
+// Lines are sung quickly at the start and held at the end far more often than not, so the pace
+// allows for the hold and the curve slows into it.
+const FILL_MS_PER_CHAR = 115;
+const FILL_MIN_MS = 1000;
 
 // The line being sung right now, counting the lead-in, or -1 before the first
 export function lineAt(lines, posMs) {
@@ -52,8 +54,9 @@ export function fillProgress(lines, i, posMs) {
   const gap = (lines[i + 1]?.timeMs ?? Infinity) - lines[i].timeMs - 150;
   const ms = Math.max(300, Math.min(Math.max(FILL_MIN_MS, lines[i].text.length * FILL_MS_PER_CHAR), gap));
   const p = Math.max(0, Math.min(1, (posMs - start) / ms));
-  // A gentle ease out: quick through the first words, settling into the last
-  return 1 - Math.pow(1 - p, 1.7);
+  // Quick through the first words, then slower and slower into the last, which is where a line
+  // is held
+  return 1 - Math.pow(1 - p, 2.4);
 }
 
 // With word timings: how far along the line the light should be, as a fraction of its reading
