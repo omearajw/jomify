@@ -81,7 +81,7 @@ function candidates(g, big, rnd) {
   for (const x of [-380, 60, 420]) for (const z of [-950, -1350]) { c.push({ x, z, a: 0 }); if (rnd() < 0.3) c.push({ x, z, a: x < 0 ? 90 : -90 }); }
   if (big) {
     const e = ext(Wd, g.a), atL = g.x <= -ROOM.wall + e.x + MARGIN + 8, atR = g.x >= ROOM.wall - e.x - MARGIN - 8, atB = g.z <= ROOM.back + e.z + MARGIN + 8;
-    for (const d of [350, 600]) { if (atL) c.push({ x: g.x - d, z: g.z, a: g.a }); if (atR) c.push({ x: g.x + d, z: g.z, a: g.a }); if (atB) c.push({ x: g.x, z: g.z - d, a: g.a }); }
+    const d = 700; if (atL) c.push({ x: g.x - d, z: g.z, a: g.a }); if (atR) c.push({ x: g.x + d, z: g.z, a: g.a }); if (atB) c.push({ x: g.x, z: g.z - d, a: g.a });
   }
   return c;
 }
@@ -147,7 +147,9 @@ export function buildSchedule({ lines, durationMs, seed }) {
       bigLeave = { at: cue, ms: 4000, view: toView(big.f, group), yaw: big.yawW + group.a };
       big = null; bigPhase = 'after'; busyUntil = cue + 4000 + 400; continue;
     }
-    const all = candidates(group, big, rnd).filter((c) => Math.abs(c.x - group.x) > 300 || Math.abs(c.z - group.z) > 300);
+    // every move crosses most of the room: a short shuffle between neighbouring spots reads as
+    // a wobble, the long slides are what sell it
+    const all = candidates(group, big, rnd).filter((c) => Math.abs(c.x - group.x) >= 900 || Math.abs(c.z - group.z) >= 800);
     const turn = k % 4 === 3;
     const clear = all.map((c) => { const da = ((c.a - group.a + 540) % 360) - 180; return { x: c.x, z: c.z, a: group.a + da, da }; }).filter((c) => pathClear(group, c, big));
     let pool = clear.filter((c) => (turn ? c.da !== 0 : c.da === 0));
