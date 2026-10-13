@@ -358,3 +358,12 @@ What the mode's shape must answer: whether building and reading are one screen o
 pool sits relative to the batch (beside, beneath, a sheet); what the mode opens on — the batch if
 it is your turn, the Seven if it is not; and what the Sevens page (all of them) is for beyond
 "whose turn".
+
+**2026-10-13 — Sevens has two faces.** A *building* face — the batch (up to seven, ordered,
+"Send the batch · 4 of 7") on the left, the pool with its search on the right, candidates marked
+"used" or "in this Seven" — and a *reading* face — the batches so far as cards (who, when, the
+rows), newest first, with Play and Shuffle. The mode opens on the face the turn calls for; one
+tap flips, and the other face peeks at the edge. On the phone the two faces stack: batch above
+pool when building. The Sevens page lists every Seven as a row — partner, whose turn, batches,
+when — and is where one is set up. The workbench (three panes) was too dense and had no phone
+shape; the tray over the Seven was unneeded. *Why:* Sevens round 1; the simplicity of B.
