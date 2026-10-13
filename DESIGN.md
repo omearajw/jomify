@@ -318,3 +318,14 @@ same rule as "Open on: resume" at launch and the party rejoin window. *Why:* lib
 "quick" says the thing you were doing is the thing you want, and pins are already in the tree.
 On the phone the right column opens *over* the tree (a push with a way back): there is no room
 for two columns, so the phone library is the shelf in shape, with the same tree at its head.
+
+**2026-10-13 — The open playlist keeps the hero: cover, name, facts, Play, then rows — with the
+cover's light behind it.** Three rearrangements were tried (cover on the right, cover as a
+backdrop instead of a cover, a sleeve column that stays while rows scroll) and a compact head and
+rows-first. None beat it: the sleeve costs a quarter of the width for nothing, the wash loses the
+cover itself, cover-on-the-right reads as untidy. The arrangement is the record-sleeve convention,
+not Spotify's; it is kept under test 2 of §1 ("where it is the best way"). What makes it Jomify's
+is the surface, for the visual-language phase: the cover's colour washing the head as Zen's light
+does, a facts line that says "with Dad · your turn", the collaborator colours, the Play button.
+Selecting rows turns the actions bar into the selection's actions (N selected · Add to… · Queue ·
+Remove · Done). *Why:* library rounds 3 and 4.
