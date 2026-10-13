@@ -374,3 +374,23 @@ still adds it to the end, as a fallback and for the phone. Under the gesture rul
 a list scrolls it, so the drag starts on a handle at the row's edge — the same answer as the
 sheet. On the phone, where the faces stack, the drag goes up from the pool into the batch.
 *Why:* Sevens round 2, in words; Jack chose drag.
+
+## 8. Unadded
+
+Songs you have liked but never put in a playlist, and where each should go. Today it is a
+playlist named "unadded songs" with a "Find songs" button that fills it from Liked Songs, a
+suggestion per row (ReccoBeats sound and your own history across the check playlists), and a
+full-screen sort mode: one song at a time as a card, the check playlists as tiles, the suggested
+ones large; drag the card onto a tile or tap it to file the song. What the mode has to do:
+
+1. **Run the check** — find what is liked and in no check playlist; say how many; let it run
+   while you do something else.
+2. **File each song** — see the song (play it), see where it would suit, put it in one playlist
+   or two, or skip it (skips remembered). The job the mode exists for.
+3. **Keep the pile honest** — a filed song leaves the pile; the pile is kept as a playlist so it
+   survives and syncs; the check can be rerun.
+4. **Choose the check playlists** — which playlists count as "added" and are offered as targets.
+
+What the mode's shape must answer: whether filing is a *list* you work down (every song visible,
+a suggestion beside each) or a *deck* (one card at a time, tiles to file onto) — or both, and
+which the mode opens on.
