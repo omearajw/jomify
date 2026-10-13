@@ -367,3 +367,10 @@ tap flips, and the other face peeks at the edge. On the phone the two faces stac
 pool when building. The Sevens page lists every Seven as a row — partner, whose turn, batches,
 when — and is where one is set up. The workbench (three panes) was too dense and had no phone
 shape; the tray over the Seven was unneeded. *Why:* Sevens round 1; the simplicity of B.
+
+**2026-10-13 — Songs are dragged into and within the batch.** A pool row dragged across into the
+batch lands at the position it is dropped; batch rows are dragged to reorder; a tap on a pool row
+still adds it to the end, as a fallback and for the phone. Under the gesture rule (§5), a drag on
+a list scrolls it, so the drag starts on a handle at the row's edge — the same answer as the
+sheet. On the phone, where the faces stack, the drag goes up from the pool into the batch.
+*Why:* Sevens round 2, in words; Jack chose drag.
