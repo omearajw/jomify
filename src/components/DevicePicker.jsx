@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, RefreshCw, Laptop, Smartphone, Speaker, Tv, Cast, MonitorSpeaker, Globe } from 'lucide-react';
+import { RefreshCw, Laptop, Smartphone, Speaker, Tv, Cast, MonitorSpeaker, Globe } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { refreshDevices, transferTo, PLAYER_NAME, hasPendingPlay, playPendingOn, clearPendingPlay } from '../services/spotify/playbackController';
@@ -75,27 +75,25 @@ function DevicePickerBody() {
 
   const panel = (
     <div
-      role="dialog"
+      role="dialog" style={{ fontFamily: 'var(--font-room)' }}
       aria-modal="true"
       aria-labelledby="device-picker-title"
       className={isMobile
-        ? 'w-full max-h-[80dvh] rounded-t-3xl bg-neutral-950 border-t border-white/10 shadow-2xl flex flex-col pb-[env(safe-area-inset-bottom)]'
-        : 'w-full max-w-md rounded-3xl bg-neutral-950 border border-white/10 shadow-2xl flex flex-col max-h-[80vh]'}
+        ? 'ui-plane w-full max-h-[80dvh] rounded-t-[10px] flex flex-col p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]'
+        : 'ui-plane w-full max-w-md flex flex-col max-h-[80vh] p-8'}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
+      <div className="mb-4 flex items-start justify-between">
         <div>
-          <h2 id="device-picker-title" className="text-xl font-bold text-white">Play on</h2>
-          <p className="text-sm text-neutral-400 mt-1">
+          <h2 id="device-picker-title" className="room-mono text-[var(--room-dim)]">Play on</h2>
+          <p className="mt-2 text-[13px] text-[var(--room-dim)]">
             {hasPendingPlay() ? 'Choose where to play it' : activeDevice ? `Currently playing on ${activeDevice.name}` : 'Nothing is playing right now'}
           </p>
         </div>
-        <button type="button" onClick={close} aria-label="Close" className="text-neutral-400 hover:text-white transition-colors p-2">
-          <X className="w-5 h-5" />
-        </button>
+        <button type="button" onClick={close} className="ui-word">Close</button>
       </div>
 
-      <div className="overflow-y-auto p-3">
+      <div className="overflow-y-auto">
         {list.map((device) => {
           const Icon = device.isLocal ? Globe : (ICONS[device.type] || MonitorSpeaker);
           const active = device.isActive || device.id === activeDevice?.id;
@@ -105,29 +103,29 @@ function DevicePickerBody() {
               type="button"
               onClick={() => pick(device)}
               disabled={switching !== null}
-              className={`w-full flex items-center gap-4 rounded-2xl px-4 py-3.5 text-left transition-colors ${active ? 'bg-[var(--brand-mid)]/10 text-white' : 'text-neutral-200 hover:bg-white/5 active:bg-white/10'} disabled:opacity-60`}
+              className="ui-row" aria-current={active ? "true" : undefined}
             >
-              <Icon className={`w-6 h-6 shrink-0 ${active ? 'text-[var(--brand-mid)]' : 'text-neutral-400'}`} />
+              <Icon className="h-4 w-4 shrink-0" />
               <span className="flex-1 min-w-0">
-                <span className="block font-semibold truncate">{device.name}</span>
-                <span className="block text-xs text-neutral-500">{detail(device, active)}</span>
+                <span className="block truncate text-[13px] font-medium">{device.name}</span>
+                <span className="room-mono block text-[var(--room-faint)]">{detail(device, active)}</span>
               </span>
-              {active && <Check className="w-5 h-5 text-[var(--brand-mid)] shrink-0" />}
+              {active && <span className="room-mono shrink-0 text-[var(--room-paper)]">Playing</span>}
             </button>
           );
         })}
 
         {list.length === 0 && (
-          <div className="px-4 py-10 text-center text-neutral-400 space-y-3">
+          <div className="px-4 py-10 text-center text-[var(--room-dim)] space-y-3">
             <MonitorSpeaker className="w-10 h-10 mx-auto opacity-50" />
             <p className="text-sm">{loading ? 'Looking for devices…' : 'No devices found. Open Spotify on your phone, computer or speaker, then refresh.'}</p>
-            <button type="button" onClick={() => { setLoading(true); refreshDevices().finally(() => setLoading(false)); }} className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/5">
+            <button type="button" onClick={() => { setLoading(true); refreshDevices().finally(() => setLoading(false)); }} className="inline-flex items-center gap-2 rounded-full border border-[var(--room-hair)] px-4 py-2 text-sm font-semibold text-[var(--room-paper)] hover:bg-white/[0.05]">
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
             </button>
           </div>
         )}
         {sdkStatus === 'failed' && (
-          <p className="px-4 pt-3 pb-1 text-xs text-neutral-500">This browser can't play audio itself here, so Jomify controls your other devices instead.</p>
+          <p className="px-4 pt-3 pb-1 text-xs text-[var(--room-faint)]">This browser can't play audio itself here, so Jomify controls your other devices instead.</p>
         )}
       </div>
     </div>
@@ -135,7 +133,7 @@ function DevicePickerBody() {
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[10000] flex bg-black/70 backdrop-blur-sm ${isMobile ? 'items-end' : 'items-center justify-center px-4 py-6'}`}
+      className={`fixed inset-0 z-[10000] flex bg-black/70 ${isMobile ? 'items-end' : 'items-center justify-center px-4 py-6'}`}
       onClick={close}
     >
       {panel}

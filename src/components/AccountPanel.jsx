@@ -25,6 +25,19 @@ const STARTS = [
   { id: 'home', label: 'Home' },
   { id: 'library', label: 'Your Library' }
 ];
+const LAYOUTS = [
+  { id: 'off', label: 'As it is' },
+  { id: 'on', label: 'The room (new)', hint: 'The now-playing room is the app, and the library slides over it. Mac only for now; see DESIGN.md' }
+];
+const HEARTS = [
+  { id: 'always', label: 'Always' },
+  { id: 'hover', label: 'When the pointer is on the row' }
+];
+const CONTRASTS = [
+  { id: 'auto', label: 'Follow the system', hint: "On when the OS asks for more contrast" },
+  { id: 'high', label: 'High contrast', hint: 'Brighter text, stronger lines, a solid panel' },
+  { id: 'normal', label: 'As designed' }
+];
 const ZEN_EFFECTS = [
   { id: 'auto', label: 'Automatic', hint: 'Full effects; drops to the lighter scene if this device cannot keep up' },
   { id: 'full', label: 'Full', hint: 'Blended layers, blurred lyrics, always-moving backdrop' },
@@ -38,10 +51,11 @@ const GRID_SIZES = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']
 const LIBRARY_SORTS = [['recent', 'Recently played'], ['spotify', 'Spotify order'], ['az', 'A to Z'], ['za', 'Z to A'], ['owner', 'By owner']];
 
 function Choice({ label, value, options, onChange }) {
+  const chosen = options.find((o) => o.id === value);
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <p className="text-sm font-semibold text-white mb-3">{label}</p>
-      <div className="flex flex-col gap-1" role="radiogroup" aria-label={label}>
+    <div className="border-t border-[var(--room-hair)] pt-3 pb-1" style={{ fontFamily: 'var(--font-room)' }}>
+      <p className="room-mono mb-2 text-[var(--room-faint)]">{label}</p>
+      <div className="flex flex-wrap gap-x-5 gap-y-2" role="radiogroup" aria-label={label}>
         {options.map((o) => (
           <button
             key={o.id}
@@ -49,13 +63,14 @@ function Choice({ label, value, options, onChange }) {
             role="radio"
             aria-checked={value === o.id}
             onClick={() => onChange(o.id)}
-            className={`w-full text-left rounded-xl px-3 py-2 transition-colors ${value === o.id ? 'bg-white/10 text-white' : 'text-neutral-300 hover:bg-white/5'}`}
+            className={`text-[13px] transition-colors ${value === o.id ? 'font-semibold text-[var(--room-paper)]' : 'text-[var(--room-dim)] hover:text-[var(--room-paper)]'}`}
+            style={{ transitionDuration: 'var(--room-mid)' }}
           >
-            <span className="text-sm font-medium">{o.label}</span>
-            {o.hint && <span className="block text-xs text-neutral-500">{o.hint}</span>}
+            {o.label}
           </button>
         ))}
       </div>
+      {chosen?.hint && <p className="mt-1.5 text-[12px] text-[var(--room-faint)]">{chosen.hint}</p>}
     </div>
   );
 }
@@ -211,26 +226,26 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
 
   if (variant === 'footer') {
     return (
-      <div className="mt-auto border-t border-neutral-800 pt-2 flex flex-col gap-1 text-[11px] leading-tight text-neutral-600 shrink-0">
-        <p className={syncLabel.isError ? 'text-red-400' : 'text-neutral-600'}>{syncLabel.text}</p>
+      <div className="mt-auto border-t border-[var(--room-hair)] pt-2 flex flex-col gap-1 text-[11px] leading-tight text-[var(--room-faint)] shrink-0">
+        <p className={syncLabel.isError ? 'text-red-400' : 'text-[var(--room-faint)]'}>{syncLabel.text}</p>
         {backupMessage && (
-          <p className={backupMessage.isError ? 'text-red-400' : 'text-[var(--brand-start)]'}>{backupMessage.text}</p>
+          <p className={backupMessage.isError ? 'text-red-400' : 'text-[var(--room-paper)]'}>{backupMessage.text}</p>
         )}
         <div className="flex items-center gap-2 flex-wrap">
           {!isDemo() && <>
-            <button onClick={handleSyncNow} disabled={syncing} className="hover:text-white transition-colors disabled:opacity-60">{syncing ? 'Syncing…' : 'Sync now'}</button>
-            <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
+            <button onClick={handleSyncNow} disabled={syncing} className="hover:text-[var(--room-paper)] transition-colors disabled:opacity-60">{syncing ? 'Syncing…' : 'Sync now'}</button>
+            <span className="w-0.5 h-0.5 rounded-full bg-white/15" />
           </>}
-          <button onClick={handleExportBackup} className="hover:text-white transition-colors">Back up</button>
-          <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
-          <button onClick={() => backupFileInputRef.current?.click()} className="hover:text-white transition-colors">Restore</button>
-          <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
-          <button onClick={() => setShowLog(true)} className="hover:text-white transition-colors">Log</button>
-          <span className="w-0.5 h-0.5 rounded-full bg-neutral-700" />
+          <button onClick={handleExportBackup} className="hover:text-[var(--room-paper)] transition-colors">Back up</button>
+          <span className="w-0.5 h-0.5 rounded-full bg-white/15" />
+          <button onClick={() => backupFileInputRef.current?.click()} className="hover:text-[var(--room-paper)] transition-colors">Restore</button>
+          <span className="w-0.5 h-0.5 rounded-full bg-white/15" />
+          <button onClick={() => setShowLog(true)} className="hover:text-[var(--room-paper)] transition-colors">Log</button>
+          <span className="w-0.5 h-0.5 rounded-full bg-white/15" />
           {/* Notifications and Disconnect live in the full panel, the same one the phone opens */}
-          <button onClick={() => useUserStore.getState().setAccountOpen(true)} className="hover:text-white transition-colors">Settings…</button>
+          <button onClick={() => useUserStore.getState().setAccountOpen(true)} className="hover:text-[var(--room-paper)] transition-colors">Settings…</button>
         </div>
-        <p className="text-neutral-700 truncate" title={tagline}>Build {__BUILD_ID__}{tagline ? ` · ${tagline}` : ''}</p>
+        <p className="text-[var(--room-faint)] truncate" title={tagline}>Build {__BUILD_ID__}{tagline ? ` · ${tagline}` : ''}</p>
         {fileInput}
         {restoreDialog}
         {disconnectDialog}
@@ -239,67 +254,70 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
     );
   }
 
-  const row = 'w-full flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-sm font-semibold text-white hover:bg-white/5 active:bg-white/10 transition-colors';
+  const row = 'ui-row';
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3">
-        <p className="text-xs font-bold uppercase tracking-wider text-neutral-500">Signed in as</p>
-        <p className="text-white font-semibold truncate">{profile?.display_name || profile?.id || '…'}</p>
-        <p className={`text-xs mt-1 ${syncLabel.isError ? 'text-red-400' : 'text-neutral-400'}`}>{syncLabel.text}</p>
+      <div className="pb-3" style={{ fontFamily: 'var(--font-room)' }}>
+        <p className="room-mono text-[var(--room-faint)]">Signed in as</p>
+        <p className="text-[var(--room-paper)] font-semibold truncate">{profile?.display_name || profile?.id || '…'}</p>
+        <p className={`text-xs mt-1 ${syncLabel.isError ? 'text-red-400' : 'text-[var(--room-dim)]'}`}>{syncLabel.text}</p>
       </div>
       {backupMessage && (
-        <p className={`px-1 text-sm ${backupMessage.isError ? 'text-red-400' : 'text-[var(--brand-start)]'}`}>{backupMessage.text}</p>
+        <p className={`px-1 text-sm ${backupMessage.isError ? 'text-red-400' : 'text-[var(--room-paper)]'}`}>{backupMessage.text}</p>
       )}
 
-      <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500">Playback</p>
+      <p className="pt-4 room-mono text-[var(--room-faint)]">Playback</p>
       <Choice label="When a playlist ends" value={playbackSettings?.whenPlaylistEnds || 'spotify'} options={ENDINGS} onChange={(v) => setPlaybackSetting('whenPlaylistEnds', v)} />
 
-      <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500">App</p>
+      <p className="pt-4 room-mono text-[var(--room-faint)]">App</p>
       <Choice label="Open on" value={playbackSettings?.startupPage || 'resume'} options={STARTS} onChange={(v) => setPlaybackSetting('startupPage', v)} />
+      <Choice label="Layout" value={playbackSettings?.newLayout || 'off'} options={LAYOUTS} onChange={(v) => setPlaybackSetting('newLayout', v)} />
+      {playbackSettings?.newLayout === 'on' && <Choice label="Hearts on song rows" value={playbackSettings?.rowHearts || 'always'} options={HEARTS} onChange={(v) => setPlaybackSetting('rowHearts', v)} />}
+      <Choice label="Contrast" value={playbackSettings?.contrast || 'auto'} options={CONTRASTS} onChange={(v) => setPlaybackSetting('contrast', v)} />
       <Choice label="Zen mode effects" value={playbackSettings?.zenEffects || 'auto'} options={ZEN_EFFECTS} onChange={(v) => { setPlaybackSetting('zenEffects', v); if (v !== 'auto') { try { localStorage.removeItem('jomify_zen_lite'); } catch { /* fine */ } } }} />
       {canHearComputer() && <Choice label="Zen mode moves to" value={playbackSettings?.zenSound || 'tempo'} options={ZEN_SOUNDS} onChange={(v) => setPlaybackSetting('zenSound', v)} />}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+      <div className="border-t border-[var(--room-hair)] pt-3 space-y-3" style={{ fontFamily: 'var(--font-room)' }}>
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold text-white">Library card size</p>
+          <p className="text-sm font-semibold text-[var(--room-paper)]">Library card size</p>
           <div className="flex items-center gap-1 bg-black/30 rounded-full p-1">
             {GRID_SIZES.map(([id, label]) => (
-              <button key={id} type="button" aria-pressed={libraryGridSize === id} onClick={() => setLibraryGridSize(id)} className={`px-3 py-1 rounded-full text-xs font-bold ${libraryGridSize === id ? 'bg-white text-black' : 'text-neutral-400 hover:text-white'}`}>{label}</button>
+              <button key={id} type="button" aria-pressed={libraryGridSize === id} onClick={() => setLibraryGridSize(id)} className={`px-3 py-1 rounded-full text-xs font-semibold ${libraryGridSize === id ? 'bg-[var(--room-paper)] text-[#0a0810]' : 'text-[var(--room-dim)] hover:text-[var(--room-paper)]'}`}>{label}</button>
             ))}
           </div>
         </div>
         <label className="flex items-center justify-between gap-3">
-          <span className="text-sm font-semibold text-white">Library order</span>
-          <select value={librarySort} onChange={(e) => setLibrarySort(e.target.value)} className="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none">
+          <span className="text-sm font-semibold text-[var(--room-paper)]">Library order</span>
+          <select value={librarySort} onChange={(e) => setLibrarySort(e.target.value)} className="bg-black/30 border border-[var(--room-hair)] rounded-[6px] px-3 py-1.5 text-sm text-[var(--room-paper)] focus:outline-none">
             {LIBRARY_SORTS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
         </label>
       </div>
 
-      <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500">Sevens</p>
+      <p className="pt-4 room-mono text-[var(--room-faint)]">Sevens</p>
       <NotificationToggle />
 
-      <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-neutral-500">Account and sync</p>
-      <div className="rounded-2xl border border-white/10 divide-y divide-white/5 overflow-hidden">
+      <p className="pt-4 room-mono text-[var(--room-faint)]">Account and sync</p>
+      <div className="border-t border-[var(--room-hair)]" style={{ fontFamily: 'var(--font-room)' }}>
         {!isDemo() && <button type="button" onClick={handleSyncNow} disabled={syncing} className={`${row} disabled:opacity-60`}>
-          <RefreshCw className={`w-5 h-5 text-neutral-400 ${syncing ? 'animate-spin' : ''}`} /> Sync now
+          <RefreshCw className={`w-5 h-5 text-[var(--room-dim)] ${syncing ? 'animate-spin' : ''}`} /> Sync now
         </button>}
         <button type="button" onClick={handleExportBackup} className={row}>
-          <Download className="w-5 h-5 text-neutral-400" /> Back up data
+          <Download className="w-5 h-5 text-[var(--room-dim)]" /> Back up data
         </button>
         <button type="button" onClick={() => backupFileInputRef.current?.click()} className={row}>
-          <Upload className="w-5 h-5 text-neutral-400" /> Restore a backup
+          <Upload className="w-5 h-5 text-[var(--room-dim)]" /> Restore a backup
         </button>
         <button type="button" onClick={() => setShowLog(true)} className={row}>
-          <Bug className="w-5 h-5 text-neutral-400" /> Debug log
+          <Bug className="w-5 h-5 text-[var(--room-dim)]" /> Debug log
         </button>
         <button type="button" onClick={() => { setAccountOpen(false); setShortcutsOpen(true); }} className={`${row} hidden md:flex`}>
-          <Keyboard className="w-5 h-5 text-neutral-400" /> Keyboard shortcuts
+          <Keyboard className="w-5 h-5 text-[var(--room-dim)]" /> Keyboard shortcuts
         </button>
-        <button type="button" onClick={() => setConfirmDisconnect(true)} className={`${row} text-red-400`}>
+        <button type="button" onClick={() => setConfirmDisconnect(true)} className={`${row} ui-row-danger`}>
           <LogOut className="w-5 h-5" /> Disconnect account
         </button>
       </div>
-      <p className="px-1 text-xs text-neutral-600">Build {__BUILD_ID__}</p>
+      <p className="px-1 text-xs text-[var(--room-faint)]">Build {__BUILD_ID__}</p>
       {fileInput}
       {restoreDialog}
       {disconnectDialog}

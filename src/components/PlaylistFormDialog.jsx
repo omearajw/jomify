@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+
 
 // The outer component only decides whether the dialog exists. Because the body mounts fresh
 // every time it opens, its state initialises from the props naturally -- no "reset when
@@ -12,23 +12,15 @@ export default function PlaylistFormDialog(props) {
 
 function Switch({ label, hint, on, disabled = false, onChange }) {
   return (
-    <label className={`flex items-center justify-between gap-4 px-4 py-3 ${disabled ? 'opacity-60' : 'cursor-pointer'}`}>
-      <span>
-        <span className="block text-sm font-semibold text-white">{label}</span>
-        <span className="block text-xs text-neutral-400">{hint}</span>
+    <div className={`flex items-center justify-between gap-6 border-t border-[var(--room-hair)] py-3 ${disabled ? 'opacity-50' : ''}`}>
+      <span className="min-w-0">
+        <span className="block text-[13px] font-medium text-[var(--room-paper)]">{label}</span>
+        <span className="block text-[12px] text-[var(--room-faint)]">{hint}</span>
       </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        aria-label={label}
-        disabled={disabled}
-        onClick={() => onChange(!on)}
-        className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${on ? 'bg-[var(--brand-mid)]' : 'bg-neutral-700'}`}
-      >
-        <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
+      <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)} className="ui-word shrink-0" aria-pressed={on}>
+        {on ? 'On' : 'Off'}
       </button>
-    </label>
+    </div>
   );
 }
 
@@ -65,47 +57,45 @@ function PlaylistFormDialogBody({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center px-4 py-6 bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 px-4 py-6"
       onClick={(e) => { if (e.target === e.currentTarget) onCancel?.(); }}
     >
-      <div role="dialog" aria-modal="true" aria-labelledby="playlist-dialog-title" className="w-full max-w-lg max-h-[calc(100dvh-3rem)] flex flex-col rounded-3xl bg-neutral-950 border border-white/10 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
+      <div role="dialog" style={{ fontFamily: 'var(--font-room)' }} aria-modal="true" aria-labelledby="playlist-dialog-title" className="ui-plane flex max-h-[calc(100dvh-3rem)] w-full max-w-lg flex-col p-8">
+        <div className="mb-5 flex items-start justify-between">
           <div>
-            <h2 id="playlist-dialog-title" className="text-xl font-bold text-white">{title}</h2>
-            <p className="text-sm text-neutral-400 mt-1">Use this form to create or edit your playlist.</p>
+            <h2 id="playlist-dialog-title" className="room-mono text-[var(--room-dim)]">{title}</h2>
+            
           </div>
-          <button type="button" onClick={onCancel} aria-label="Close" className="text-neutral-400 hover:text-white transition-colors p-2">
-            <X className="w-5 h-5" />
-          </button>
+          <button type="button" onClick={onCancel} className="ui-word">Close</button>
         </div>
 
-        <div className="p-6 space-y-5 flex-1 min-h-0 overflow-y-auto">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto">
           <div>
-            <label htmlFor="playlist-name" className="block text-sm font-semibold text-neutral-300 mb-2">Playlist name</label>
+            <label htmlFor="playlist-name" className="room-mono mb-1 block text-[var(--room-faint)]">Playlist name</label>
             <input
               id="playlist-name"
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
-              className="w-full rounded-2xl bg-neutral-900 border border-white/10 px-4 py-3 text-white placeholder:text-neutral-500 focus:border-[#f91362] outline-none focus:ring-2 focus:ring-[#f91362]/20"
+              className="ui-field"
               placeholder="My new playlist"
             />
           </div>
 
           <div>
-            <label htmlFor="playlist-description" className="block text-sm font-semibold text-neutral-300 mb-2">Description</label>
+            <label htmlFor="playlist-description" className="room-mono mb-1 block text-[var(--room-faint)]">Description</label>
             <textarea
               id="playlist-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
-              className="w-full rounded-2xl bg-neutral-900 border border-white/10 px-4 py-3 text-white placeholder:text-neutral-500 focus:border-[#f91362] outline-none focus:ring-2 focus:ring-[#f91362]/20"
+              className="ui-field"
               placeholder="A playlist for late night listening..."
             />
           </div>
 
-          <div className="rounded-2xl border border-white/10 divide-y divide-white/5 overflow-hidden">
+          <div>
             <Switch
               label="Public"
               hint={collaborative ? 'A collaborative playlist is always private' : isPublic ? 'Shows on your profile and in search' : 'Only people with the link can see it'}
@@ -122,22 +112,24 @@ function PlaylistFormDialogBody({
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-neutral-300 mb-2">Cover image</label>
+            <label className="room-mono mb-1 block text-[var(--room-faint)]">Cover image</label>
             <div className="grid grid-cols-1 gap-3">
               {imagePreview ? (
-                <div className="relative w-full h-48 rounded-3xl overflow-hidden bg-neutral-900 border border-white/10">
+                <div className="relative h-40 w-40 overflow-hidden rounded-[4px] bg-white/5">
                   <img src={imagePreview} alt="Playlist cover preview" className="w-full h-full object-cover" />
                 </div>
               ) : (
-                <div className="w-full h-48 rounded-3xl border border-dashed border-white/10 bg-neutral-950 flex items-center justify-center text-neutral-500">
+                <div className="room-mono flex h-40 w-40 items-center justify-center rounded-[4px] bg-white/5 text-[var(--room-faint)]">
                   <span>No cover selected</span>
                 </div>
               )}
 
+              <label className="ui-word inline-block cursor-pointer">
+              Choose a file
               <input
                 type="file"
                 accept="image/*"
-                className="text-sm text-neutral-300 file:text-sm file:rounded-full file:border-0 file:bg-brand-gradient file:text-white file:px-4 file:py-2"
+                className="sr-only"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) {
@@ -155,15 +147,16 @@ function PlaylistFormDialogBody({
                   setImageFile(file);
                 }}
               />
-              <p className="text-xs text-neutral-500">Any image works; it's made square and sent to Spotify as a JPEG.</p>
+              </label>
+              <p className="text-[12px] text-[var(--room-faint)]">Any image works; it's made square and sent to Spotify as a JPEG.</p>
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-2 border-t border-white/10">
+          <div className="flex items-center justify-end gap-6 pt-2">
             <button
               type="button"
               onClick={onCancel}
-              className="rounded-full border border-white/10 px-4 py-2 text-sm font-semibold text-neutral-300 hover:bg-white/5 transition-colors"
+              className="ui-word"
             >
               Cancel
             </button>
@@ -171,7 +164,7 @@ function PlaylistFormDialogBody({
               type="button"
               disabled={!canSubmit}
               onClick={submit}
-              className="rounded-full bg-brand-gradient text-white px-5 py-2 text-sm font-semibold transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="ui-pill"
             >
               {isSubmitting ? 'Saving...' : submitLabel}
             </button>

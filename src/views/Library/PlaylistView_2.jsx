@@ -753,7 +753,7 @@ const turnIndicator = useMemo(() => {
   return (
     <div className="flex flex-col w-full pb-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 md:gap-4 mb-4 mt-2 md:mt-6 px-2 md:px-8 select-none shrink-0">
+      <div className="flex flex-col md:flex-row md:items-end justify-between @max-3xl:flex-col @max-3xl:items-start gap-3 md:gap-4 mb-4 mt-2 md:mt-6 px-2 md:px-8 select-none shrink-0">
         <div className="flex items-center md:items-end gap-4 md:gap-6 min-w-0">
           {view.images?.length > 0 ? (
             <img src={view.images[0].url} alt={view.name} className="w-20 h-20 md:w-32 md:h-32 shadow-2xl shadow-black/50 rounded-xl object-cover shrink-0" />
@@ -764,7 +764,7 @@ const turnIndicator = useMemo(() => {
             <p className="hidden md:flex text-xs font-bold text-neutral-400 uppercase tracking-widest mb-2 items-center gap-2">
               The Seven
             </p>
-            <h1 className="text-2xl md:text-5xl font-extrabold text-white tracking-tighter mb-1 md:mb-2 break-words line-clamp-2 md:line-clamp-none">{view.name}</h1>
+            <h1 className="text-2xl md:text-5xl @max-3xl:text-4xl font-extrabold text-white tracking-tighter mb-1 md:mb-2 break-words line-clamp-2 md:line-clamp-none">{view.name}</h1>
             <p className="text-neutral-400 text-sm font-medium flex items-center gap-2 flex-wrap">
               {thisSeven && (
                 // On the phone the Active switch lives here so the toolbar stays one row

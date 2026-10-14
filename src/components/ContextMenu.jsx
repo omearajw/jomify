@@ -10,92 +10,126 @@ import {
   followArtists, unfollowArtists
 } from '../services/spotify/api';
 import { shareSpotifyLink } from '../services/share';
-import { ListPlus, Plus, ChevronRight, ChevronDown, ChevronUp, Folder, Trash2, FolderPlus, Pin, PinOff, Pencil, CornerDownRight, User, Disc3, Heart, Play, Share2, UserPlus, UserCheck, BookmarkPlus, BookmarkMinus, CheckSquare } from 'lucide-react';
+import { ListPlus, Plus, ChevronRight, Trash2, FolderPlus, Pin, PinOff, Pencil, User, Disc3, Heart, Play, Share2, UserPlus, UserCheck, BookmarkPlus, BookmarkMinus, CheckSquare } from 'lucide-react';
 import { idFromUri } from '../utils/spotifyUri';
 import FolderFormDialog from './FolderFormDialog';
 import { toast } from '../store/toastStore';
-import { flattenFolderTree, descendantIds, childrenOf } from '../utils/library';
+import { flattenFolderTree, descendantIds } from '../utils/library';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import ConfirmDialog from './ConfirmDialog';
+import { recentTargets, noteTarget } from '../utils/recentTargets';
 import { useSlice } from '../store/selectors';
 
-// One ordinary entry: icon, label, action
-function MenuItem({ icon: Icon, label, onClick, iconClass = '' }) {
+// One ordinary entry: a word on a hairline. The icon is kept for the phone's sheet, where a
+// glyph helps a thumb; on the language the row is the label alone.
+// eslint-disable-next-line no-unused-vars
+function MenuItem({ icon: Icon, label, onClick, iconClass = '', danger = false }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
-    >
-      <Icon className={`w-4 h-4 text-neutral-400 shrink-0 ${iconClass}`} />
+    <button type="button" onClick={onClick} className={`ui-row px-5 ${danger ? 'ui-row-danger' : ''}`}>
       <span className="truncate">{label}</span>
     </button>
   );
 }
 
-// One picker for every "Move to…" list: playlists, albums and folders. Rows are indented by
-// depth and labelled with their path so two "Favourites" folders in different places can be
-// told apart. `excludeIds` hides a folder and its subtree (a folder can't move into itself).
-function MoveToList({ folders, currentParentId, excludeIds, allowRoot = false, onPick, footer }) {
-  const rows = flattenFolderTree(folders, { exclude: excludeIds || new Set() });
+const VIEWPORT_PAD = 8;
+
+
+const Label = ({ children }) => <p className="room-mono px-5 pb-1 pt-3 text-[var(--room-faint)]">{children}</p>;
+const Row = ({ onClick, name, detail, disabled }) => (
+  <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} disabled={disabled} className="ui-row px-5">
+    <span className="min-w-0 flex-1 truncate">{name}{detail && <span className="text-[var(--room-faint)]"> · {detail}</span>}</span>
+  </button>
+);
+
+// The picker that "Add to playlist" and "Move to" open in place of the menu's rows: a search
+// field and one flat list, nothing to expand (DESIGN.md §11, 14 Oct). Playlists carry their
+// folder as a detail beside the name; folders are rows with their path. Drag onto the tree is
+// the first way to do either; this is the fallback, and the phone's way.
+function PickerBody({ kind, query, setQuery, onBack, playlists, folders, pinnedIds, onPickPlaylist, move, maxHeight }) {
+  const q = query.trim().toLowerCase();
+  let body;
+  if (kind === 'add') {
+    const inFolder = new Map();
+    for (const f of folders) for (const id of f.playlistIds || []) inFolder.set(id, f);
+    const row = (p) => <Row key={p.id} onClick={() => onPickPlaylist(p.id)} name={p.name} detail={inFolder.get(p.id)?.name} />;
+    const byName = (x, y) => (x.name || '').localeCompare(y.name || '', undefined, { sensitivity: 'base' });
+    if (q) {
+      const hits = playlists.filter((p) => (p.name || '').toLowerCase().includes(q)).sort(byName);
+      body = hits.length ? hits.map(row) : <p className="px-5 py-5 text-[13px] text-[var(--room-faint)]">Nothing matches</p>;
+    } else {
+      const recentIds = recentTargets();
+      const recent = recentIds.map((id) => playlists.find((p) => p.id === id)).filter(Boolean);
+      const pinned = playlists.filter((p) => pinnedIds.has(p.id) && !recentIds.includes(p.id));
+      const shown = new Set([...recent, ...pinned].map((p) => p.id));
+      const rest = playlists.filter((p) => !shown.has(p.id)).sort(byName);
+      body = (
+        <>
+          {recent.length > 0 && <><Label>Recent</Label>{recent.map(row)}</>}
+          {pinned.length > 0 && <><Label>Pinned</Label>{pinned.map(row)}</>}
+          {(recent.length > 0 || pinned.length > 0) && <Label>All</Label>}
+          {rest.map(row)}
+        </>
+      );
+    }
+  } else {
+    const rows = flattenFolderTree(folders, { exclude: move?.excludeIds || new Set() });
+    const list = q ? rows.filter(({ path }) => path.join(' ').toLowerCase().includes(q)) : rows;
+    body = (
+      <>
+        {!q && move?.currentParentId && move.onOut && <Row onClick={move.onOut} name="Out of any folder" />}
+        {!q && move?.allowRoot && <Row onClick={() => move.onPick(null)} name="Top level" disabled={move.currentParentId === null} />}
+        {list.map(({ folder, path }) => (
+          <Row key={folder.id} onClick={() => move.onPick(folder.id)} name={folder.name} detail={path.length > 1 ? path.slice(0, -1).join(' › ') : undefined} disabled={folder.id === move?.currentParentId} />
+        ))}
+        {q && list.length === 0 && <p className="px-5 py-5 text-[13px] text-[var(--room-faint)]">Nothing matches</p>}
+        {move?.footer}
+      </>
+    );
+  }
+
   return (
-    <div className="max-h-[40dvh] md:max-h-48 overflow-y-auto custom-scrollbar">
-      {allowRoot && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onPick(null); }}
-          disabled={currentParentId === null}
-          className="w-full text-left px-4 py-2 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors truncate"
-        >
-          Top level
-        </button>
-      )}
-      {rows.map(({ folder, depth, path }) => (
-        <button
-          key={folder.id}
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onPick(folder.id); }}
-          disabled={folder.id === currentParentId}
-          title={path.join(' › ')}
-          style={{ paddingLeft: 16 + depth * 12 }}
-          className="w-full text-left pr-4 py-2 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors truncate flex items-center gap-2"
-        >
-          {depth > 0 && <CornerDownRight className="w-3 h-3 text-neutral-600 shrink-0" />}
-          <span className="truncate">{folder.name}</span>
-        </button>
-      ))}
-      {footer}
+    <div>
+      <div className="flex items-center justify-between px-5 pb-1">
+        <span className="room-mono text-[var(--room-faint)]">{kind === 'add' ? 'Add to playlist' : 'Move to'}</span>
+        <button type="button" onClick={(e) => { e.stopPropagation(); onBack(); }} className="ui-word">Back</button>
+      </div>
+      <div className="px-5 pb-1">
+        <input
+          type="search"
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onBack(); } }}
+          placeholder={kind === 'add' ? 'Find a playlist' : 'Find a folder'}
+          aria-label={kind === 'add' ? 'Find a playlist' : 'Find a folder'}
+          className="ui-field [&::-webkit-search-cancel-button]:hidden"
+        />
+      </div>
+      <div className="custom-scrollbar overflow-y-auto" style={{ maxHeight }}>{body}</div>
     </div>
   );
 }
-
-const MENU_WIDTH = 224;     // w-56
-const SUBMENU_WIDTH = 256;  // w-64
-const VIEWPORT_PAD = 8;
-import ConfirmDialog from './ConfirmDialog';
-import { getUnfolderedItems } from '../utils/library';
 
 export default function ContextMenu() {
   const {
     contextMenu, setContextMenu, token, triggerQueueRefresh,
     playlists, albums, customFolders, profile, deletePlaylist, deleteFolder, setCurrentView, setActivePlaylistId,
     removeAlbumFromLibrary, addPlaylistToFolder, removePlaylistFromFolder, renameFolder, createFolder, moveFolder,
-    reorderFolders, reorderPlaylistInFolder,
-    pinnedItems, togglePin, movePinnedItem, navigateToArtist, navigateToAlbum, setNowPlayingOpen,
+    pinnedItems, togglePin, navigateToArtist, navigateToAlbum, setNowPlayingOpen,
     setPlaylists, setAlbums, likedTracks, setLikedTracks, followedArtists, addFollowedArtist, removeFollowedArtist,
     navigateToPlaylist, requestEditPlaylist
   } = useSlice(useUserStore, [
     'contextMenu', 'setContextMenu', 'token', 'triggerQueueRefresh',
     'playlists', 'albums', 'customFolders', 'profile', 'deletePlaylist', 'deleteFolder', 'setCurrentView', 'setActivePlaylistId',
     'removeAlbumFromLibrary', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'renameFolder', 'createFolder', 'moveFolder',
-    'reorderFolders', 'reorderPlaylistInFolder',
-    'pinnedItems', 'togglePin', 'movePinnedItem', 'navigateToArtist', 'navigateToAlbum', 'setNowPlayingOpen',
+    
+    'pinnedItems', 'togglePin', 'navigateToArtist', 'navigateToAlbum', 'setNowPlayingOpen',
     'setPlaylists', 'setAlbums', 'likedTracks', 'setLikedTracks', 'followedArtists', 'addFollowedArtist', 'removeFollowedArtist',
     'navigateToPlaylist', 'requestEditPlaylist'
   ]);
 
   const menuRef = useRef(null);
   const isMobile = useIsMobile();
-  const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   // The dialogs outlive the menu: a click inside one lands outside the menu and closes it, and the
   // folder dialog is opened by a handler that closes the menu deliberately. So each dialog keeps a
   // snapshot of what it is about rather than reading the menu, and all of them render whether
@@ -106,18 +140,20 @@ export default function ContextMenu() {
   // itself has usually closed by the time the dialog is on screen, so the item id is captured
   // here rather than read from contextMenu later.
   const [folderDialog, setFolderDialog] = useState(null); // { mode: 'rename', folderId, name } | { mode: 'create', itemId?, parentId? }
-  const [showMoveFolder, setShowMoveFolder] = useState(false);
 
   // Which folder groups in the "Add to Playlist" submenu are expanded. Every folder starts
   // closed each time the menu opens, so a big library is a short list of folders rather than
   // one long scroll of every playlist.
-  const [openFolderIds, setOpenFolderIds] = useState(() => new Set());
+  // the picker in place of the rows: { kind: 'add' } or { kind: 'move', ... }
+  const [picker, setPicker] = useState(null);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [pickerFor, setPickerFor] = useState(null);
+  if (pickerFor !== contextMenu) { setPickerFor(contextMenu); setPicker(null); setPickerQuery(''); }
 
   const closeMenu = () => {
     setContextMenu(null);
-    setShowPlaylistMenu(false);
-    setShowMoveFolder(false);
-    setOpenFolderIds(new Set());
+    setPicker(null);
+    setPickerQuery('');
   };
 
   useEffect(() => {
@@ -244,14 +280,11 @@ export default function ContextMenu() {
   // Submenu geometry, derived from the click position rather than measured. The clamp above
   // only ever moves the menu UP or LEFT, so using the raw coordinates here is conservative:
   // the real menu has at least this much room.
-  const menuLeft = Math.min(contextMenu.x, window.innerWidth - MENU_WIDTH - VIEWPORT_PAD);
-  const flipSubmenu = menuLeft + MENU_WIDTH + SUBMENU_WIDTH + VIEWPORT_PAD > window.innerWidth;
   const submenuMaxHeight = Math.max(160, window.innerHeight - contextMenu.y - VIEWPORT_PAD - 48);
 
   // Anything you can actually add tracks to: playlists you own, plus collaborative ones. The
   // old owner-only filter silently hid collaborative playlists you had write access to.
   const userPlaylists = playlists.filter(p => p.owner?.id === profile?.id || p.collaborative);
-  const { playlists: unfolderedPlaylists } = getUnfolderedItems(userPlaylists, [], customFolders);
 
   // Last row of every "Move to..." list. With no folders at all it is the only row, so the
   // heading no longer sits over an empty box.
@@ -263,72 +296,18 @@ export default function ContextMenu() {
         setFolderDialog({ mode: 'create', itemId });
         setContextMenu(null);
       }}
-      className="w-full text-left px-4 py-2 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors flex items-center gap-2"
+      className="ui-row px-5"
     >
-      <Plus className="w-3.5 h-3.5 text-neutral-500" /> New folder…
+      <Plus className="w-3.5 h-3.5 text-[var(--room-faint)]" /> New folder…
     </button>
   );
 
-  const toggleFolderOpen = (folderId) => {
-    setOpenFolderIds(prev => {
-      const next = new Set(prev);
-      if (next.has(folderId)) next.delete(folderId);
-      else next.add(folderId);
-      return next;
-    });
-  };
   const sourcePlaylist = contextMenu.sourcePlaylistId ? playlists.find(p => p.id === contextMenu.sourcePlaylistId) : null;
   const folder = contextMenu?.folderId ? customFolders.find(f => f.id === contextMenu.folderId) : null;
   const canRemove = sourcePlaylist && sourcePlaylist.owner.id === profile?.id;
 
   // One-step reordering for touch screens, where the sidebar's drag-and-drop can't be used.
   // Neighbour ids drive the same store actions a drop would.
-  const moveRows = (() => {
-    // A pin on Home: earlier or later among the pins
-    if (typeof contextMenu?.pinnedIndex === 'number') {
-      const i = contextMenu.pinnedIndex;
-      return {
-        canUp: i > 0,
-        canDown: i < pinnedItems.length - 1,
-        labels: ['Move earlier', 'Move later'],
-        up: () => { movePinnedItem(i, -1); closeMenu(); },
-        down: () => { movePinnedItem(i, 1); closeMenu(); }
-      };
-    }
-    // A track in one of your own playlists (custom order): the playlist view supplies the move
-    if (contextMenu?.reorder) {
-      const r = contextMenu.reorder;
-      return {
-        canUp: r.index > 0,
-        canDown: r.index < r.count - 1,
-        up: () => { r.move(-1); closeMenu(); },
-        down: () => { r.move(1); closeMenu(); }
-      };
-    }
-    if (contextMenu?.type === 'folder' && folder) {
-      const siblings = childrenOf(customFolders, folder.parentId ?? null);
-      const i = siblings.findIndex(f => f.id === folder.id);
-      return {
-        canUp: i > 0,
-        canDown: i >= 0 && i < siblings.length - 1,
-        up: () => reorderFolders(folder.id, siblings[i - 1].id, 'before'),
-        down: () => reorderFolders(folder.id, siblings[i + 1].id, 'after')
-      };
-    }
-    const itemId = contextMenu?.playlistId || contextMenu?.albumId;
-    const parent = contextMenu?.parentFolderId ? customFolders.find(f => f.id === contextMenu.parentFolderId) : null;
-    if (itemId && parent) {
-      const ids = parent.playlistIds;
-      const i = ids.indexOf(itemId);
-      return {
-        canUp: i > 0,
-        canDown: i >= 0 && i < ids.length - 1,
-        up: () => reorderPlaylistInFolder(parent.id, itemId, ids[i - 1]),
-        down: () => reorderPlaylistInFolder(parent.id, itemId, ids[i + 1])
-      };
-    }
-    return null;
-  })();
 
   // Sandbox Pinning Logic
   const activeId = contextMenu?.playlistId || contextMenu?.albumId || contextMenu?.folderId;
@@ -370,6 +349,7 @@ export default function ContextMenu() {
     try {
       const uris = trackList.length ? trackList.map((t) => t.uri) : await fetchAlbumTrackUris(token, menuAlbumId);
       for (let i = 0; i < uris.length; i += 100) await addTracksToPlaylist(token, playlistId, uris.slice(i, i + 100));
+      noteTarget(playlistId);
       toast(`Added ${what} to ${playlistName}`, { tone: 'success' });
       onDone?.();
     } catch (err) {
@@ -577,157 +557,79 @@ export default function ContextMenu() {
   };
 
   const addToPlaylistMenu = (
-      <div
-        className="relative"
-        onMouseEnter={() => { if (!isMobile) setShowPlaylistMenu(true); }}
-        onMouseLeave={() => { if (!isMobile) setShowPlaylistMenu(false); }}
-      >
-        <button
-          // Click as well as hover, so it works on touch screens
-          onClick={() => setShowPlaylistMenu(v => !v)}
-          className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-between transition-colors"
-        >
-          <div className="flex items-center space-x-3">
-            <Plus className="w-4 h-4 text-neutral-400" />
-            <span>Add to Playlist</span>
-          </div>
-          {showPlaylistMenu && isMobile ? <ChevronDown className="w-4 h-4 text-neutral-500" /> : <ChevronRight className="w-4 h-4 text-neutral-500" />}
-        </button>
-
-        {/* Desktop: a flyout beside the menu. Phone: the list unfolds inside the sheet. */}
-        {showPlaylistMenu && (
-          <div className={isMobile ? 'w-full' : `absolute top-0 z-50 ${flipSubmenu ? 'right-full pr-2 -mr-2' : 'left-full pl-2 -ml-2'}`}>
-            <div
-              style={isMobile ? undefined : { maxHeight: submenuMaxHeight }}
-              className={isMobile
-                ? 'w-full max-h-[45dvh] bg-black/30 border-y border-white/5 py-2 overflow-y-auto'
-                : 'w-64 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-2 overflow-y-auto custom-scrollbar'}
-            >
-              {unfolderedPlaylists.map(pl => (
-                <button
-                  key={pl.id}
-                  onClick={() => handleAddToPlaylist(pl.id)}
-                  className="w-full text-left px-4 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 truncate transition-colors"
-                >
-                  {pl.name}
-                </button>
-              ))}
-
-              {flattenFolderTree(customFolders).map(({ folder, path }) => {
-                const folderPls = userPlaylists.filter(p => folder.playlistIds.includes(p.id));
-                if (folderPls.length === 0) return null;
-                const isOpen = openFolderIds.has(folder.id);
-
-                return (
-                  <div key={folder.id} className="mt-1 pt-1 border-t border-white/5">
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); toggleFolderOpen(folder.id); }}
-                      aria-expanded={isOpen}
-                      title={path.join(' › ')}
-                      className="w-full px-4 py-2 flex items-center justify-between text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
-                    >
-                      <span className="flex items-center min-w-0">
-                        <Folder className={`w-3.5 h-3.5 mr-2 shrink-0 ${isOpen ? 'text-[var(--brand-mid)]' : 'text-neutral-500'}`} />
-                        {/* Nested folders show their path; the accordion itself stays one level deep */}
-                        <span className="truncate font-medium">{path.join(' › ')}</span>
-                      </span>
-                      <span className="flex items-center gap-2 shrink-0 ml-2">
-                        <span className="text-[10px] font-bold text-neutral-500 tabular-nums">{folderPls.length}</span>
-                        {isOpen
-                          ? <ChevronDown className="w-3.5 h-3.5 text-neutral-500" />
-                          : <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />}
-                      </span>
-                    </button>
-
-                    {isOpen && folderPls.map(pl => (
-                      <button
-                        key={pl.id}
-                        onClick={() => handleAddToPlaylist(pl.id)}
-                        className="w-full text-left px-4 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 truncate transition-colors pl-9"
-                      >
-                        {pl.name}
-                      </button>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+    <button type="button" onClick={(e) => { e.stopPropagation(); setPicker({ kind: 'add' }); }} className="ui-row px-5 justify-between">
+      <span>Add to playlist</span>
+      <ChevronRight className="h-3.5 w-3.5 text-[var(--room-faint)]" />
+    </button>
+  );
+  const moveRow = (label, opts) => (
+    <button type="button" onClick={(e) => { e.stopPropagation(); setPicker({ kind: 'move', ...opts }); }} className="ui-row px-5 justify-between">
+      <span>{label}</span>
+      <ChevronRight className="h-3.5 w-3.5 text-[var(--room-faint)]" />
+    </button>
   );
 
   return createPortal(
     <>
       {/* The document click-outside handler closes the menu when this is tapped */}
-      {isMobile && <div className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm animate-fade-in" aria-hidden="true" />}
+      {isMobile && <div className="fixed inset-0 z-[9998] bg-black/60 animate-fade-in" aria-hidden="true" />}
     <div
       ref={menuRef}
       role="menu"
       tabIndex={-1}
       className={isMobile
-        ? 'fixed z-[9999] inset-x-0 bottom-0 w-full max-h-[80dvh] overflow-y-auto bg-neutral-900 border-t border-neutral-700 rounded-t-2xl shadow-2xl pt-2 pb-[env(safe-area-inset-bottom)] select-none'
-        : 'fixed z-[9999] w-56 bg-neutral-900 border border-neutral-700 rounded-md shadow-2xl py-1 overflow-visible focus:outline-none'}
+        ? 'fixed z-[9999] inset-x-0 bottom-0 w-full max-h-[80dvh] overflow-y-auto ui-plane rounded-t-[10px] pt-2 pb-[env(safe-area-inset-bottom)] select-none'
+        : `fixed z-[9999] ${picker ? 'w-80' : 'w-64'} ui-plane py-2 overflow-visible focus:outline-none`}
     >
-      {isMobile && <div className="mx-auto mb-1 h-1 w-10 rounded-full bg-white/20" aria-hidden="true" />}
+      {isMobile && <div className="mx-auto mb-1 h-1 w-10 rounded-full bg-white/25" aria-hidden="true" />}
       {isMobile && (contextMenu.track?.name || contextMenu.folderName || (contextMenu.playlistId && playlists.find(p => p.id === contextMenu.playlistId)?.name)) && (
-        <p className="px-4 pb-2 text-xs font-bold uppercase tracking-wider text-neutral-500 truncate border-b border-white/5 mb-1">
+        <p className="px-5 pb-2 room-mono text-[var(--room-faint)] truncate">
           {contextMenu.track?.name || contextMenu.folderName || playlists.find(p => p.id === contextMenu.playlistId)?.name}
         </p>
       )}
 
+      {picker ? (
+        <PickerBody
+          kind={picker.kind}
+          query={pickerQuery}
+          setQuery={setPickerQuery}
+          onBack={() => { setPicker(null); setPickerQuery(''); }}
+          playlists={userPlaylists}
+          folders={customFolders}
+          pinnedIds={new Set(pinnedItems.map((p) => p.id))}
+          onPickPlaylist={handleAddToPlaylist}
+          move={picker.kind === 'move' ? picker : null}
+          maxHeight={isMobile ? '55dvh' : Math.min(window.innerHeight * 0.6, submenuMaxHeight)}
+        />
+      ) : (<>
       {/* UNIVERSAL PIN TOGGLE */}
       {canPin && (
         <button
           onClick={togglePinWithUndo}
-          className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors border-b border-white/5"
+          className="ui-row px-5"
         >
-          {isPinned ? <PinOff className="w-4 h-4 text-neutral-400" /> : <Pin className="w-4 h-4 text-neutral-400" />}
+          {isPinned ? <PinOff className="w-4 h-4 text-[var(--room-dim)]" /> : <Pin className="w-4 h-4 text-[var(--room-dim)]" />}
           <span>{isPinned ? 'Unpin from Home' : 'Pin to Home'}</span>
         </button>
-      )}
-
-      {moveRows && (
-        <div className="flex border-b border-white/5">
-          <button
-            type="button"
-            disabled={!moveRows.canUp}
-            onClick={(e) => { e.stopPropagation(); moveRows.up(); }}
-            className="flex-1 px-4 py-3 text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-center space-x-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <ChevronUp className="w-4 h-4 text-neutral-400" />
-            <span>{moveRows.labels?.[0] || 'Move up'}</span>
-          </button>
-          <button
-            type="button"
-            disabled={!moveRows.canDown}
-            onClick={(e) => { e.stopPropagation(); moveRows.down(); }}
-            className="flex-1 px-4 py-3 text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-center space-x-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed border-l border-white/5"
-          >
-            <ChevronDown className="w-4 h-4 text-neutral-400" />
-            <span>{moveRows.labels?.[1] || 'Move down'}</span>
-          </button>
-        </div>
       )}
 
       {(contextMenu?.type === 'track' || contextMenu?.track || manyTracks) && (
         <>
           {manyTracks && (
-            <p className="px-4 pb-2 text-xs font-bold uppercase tracking-wider text-neutral-500 border-b border-white/5 mb-1">{manyTracks.length} songs selected</p>
+            <p className="px-5 pb-2 room-mono text-[var(--room-faint)]">{manyTracks.length} songs selected</p>
           )}
           {contextMenu.onSelect && !manyTracks && (
             <MenuItem icon={CheckSquare} label="Select" onClick={() => { const fn = contextMenu.onSelect; closeMenu(); fn(); }} />
           )}
           <button
             onClick={handleAddToQueue}
-            className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+            className="ui-row px-5"
           >
-            <ListPlus className="w-4 h-4 text-neutral-400" />
+            <ListPlus className="w-4 h-4 text-[var(--room-dim)]" />
             <span>Add to Queue</span>
           </button>
           {trackId && !manyTracks && (
-            <MenuItem icon={Heart} label={trackLiked === true ? 'Remove from Liked Songs' : 'Save to Liked Songs'} onClick={handleLikeToggle} iconClass={trackLiked === true ? 'fill-[var(--brand-mid)] text-[var(--brand-mid)]' : ''} />
+            <MenuItem icon={Heart} label={trackLiked === true ? 'Remove from Liked Songs' : 'Save to Liked Songs'} onClick={handleLikeToggle} iconClass={trackLiked === true ? 'fill-[var(--room-paper)] text-[var(--room-paper)]' : ''} />
           )}
 
           {/* Navigation lives here rather than on names inside rows, which stole taps on phones.
@@ -740,9 +642,9 @@ export default function ContextMenu() {
               <button
                 key={a.id}
                 onClick={() => { closeMenu(); setNowPlayingOpen(false); navigateToArtist(a.id); }}
-                className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+                className="ui-row px-5"
               >
-                <User className="w-4 h-4 text-neutral-400 shrink-0" />
+                <User className="w-4 h-4 text-[var(--room-dim)] shrink-0" />
                 <span className="truncate">Go to {a.name}</span>
               </button>
             ))}
@@ -752,9 +654,9 @@ export default function ContextMenu() {
             return (
               <button
                 onClick={() => { closeMenu(); setNowPlayingOpen(false); navigateToAlbum(albumId); }}
-                className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+                className="ui-row px-5"
               >
-                <Disc3 className="w-4 h-4 text-neutral-400 shrink-0" />
+                <Disc3 className="w-4 h-4 text-[var(--room-dim)] shrink-0" />
                 <span className="truncate">Go to album{contextMenu.track?.album?.name ? `: ${contextMenu.track.album.name}` : ''}</span>
               </button>
             );
@@ -763,7 +665,7 @@ export default function ContextMenu() {
           {canRemove && (
             <button
               onClick={handleRemoveFromPlaylist}
-              className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+              className="ui-row ui-row-danger px-5"
             >
               <Trash2 className="w-4 h-4 text-red-400" />
               <span>Remove from this playlist</span>
@@ -790,7 +692,7 @@ export default function ContextMenu() {
           {ownsMenuPlaylist && (
             <button
               onClick={handleDeletePlaylist}
-              className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+              className="ui-row ui-row-danger px-5"
             >
               <Trash2 className="w-4 h-4 text-red-400" />
               <span>Delete playlist</span>
@@ -803,20 +705,14 @@ export default function ContextMenu() {
                 removeFromFolderWithUndo(contextMenu.parentFolderId, contextMenu.playlistId, playlists.find((p) => p.id === contextMenu.playlistId)?.name);
                 setContextMenu(null);
               }}
-              className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+              className="ui-row ui-row-danger px-5"
             >
               <Trash2 className="w-4 h-4 text-red-400" />
               <span>Remove from folder</span>
             </button>
           )}
 
-          <div className="px-4 py-2 text-xs text-neutral-500 uppercase tracking-wider font-bold flex items-center"><FolderPlus className="w-3 h-3 mr-2" /> Move to...</div>
-          <MoveToList
-            folders={customFolders}
-            currentParentId={contextMenu?.parentFolderId ?? null}
-            onPick={(folderId) => { addPlaylistToFolder(folderId, contextMenu.playlistId); closeMenu(); }}
-            footer={newFolderEntry(contextMenu.playlistId)}
-          />
+          {moveRow('Move to folder', { currentParentId: contextMenu?.parentFolderId ?? null, onPick: (folderId) => { addPlaylistToFolder(folderId, contextMenu.playlistId); closeMenu(); }, onOut: () => { removeFromFolderWithUndo(contextMenu.parentFolderId, contextMenu.playlistId, playlists.find((p) => p.id === contextMenu.playlistId)?.name); setContextMenu(null); }, footer: newFolderEntry(contextMenu.playlistId) })}
         </>
       )}
 
@@ -831,7 +727,7 @@ export default function ContextMenu() {
           {albumInLibrary ? (
             <button
               onClick={handleRemoveAlbum}
-              className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+              className="ui-row ui-row-danger px-5"
             >
               <Trash2 className="w-4 h-4 text-red-400" />
               <span>Remove from Library</span>
@@ -847,27 +743,21 @@ export default function ContextMenu() {
                 removeFromFolderWithUndo(contextMenu.parentFolderId, contextMenu.albumId, albums.find((a) => a.id === contextMenu.albumId)?.name);
                 setContextMenu(null);
               }}
-              className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+              className="ui-row ui-row-danger px-5"
             >
               <Trash2 className="w-4 h-4 text-red-400" />
               <span>Remove from folder</span>
             </button>
           )}
 
-          <div className="px-4 py-2 text-xs text-neutral-500 uppercase tracking-wider font-bold flex items-center"><FolderPlus className="w-3 h-3 mr-2" /> Move to...</div>
-          <MoveToList
-            folders={customFolders}
-            currentParentId={contextMenu?.parentFolderId ?? null}
-            onPick={(folderId) => { addPlaylistToFolder(folderId, contextMenu.albumId); closeMenu(); }}
-            footer={newFolderEntry(contextMenu.albumId)}
-          />
+          {moveRow('Move to folder', { currentParentId: contextMenu?.parentFolderId ?? null, onPick: (folderId) => { addPlaylistToFolder(folderId, contextMenu.albumId); closeMenu(); }, onOut: () => { removeFromFolderWithUndo(contextMenu.parentFolderId, contextMenu.albumId, albums.find((a) => a.id === contextMenu.albumId)?.name); setContextMenu(null); }, footer: newFolderEntry(contextMenu.albumId) })}
         </>
       )}
 
       {contextMenu?.type === 'artist' && menuArtistId && (
         <>
           <MenuItem icon={Play} label="Play" onClick={() => handlePlayContext(`spotify:artist:${menuArtistId}`)} />
-          <MenuItem icon={artistFollowed ? UserCheck : UserPlus} label={artistFollowed ? 'Unfollow' : 'Follow'} onClick={handleFollowArtist} iconClass={artistFollowed ? 'text-[var(--brand-mid)]' : ''} />
+          <MenuItem icon={artistFollowed ? UserCheck : UserPlus} label={artistFollowed ? 'Unfollow' : 'Follow'} onClick={handleFollowArtist} iconClass={artistFollowed ? 'text-[var(--room-paper)]' : ''} />
           {!contextMenu.onArtistPage && <MenuItem icon={User} label="Go to artist" onClick={() => { closeMenu(); navigateToArtist(menuArtistId); }} />}
           <MenuItem icon={Share2} label="Share" onClick={() => share('artist', menuArtistId, menuArtist?.name)} />
         </>
@@ -881,9 +771,9 @@ export default function ContextMenu() {
               setFolderDialog({ mode: 'rename', folderId: folder.id, name: folder.name });
               setContextMenu(null);
             }}
-            className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+            className="ui-row px-5"
           >
-            <Pencil className="w-4 h-4 text-neutral-400" />
+            <Pencil className="w-4 h-4 text-[var(--room-dim)]" />
             <span>Rename folder</span>
           </button>
           <button
@@ -892,34 +782,15 @@ export default function ContextMenu() {
               setFolderDialog({ mode: 'create', parentId: folder.id });
               setContextMenu(null);
             }}
-            className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+            className="ui-row px-5"
           >
-            <FolderPlus className="w-4 h-4 text-neutral-400" />
+            <FolderPlus className="w-4 h-4 text-[var(--room-dim)]" />
             <span>New subfolder</span>
           </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); setShowMoveFolder(v => !v); }}
-            aria-expanded={showMoveFolder}
-            className="w-full px-4 py-3 text-left text-sm font-medium text-white hover:bg-neutral-800 flex items-center justify-between transition-colors"
-          >
-            <span className="flex items-center space-x-3">
-              <CornerDownRight className="w-4 h-4 text-neutral-400" />
-              <span>Move folder to…</span>
-            </span>
-            {showMoveFolder ? <ChevronDown className="w-4 h-4 text-neutral-500" /> : <ChevronRight className="w-4 h-4 text-neutral-500" />}
-          </button>
-          {showMoveFolder && (
-            <MoveToList
-              folders={customFolders}
-              currentParentId={folder.parentId ?? null}
-              excludeIds={new Set([folder.id, ...descendantIds(customFolders, folder.id)])}
-              allowRoot
-              onPick={(targetId) => { moveFolder(folder.id, targetId); closeMenu(); }}
-            />
-          )}
+          {moveRow('Move folder to', { currentParentId: folder.parentId ?? null, excludeIds: new Set([folder.id, ...descendantIds(customFolders, folder.id)]), allowRoot: true, onPick: (targetId) => { moveFolder(folder.id, targetId); closeMenu(); } })}
           <button
             onClick={handleDeleteFolder}
-            className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-neutral-800 flex items-center space-x-3 transition-colors"
+            className="ui-row ui-row-danger px-5"
           >
             <Trash2 className="w-4 h-4 text-red-400" />
             <span>Delete folder</span>
@@ -928,6 +799,7 @@ export default function ContextMenu() {
       )}
 
       {dialogs}
+      </>)}
     </div>
     </>,
     document.body

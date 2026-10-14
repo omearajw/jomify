@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "src/room/Layer.jsx"
+        ],
+        "createdAt": "2026-10-13T22:17:56.026Z",
+        "reason": "Claude: the layer's contents must reflow between half and full width, which a transform cannot do; it runs once per deliberate pick at the room's tempo, not continuously"
+      }
+    ]
+  }
+}

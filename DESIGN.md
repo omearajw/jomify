@@ -278,6 +278,61 @@ consistent choice but a bar along the bottom might be lighter. Try the column fo
 feels like wasted space while organising or in Sevens, the bottom bar is the fallback and the
 decision is reopened.
 
+**2026-10-14 — The room takes the screen back when you touch it.** The layer had no visible way
+in or out: a hold at the edge to reveal the rail, then a pick; the same pick, or an unseen drag
+handle, to close. Now the way out is the room itself: a click on its ground, at half or on the
+strip at full, puts the layer away; controls on the room (Play, Next, a queue row, the progress
+bar, the volume) still work as controls and close nothing. Escape does the same. The way in is
+the hair of light at the left edge, a strip the height of the window: one click opens the layer
+where it last was, no hold and no timer. `/` opens it with the search field ready, since finding a
+playlist is the library's first job, and a second `/` (the field still empty) pulls it to full
+instead of typing a slash; a third does nothing more. Escape is the other direction, one step at
+a time: full → half, half → away (words in the field clear first). Each key means one direction,
+so neither needs the panel's state to be predicted, and they keep their meanings from elsewhere:
+`/` is "go to search", Escape "dismiss the topmost thing". (Decided 14 Oct over `/` cycling.) The reach zone for the rail and the edge is 48px, not a hair: nothing
+lives at that edge to open by accident. Drag is only for half ↔ full. There is no close button, on
+purpose: the thing you want is already on screen beside the layer, and touching it brings it
+forward, as windows and sheets do everywhere else. The hover-hold reveal of the rail stays for
+picking a mode without opening the layer, and nothing depends on it. If living with it shows the
+missing "×" is felt, a mono Close at the head of the tree is the fallback. *Why:* Jack, 14 Oct:
+"it feels a bit finicky that you have to drag it open and closed."
+
+**2026-10-14 — The handle steps, it does not resize.** A short drag right on the layer's edge
+swings it the whole way to the next state (half → full), a short drag left to the previous (full
+→ half, half → away); the plane follows the finger a little so the drag reads, then goes. Free
+resizing was finicky and the layer has only three sizes anyway. *Why:* Jack, 14 Oct.
+
+**2026-10-14 — No text selection anywhere but fields.** The app is a thing to use, not a page to
+copy from; a drag or a long press used to paint selection across rows. *Why:* Jack, 14 Oct.
+
+**2026-10-14 — Between the room's states, things move; nothing fades but the lyrics.** Rest →
+half already moved (the padding, the art's width, the column). Half → full used to fade the room
+out and a separate strip in. Now the art, the song, the controls and the queue each carry one
+identity in the room and in the strip (Framer's shared layout), so when the layer takes the
+screen they travel to their places in the strip at the room's tempo, the art shrinking as it
+goes. The lyrics fade: the stage draws them into a box that has no place in the strip, so they
+are going away, not somewhere. The flick on the layer's edge has a dead zone of 60px where the
+plane only tugs with the finger; a second step in the same pull needs a long drag (240px), so a
+flick from full goes to half and a flick again puts it away. *Why:* Jack, 14 Oct: "I'd like them
+to always move"; "you shouldn't need to let go of the drag"; "a bit of room where you can drag it
+a little without it closing or opening."
+
+**2026-10-14 — Back sits in the open thing's head, and steps through open things only.** The old
+corner arrow belonged to a layout where the page was the whole screen; in the room it stepped the
+right column's history while that column was off screen, and arrived late, shifting everything
+down. Now Back is the first thing at the top-left of the right column, an arrow and the name of
+where it goes ("← Late Night Drives"), present at full and nowhere else, on a line that is always
+there so nothing shifts; "Library" stands in the line when there is nothing to go back to. Its
+history is of open things, a playlist, an album, an artist, search, Liked Songs, never a mode,
+the library page or the layer's size, so a trip through Sevens is stepped over. Alt+← is the
+same Back and opens the layer at full so what it went back to is seen. A page with a state of its
+own puts that state on Back first: from search's "All albums" Back reads "← Search" and returns
+to the summary before it leaves the page. The column remembers where each page was scrolled, by
+page and state, so coming back lands where you were. Top-left of the window was
+considered and rejected: that corner belongs to nothing, and a control should sit on the thing it
+changes; on the phone the one column makes the two the same. *Why:* Jack, 14 Oct, who asked for
+the argument rather than agreement.
+
 ## 6. The library layer
 
 What the layer has to do, from §2, in the order it matters:
@@ -335,6 +390,42 @@ list, "In your library" first, "On Spotify" (songs, then playlists · albums · 
 The tree at half holds pins, folders, Liked Songs · Albums · Artists; sort, filter and grid
 size belong to the "All playlists" section at full, not to the tree.
 
+**2026-10-14 — Built: the open playlist and Liked Songs on the language.** The old pages were
+split into a logic hook each (`usePlaylistView`, `useLikedSongsView`) and their markup; the room's
+surfaces (`src/room/RoomPlaylist.jsx`, `RoomLikedSongs.jsx`) are second faces on the same hooks,
+so a fix reaches both. The head is the record sleeve: cover, mono facts line, name, the white Play
+disc, actions as mono words; find and sort share one hairline, sort as words with the current one
+lit; rows on hairlines, the playing row a paper dot and full white, hearts paper not pink. Still
+the old look inside: the row menu, the selection bar, the dialogs, the unadded pills (Unadded's).
+
+**2026-10-14 — The library page: covers in sections, not cards and folder-tiles.** The grid stays
+(a cover is a playlist's identity; a wall of them is a record shelf, older than Spotify) but the
+cards go: a cover is a bare square with its name under it and the owner in mono, the white Play
+disc on the cover on hover. Folders are sections with mono headings, sub-folders as sub-headings
+with their path, then "Playlists" for the loose ones, "Albums", "Artists" and "Made for you"
+greyed with its note, so the whole library is on one scroll, grouped the way it was grouped;
+folder-tiles hid their contents, which defeated seeing everything at once. Sort, filter and size
+are words on one hairline with New playlist, New folder and Import. A cover dragged onto a
+section's heading moves there, onto "Playlists" comes out of any folder; Cmd/Shift-click selects
+several and one drag moves them all. "All playlists" at the tree's head opens it; a pinned folder
+opens it on that folder alone with "← Everything" to widen. Sections fold on a click of their
+heading and stay folded; covers reorder by drag within a folder and folders by dragging one
+heading beside another; columns stretch to fill the width, so no row leaves a cover's worth of
+space unused. Back from a playlist opened here returns here. Built as `src/room/RoomLibrary.jsx`
+on the old page's helpers (`libraryOrder.js`). *Why:* Jack, 14 Oct: "we could have some fun with
+this, maybe think about moving away from the grid"; the answer was keep the grid, lose the cards.
+
+**2026-10-14 — Built: search on the language.** The tree's field is the field: typing filters the
+tree and, with search open on the right, searches Spotify as you type; there is no second box.
+With search open the field says so: a "Search Spotify" label above it, bigger words, a brighter
+line, "Clear" in place of "On Spotify ↵", since the one-field idea took Jack a minute to read.
+The results are one list: "In your library" first (playlists, albums, artists by name, as rows),
+then Songs as rows on hairlines with a word for "All songs", then Playlists, Albums and Artists
+as covers with the same; one open section is the whole page, paging as it scrolls. Before
+anything is typed, the recent searches as words. The old page was split into a hook
+(`useBrowse`) and its markup, and the room's surface (`src/room/RoomSearch.jsx`) is the second
+face on the hook. *Why:* §6's default, built.
+
 ## 7. Sevens
 
 The shared playlists with Dad: you each add seven songs in turn. What the mode has to do:
@@ -374,6 +465,14 @@ still adds it to the end, as a fallback and for the phone. Under the gesture rul
 a list scrolls it, so the drag starts on a handle at the row's edge — the same answer as the
 sheet. On the phone, where the faces stack, the drag goes up from the pool into the batch.
 *Why:* Sevens round 2, in words; Jack chose drag.
+
+**2026-10-14 — Sevens is a list, and takes the layer's shape.** The left column is every Seven as
+a row: the playlist, "with Dad · Dad's turn" or "your turn" in paper, Finish/Resume on hover; a
+"Set up" pick at its head opens the Sevens page on the right. A row opens that Seven's workspace
+on the right, at full, with the column still there. At half the column alone answers "whose
+turn" without entering the mode. `/` in Sevens opens this list, not the library. *Why:* the room
+round of 14 Oct; one rule for every layer: a list on the left, the open thing on the right, half
+is the list alone, and the list has to be worth having on its own.
 
 ## 8. Unadded
 
@@ -442,6 +541,13 @@ it must not change by itself. The host's phone is the Party mode in the sheet wi
 controls; the guest page and a dedicated wall screen are outside the layout and unchanged.
 *Why:* Party round 1; Jack chose C without the idle switch.
 
+**2026-10-14 — Party is a list too: the party's facts on the left, the host view on the right.**
+The column is the code, its QR on a paper tile, the link, how many are in, and the wall screen
+link; with no party on, a line of what it is and Start. Beside the room with the music playing
+and the queue in the request order, half-open Party is nearly the wall display with the room
+still there, the state for a Mac on the table. The host's controls and the set-up are the open
+thing at full; the dedicated wall screen stays its own deliberate switch. *Why:* same round.
+
 ## 10. Lyrics and Zen
 
 **2026-10-13 — Zen is the room with the chrome gone.** The lyrics live in the room (between the
@@ -493,6 +599,39 @@ Inter Tight to read, JetBrains Mono for facts; one tempo; one row design; rare b
 light behind everything is Zen's real stage — its ribbons in the cover's palette, the glass
 lyrics with the word fill — not the page's stand-in canvas; the room *is* Zen with its chrome on.
 Zen itself is then the same room with the chrome faded, as §10 says.
+
+**2026-10-14 — Reading: a high contrast mode, no text size of our own.** High contrast lifts every
+strength of the off-white (paper to pure white, dim to 78%, faint to 60%), makes the plane solid,
+thickens the hairlines and sets the mono labels at 12px; it follows the OS "more contrast" switch
+unless set by hand (Settings → Contrast). There is no text size setting: Jack's dad scales the
+whole system and would not use one, so the layouts have to hold up under OS scaling instead,
+which is the phone layout's job. *Why:* Jack, 14 Oct: "we just need to make sure that our app
+works on systems with text scaling on."
+
+**2026-10-14 — Built: the pieces every screen shares, and Settings.** The row menu, the selection
+bar, the toasts, the confirm and playlist dialogs, the device picker and the shortcuts sheet are
+rebuilt on the language, not retinted (the first pass kept Spotify's shapes, rounded cards and
+icon-and-label rows, and Jack said so): a solid plane with a hair of light at its edge and no
+corners (`.ui-plane`), rows on hairlines with no icons (`.ui-row`), actions as mono words
+(`.ui-word`) and one white pill for the main act (`.ui-pill`), fields as a line (`.ui-field`),
+mono labels in place of titles and header bars, "Close" as a word not an ×, switches as On/Off
+words; destructive entries keep a muted red as a safety signal.
+Settings is rows on hairlines with each choice as words, the chosen one lit, its hint beneath.
+One rule came out of it: a menu, a dialog or a selection on top takes Escape for itself, and the
+layer steps only when nothing is over it. The phone keeps its sheets, restyled the same.
+
+**2026-10-14 — Drag is the first way to organise; the menu's picker is a flat list.** A song or
+a selection dragged from the open playlist onto a playlist in the tree is added; a playlist
+dragged onto a folder moves there, or onto "Library" comes out of any folder; folders spring open
+under a drag held over them. The menu's "Add to playlist" and "Move to" then swap its plane for a
+search field and one flat list with nothing to expand: playlists last added to, then pinned, then
+all A–Z, each with its folder beside the name; folders as rows with their path, "Out of any
+folder" first when it is in one. A first version put a tree inside the menu, with rows that both
+picked and expanded and an arrow that meant "open" where everywhere else it means "go"; Jack:
+"can we actually design it and think it through." The hover flyout it replaced had a scroll of its
+own and was lost on the way across. Move up / Move down left the menu: drag does it. "All
+playlists" at the tree's head opens the grid page, the same pattern as Sevens' "Set up". *Why:*
+Jack, 14 Oct.
 
 ---
 

@@ -276,3 +276,73 @@
   box-shadow: 0 0 14px rgba(255, 255, 255, 0.55), 0 0 30px var(--zen-glow); animation: zen-breathe 3.2s ease-in-out infinite; }
 @keyframes zen-breathe { 50% { filter: brightness(1.25); } }
 @media (prefers-reduced-motion: reduce) { .zen-dot { animation: none; } }
+
+/* The room (the new layout): one language, see DESIGN.md §11. Two faces: one to read, one for
+   facts. Off-white at four strengths. Planes are a slightly lighter dark with a hair of light at
+   the edge, never a border. One tempo. */
+:root {
+  --room-ink: #07070b;
+  --room-paper: #f1efe9;
+  --room-dim: rgba(241, 239, 233, 0.5);
+  --room-faint: rgba(241, 239, 233, 0.28);
+  --room-plane: rgba(12, 12, 18, 0.78);
+  --room-hair: rgba(241, 239, 233, 0.08);
+  --room-solid: rgb(13, 13, 18);      /* menus and dialogs: a solid plane, nothing shows through */
+  --room-ease: cubic-bezier(0.2, 0.75, 0.2, 1);
+  --room-slow: 1100ms;
+  --room-mid: 700ms;
+  --font-room: "Inter Tight", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+/* in the components layer, so a utility on the same element (padding, a size) still wins */
+@layer components {
+.room-mono { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+.room-plane { background: var(--room-plane); }
+.room-plane::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 1px; background: linear-gradient(rgba(255,255,255,0), rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.22) 70%, rgba(255,255,255,0)); pointer-events: none; }
+}
+@keyframes room-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.012); } }
+@keyframes room-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes room-fade-out { from { opacity: 1; } to { opacity: 0; } }
+/* the heart in the room: paper when liked, dim otherwise; one colour, no brand pink */
+.room-like button svg { color: var(--room-dim); fill: transparent; }
+.room-like button[aria-pressed="true"] svg { color: var(--room-paper); fill: var(--room-paper); }
+/* No text selection anywhere (Jack, 14 Oct): the app is a thing to use, not a page to copy from.
+   Fields keep it, or typing and editing in them would break. */
+body { -webkit-user-select: none; user-select: none; }
+input, textarea, [contenteditable="true"], [contenteditable=""] { -webkit-user-select: text; user-select: text; }
+
+/* Reading (Settings): high contrast lifts every strength of the off-white, makes the plane
+   opaque, thickens the hairlines and sets the mono labels larger. Follows the OS "more contrast"
+   switch unless set by hand. */
+:root[data-contrast="high"] {
+  --room-paper: #ffffff;
+  --room-dim: rgba(255, 255, 255, 0.78);
+  --room-faint: rgba(255, 255, 255, 0.6);
+  --room-plane: rgb(12, 12, 16);
+  --room-hair: rgba(255, 255, 255, 0.22);
+}
+:root[data-contrast="high"] { --room-solid: rgb(8, 8, 10); }
+:root[data-contrast="high"] .room-mono { font-size: 12px; letter-spacing: 0.05em; }
+
+/* The pieces every screen shares, on the language (DESIGN.md §11): a solid plane with a hair of
+   light at its edge, rows on hairlines, words for actions, mono for labels. No cards, no icons
+   beside words, no header bars. */
+@layer components {
+.ui-plane { background: var(--room-solid); color: var(--room-paper); font-family: var(--font-room); box-shadow: 0 0 0 1px var(--room-hair), 0 40px 90px -30px rgba(0, 0, 0, 0.85); }
+.ui-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 9px 0; font-size: 13px; font-weight: 500; color: var(--room-dim); border-top: 1px solid var(--room-hair); transition: color var(--room-mid) var(--room-ease); }
+.ui-row:first-child, .ui-row.ui-row-first { border-top: 0; }
+.ui-row:hover:not(:disabled), .ui-row[aria-current] { color: var(--room-paper); }
+.ui-row:disabled { opacity: 0.35; cursor: default; }
+.ui-row > svg:first-child { display: none; }
+.ui-row-danger { color: rgba(236, 140, 140, 0.8); }
+.ui-row-danger:hover:not(:disabled) { color: rgb(240, 160, 160); }
+.ui-field { display: block; width: 100%; background: transparent; border: 0; border-bottom: 1px solid var(--room-hair); padding: 8px 0; font-size: 14px; color: var(--room-paper); outline: none; border-radius: 0; font-family: var(--font-room); }
+.ui-field::placeholder { color: var(--room-faint); }
+.ui-field:focus { border-bottom-color: rgba(241, 239, 233, 0.4); }
+.ui-pill { background: var(--room-paper); color: #0a0810; border-radius: 999px; padding: 8px 18px; font-size: 13px; font-weight: 600; transition: opacity var(--room-mid) var(--room-ease); }
+.ui-pill:disabled { opacity: 0.4; }
+.ui-pill-danger { background: rgb(214, 96, 96); color: #fff; }
+.ui-word { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--room-dim); transition: color var(--room-mid) var(--room-ease); white-space: nowrap; }
+.ui-word:hover:not(:disabled), .ui-word[aria-pressed="true"] { color: var(--room-paper); }
+.ui-word:disabled { opacity: 0.4; }
+}

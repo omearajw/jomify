@@ -114,6 +114,8 @@ export const useUserStore = create(
       // `active` false means the Seven is finished: it is still cross-referenced for duplicate
       // tracks, but it never prompts you that it is your turn.
       sevens: [],
+      // which active Sevens are waiting on you, from App's turn check; not persisted
+      sevenTurns: [],
       sevensSeeded: false,
 
       // --- FRIENDS ---

@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import AccountPanel from '../components/AccountPanel';
 import { useIsMobile } from '../hooks/useMediaQuery';
@@ -23,22 +22,20 @@ export default function AccountSheet() {
 
   const close = () => setAccountOpen(false);
   return createPortal(
-    <div className={`fixed inset-0 z-[9002] flex bg-black/70 ${isMobile ? 'items-end' : 'items-center justify-center p-6 backdrop-blur-sm'}`} onClick={close}>
+    <div className={`fixed inset-0 z-[9002] flex bg-black/60 ${isMobile ? 'items-end' : 'items-center justify-center p-6'}`} onClick={close}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
         onClick={(e) => e.stopPropagation()}
         className={isMobile
-          ? 'w-full max-h-[85dvh] overflow-y-auto rounded-t-3xl bg-neutral-950 border-t border-white/10 shadow-2xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] animate-fade-in'
-          : 'w-full max-w-md max-h-[85vh] overflow-y-auto rounded-3xl bg-neutral-950 border border-white/10 shadow-2xl p-6 animate-fade-in'}
+          ? 'ui-plane w-full max-h-[85dvh] overflow-y-auto rounded-t-[10px] p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] animate-fade-in'
+          : 'ui-plane w-full max-w-md max-h-[85vh] overflow-y-auto p-8 animate-fade-in'}
       >
-        {isMobile && <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" aria-hidden="true" />}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-white">Settings</h2>
-          <button type="button" onClick={close} aria-label="Close" className="w-11 h-11 flex items-center justify-center text-neutral-400">
-            <X className="w-5 h-5" />
-          </button>
+        {isMobile && <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/25" aria-hidden="true" />}
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="room-mono text-[var(--room-dim)]">Settings</h2>
+          <button type="button" onClick={close} className="ui-word">Close</button>
         </div>
         <AccountPanel variant="sheet" />
       </div>

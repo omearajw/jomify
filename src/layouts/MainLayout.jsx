@@ -16,6 +16,7 @@ import { useSlice } from '../store/selectors';
 
 // Desktop-only and heavy; loaded the first time it is opened
 const ZenMode = lazy(() => import('../views/ZenMode/ZenMode'));
+const Room = lazy(() => import('../room/Room'));
 import { shouldRegisterServiceWorker } from '../pwa/env';
 import BottomTabBar from './BottomTabBar';
 import MiniPlayer from './MiniPlayer';
@@ -33,7 +34,7 @@ const registerServiceWorker = shouldRegisterServiceWorker();
 const SYNC_FAILURE_BANNER_AFTER_MS = 5 * 60 * 1000;
 
 export default function MainLayout({ children }) {
-  const { goBack, viewHistory, apiCooldownUntil, setApiCooldown, isZenMode } = useSlice(useUserStore, ['goBack', 'viewHistory', 'apiCooldownUntil', 'setApiCooldown', 'isZenMode']);
+  const { goBack, viewHistory, apiCooldownUntil, setApiCooldown, isZenMode, playbackSettings } = useSlice(useUserStore, ['goBack', 'viewHistory', 'apiCooldownUntil', 'setApiCooldown', 'isZenMode', 'playbackSettings']);
   const syncStatus = useSyncStore((s) => s.status);
   const syncFailingSince = useSyncStore((s) => s.failingSince);
   const syncErrorMessage = useSyncStore((s) => s.errorMessage);
@@ -98,22 +99,10 @@ export default function MainLayout({ children }) {
   const bannerHeight = (isCoolingDown ? 44 : 0) + (syncBroken ? 44 : 0) + (offline ? 44 : 0) + (dormantParty ? 44 : 0);
   const backBarHeight = canGoBack ? 64 : 0;
 
-  return (
-    <div className="flex flex-col h-dvh pt-[env(safe-area-inset-top)] bg-transparent overflow-hidden font-sans">
-      <div className="flex-1 flex overflow-hidden">
-        {/* Not mounted on phones: a hidden sidebar still built the folder tree and fetched every thumbnail */}
-        {!isMobile && <Sidebar />}
-
-        <main
-          // Blur and a viewport-sized shadow on the element that scrolls cost a repaint per frame;
-          // phones get neither, desktop keeps the frosted look
-          className="flex-1 overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable] md:backdrop-blur-sm md:rounded-lg md:my-2 md:mr-2 relative md:shadow-2xl flex flex-col"
-          style={{ '--top-bar-h': `${bannerHeight + backBarHeight}px` }}
-        >
-          {/* One sticky header, so banners and the back button stack instead of all pinning to
-              top:0 and covering each other. The back row only exists when there is somewhere
-              to go back to. */}
-          {(isCoolingDown || syncBroken || canGoBack || offline || dormantParty) && (
+  // `withBack` is the old layout's corner arrow; the room has its own Back, in the open thing's head
+  const headerFor = (withBack) => (
+    <>
+          {(isCoolingDown || syncBroken || (withBack && canGoBack) || offline || dormantParty) && (
             <div className="sticky top-0 z-30">
               {dormantParty && (
                 <div className="bg-neutral-900/95 backdrop-blur-md text-white px-4 md:px-8 py-2.5 flex items-center justify-center gap-3 text-sm font-medium shadow-lg animate-fade-in">
@@ -146,7 +135,7 @@ export default function MainLayout({ children }) {
                 </div>
               )}
 
-              {canGoBack && (
+              {withBack && canGoBack && (
                 <div className="backdrop-blur-md px-4 md:px-8 py-4 flex items-center">
                   <button
                     onClick={goBack}
@@ -159,6 +148,59 @@ export default function MainLayout({ children }) {
               )}
             </div>
           )}
+    </>
+  );
+  const header = headerFor(true);
+
+  // The room (DESIGN.md): the now-playing room is the base and the app's views live in a layer
+  // over it. Behind a setting while it is lived with; Mac only for now.
+  // The contrast mode follows the OS "more contrast" switch unless set by hand. No text size of
+  // our own: Jack's dad scales the whole system, so the app has to hold up under that instead.
+  const contrast = playbackSettings?.contrast || 'auto';
+  useEffect(() => {
+    const root = document.documentElement;
+    const mq = window.matchMedia('(prefers-contrast: more)');
+    const apply = () => {
+      const high = contrast === 'high' || (contrast === 'auto' && mq.matches);
+      if (high) root.setAttribute('data-contrast', 'high'); else root.removeAttribute('data-contrast');
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [contrast]);
+  const newLayout = !isMobile && playbackSettings?.newLayout === 'on';
+  if (newLayout) {
+    return (
+      <div className="relative h-dvh overflow-hidden pt-[env(safe-area-inset-top)]">
+        <Suspense fallback={null}><Room header={headerFor(false)}>{children}</Room></Suspense>
+        <PlayerBar hidden />
+        <DevicePicker />
+        <AccountSheet />
+        <ContextMenu />
+        <ToastHost />
+        <SyncConflictDialog />
+        <ShortcutsHelp />
+        {registerServiceWorker && <UpdatePrompt />}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-dvh pt-[env(safe-area-inset-top)] bg-transparent overflow-hidden font-sans">
+      <div className="flex-1 flex overflow-hidden">
+        {/* Not mounted on phones: a hidden sidebar still built the folder tree and fetched every thumbnail */}
+        {!isMobile && <Sidebar />}
+
+        <main
+          // Blur and a viewport-sized shadow on the element that scrolls cost a repaint per frame;
+          // phones get neither, desktop keeps the frosted look
+          className="flex-1 overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable] md:backdrop-blur-sm md:rounded-lg md:my-2 md:mr-2 relative md:shadow-2xl flex flex-col"
+          style={{ '--top-bar-h': `${bannerHeight + backBarHeight}px` }}
+        >
+          {/* One sticky header, so banners and the back button stack instead of all pinning to
+              top:0 and covering each other. The back row only exists when there is somewhere
+              to go back to. */}
+          {header}
 
           <div className={`px-4 md:px-8 pb-4 ${canGoBack ? 'pt-2' : 'pt-6'}`}>
             {children}

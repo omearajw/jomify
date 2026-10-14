@@ -426,6 +426,8 @@ function App() {
         }
       }
       setSevenTurns(turns);
+      // the room's Sevens column reads it from the store (not persisted)
+      useUserStore.setState({ sevenTurns: turns.map((t) => ({ id: t.id, empty: Boolean(t.empty) })) });
     };
 
     checkSevens();

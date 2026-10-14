@@ -33,7 +33,9 @@ function songDragImage(track) {
   return pill;
 }
 
-export default function PlayerBar() {
+// hidden: nothing drawn, but the keyboard shortcuts and the progress tick it owns keep running
+// (the room, in the new layout, has its own controls)
+export default function PlayerBar({ hidden = false } = {}) {
   const { playbackState, isShuffled, repeatMode, activeDevice, sdkStatus, isLocalActive, remoteVolume } = useSlice(usePlayerStore, ['playbackState', 'isShuffled', 'repeatMode', 'activeDevice', 'sdkStatus', 'isLocalActive', 'remoteVolume']);
   const {
     toggleQueue,
@@ -215,6 +217,8 @@ export default function PlayerBar() {
       🎵
     </div>
   );
+
+  if (hidden) return null;
 
   return (
     <div className="h-24 bg-black/60 backdrop-blur-xl border-t border-white/5 flex items-center justify-between px-6 text-white select-none relative z-10">
