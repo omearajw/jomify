@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Bell, BellOff, Loader2 } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { toast } from '../store/toastStore';
 import { isPushSupported, beginEnableNotifications, disableNotifications, describePushBlocker } from '../pwa/push';
@@ -32,35 +31,30 @@ export default function NotificationToggle({ compact = false }) {
 
   const supported = isPushSupported();
   const blocker = describePushBlocker();
-  const Icon = enabled ? Bell : BellOff;
 
   return (
-    <div className={compact ? '' : 'rounded-2xl border border-white/10 bg-white/5 p-4'}>
-      <div className="flex items-center gap-3">
-        <Icon className={`w-5 h-5 shrink-0 ${enabled ? 'text-[var(--brand-mid)]' : 'text-neutral-400'}`} />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white">Sevens notifications</p>
-          <p className="text-xs text-neutral-400">
-            {enabled
-              ? 'On for this device: a ping when a Seven is dropped, and a reminder every 3 days while it\'s your turn.'
-              : 'Get a ping when a partner drops a Seven, and a reminder every 3 days while it\'s your turn.'}
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          disabled={busy || (!enabled && !supported)}
-          onClick={toggle}
-          aria-label={enabled ? 'Turn Sevens notifications off' : 'Turn Sevens notifications on'}
-          className={`relative w-12 h-7 rounded-full transition-colors shrink-0 disabled:opacity-50 ${enabled ? 'bg-[var(--brand-mid)]' : 'bg-neutral-700'}`}
-        >
-          {busy
-            ? <Loader2 className="w-4 h-4 animate-spin text-white absolute top-1.5 left-4" />
-            : <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-6' : 'translate-x-1'}`} />}
-        </button>
-      </div>
-      {blocker && !enabled && <p className="text-xs text-amber-300 mt-2">{blocker}</p>}
+    <div className={`flex items-center justify-between gap-6 py-3 ${compact ? '' : 'border-t border-[var(--room-hair)]'}`}>
+      <span className="min-w-0">
+        <span className="block text-[13px] font-medium text-[var(--room-paper)]">Sevens notifications</span>
+        <span className="block text-[12px] text-[var(--room-faint)]">
+          {enabled
+            ? 'On for this device: a ping when a Seven is dropped, and a reminder every 3 days while it\'s your turn.'
+            : 'A ping when a partner drops a Seven, and a reminder every 3 days while it\'s your turn.'}
+        </span>
+        {blocker && !enabled && <span className="room-mono mt-1 block text-[var(--room-faint)]">{blocker}</span>}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-pressed={enabled}
+        disabled={busy || (!enabled && !supported)}
+        onClick={toggle}
+        aria-label={enabled ? 'Turn Sevens notifications off' : 'Turn Sevens notifications on'}
+        className="ui-word shrink-0"
+      >
+        {busy ? 'Working' : enabled ? 'On' : 'Off'}
+      </button>
     </div>
   );
 }

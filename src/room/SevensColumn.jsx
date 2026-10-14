@@ -40,7 +40,7 @@ export default function SevensColumn({ onExpand }) {
     <div className="flex h-full min-h-0 flex-col" style={{ fontFamily: 'var(--font-room)' }}>
       <p className="room-mono flex justify-between border-b border-[var(--room-hair)] pb-3 text-[var(--room-dim)]">
         <span>Sevens</span>
-        <button type="button" onClick={() => { setCurrentView('sevens'); onExpand?.(); }} aria-current={currentView === 'sevens' ? 'page' : undefined} className={`transition-colors ${currentView === 'sevens' ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-paper)]'}`}>Set up</button>
+        <button type="button" onClick={() => { setCurrentView('sevens'); onExpand?.(); }} aria-current={currentView === 'sevens' ? 'page' : undefined} className={`ui-headword transition-colors ${currentView === 'sevens' ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-paper)]'}`}>Manage</button>
       </p>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pr-1 pt-4 [scrollbar-width:thin]">
         {sevens.length === 0 && <p className="text-[13px] text-[var(--room-faint)]">No Sevens yet. Set one up to start trading batches.</p>}
