@@ -15,7 +15,7 @@ const RAIL_ITEMS = [
   { id: 'library', label: 'Library' },
   { id: 'browse', label: 'Search' },
   { id: 'sevens', label: 'Sevens' },
-  { id: 'unadded', label: 'Unadded', soon: true },
+  { id: 'unadded', label: 'Unadded' },
   { id: 'party', label: 'Party' },
   { id: 'account', label: 'Settings' }
 ];

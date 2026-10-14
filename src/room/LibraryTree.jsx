@@ -5,6 +5,7 @@ import { useSlice } from '../store/selectors';
 import { buildFolderTree, byOrder, getUnfolderedItems, isDescendant } from '../utils/library';
 import { usePlayingFrom } from '../hooks/usePlayingFrom';
 import { artUrl } from '../utils/images';
+import { isPile } from '../utils/unaddedSync';
 import { addTracksToPlaylist } from '../services/spotify/api';
 import { toast } from '../store/toastStore';
 import { TRACK_DRAG_TYPE } from '../utils/spotifyUri';
@@ -55,7 +56,7 @@ const Label = ({ children, count, trailing, over }) => (
 
 export default function LibraryTree({ onExpand, onSlash }) {
   const {
-    playlists, albums, followedArtists, customFolders, pinnedItems, currentView, activePlaylistId, currentAlbumId, currentArtistId,
+    playlists: everyPlaylist, albums, followedArtists, customFolders, pinnedItems, currentView, activePlaylistId, currentAlbumId, currentArtistId,
     navigateToPlaylist, navigateToAlbum, navigateToArtist, setCurrentView, setActiveFolderId, setContextMenu,
     token, profile, addPlaylistToFolder, removePlaylistFromFolder, moveFolder, reorderFolders, reorderPlaylistInFolder
   } = useSlice(useUserStore, [
@@ -63,6 +64,8 @@ export default function LibraryTree({ onExpand, onSlash }) {
     'navigateToPlaylist', 'navigateToAlbum', 'navigateToArtist', 'setCurrentView', 'setActiveFolderId', 'setContextMenu',
     'token', 'profile', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'moveFolder', 'reorderFolders', 'reorderPlaylistInFolder'
   ]);
+  // the pile (DESIGN.md §8) shows only in Unadded
+  const playlists = useMemo(() => everyPlaylist.filter((p) => !isPile(p)), [everyPlaylist]);
   // Drag is the first way to organise (DESIGN.md §6): a song or a selection dropped on a
   // playlist is added; a playlist dropped on a folder moves there, or on "Library" comes out of
   // any folder. Folders spring open under a drag held over them.

@@ -1,18 +1,50 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchPlaylistSnapshot, fetchPlaylistTrackArtists, fetchArtistsByIds } from '../../services/spotify/api';
+import { useUserStore } from '../../store/userStore';
 import { buildProfile, rankProfiles, suggestPlaylists } from '../../utils/playlistSuggestions';
 import { ensureTrackTags, tagCache } from '../../services/tags';
 import { ensureSoundFeatures, soundFeatures } from '../../services/soundFeatures';
 
 // Profiles the check playlists and ranks them for each row of Unadded Songs. Playlist track
-// lists are kept per snapshot id (Spotify bumps it on every edit), so reopening the page costs
-// one small request per playlist; artist genres barely change and are kept for a week, and song
-// measurements (ReccoBeats) for a month.
+// lists are kept per snapshot id (Spotify bumps it on every edit) on this device, and checked
+// against the snapshot id the library list already carries, so reopening the page after a
+// reload costs no request at all for a playlist that has not changed; artist genres barely
+// change and are kept for a week, and song measurements (ReccoBeats) for a month. Every check
+// playlist refetched on every reload was a burst of a page per hundred songs, which is what
+// got Jomify rate limited.
 
 const GENRE_CACHE_KEY = 'jomify_artist_genres';
 const GENRE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const TRACKS_CACHE_KEY = 'jomify_unadded_profiles';
 
-const trackCache = new Map(); // playlistId -> { snapshotId, name, tracks }
+const trackCache = loadTrackCache(); // playlistId -> { snapshotId, name, tracks }
+function loadTrackCache() {
+  const map = new Map();
+  try {
+    const raw = JSON.parse(localStorage.getItem(TRACKS_CACHE_KEY) || '{}');
+    for (const [id, e] of Object.entries(raw)) if (e && Array.isArray(e.tracks)) map.set(id, e);
+  } catch { /* fresh start */ }
+  return map;
+}
+function saveTrackCache() {
+  try {
+    const out = {};
+    for (const [id, e] of trackCache) if (e.snapshotId) out[id] = { snapshotId: e.snapshotId, name: e.name, tracks: e.tracks };
+    localStorage.setItem(TRACKS_CACHE_KEY, JSON.stringify(out));
+  } catch { /* storage full or blocked: the in-memory copy still works */ }
+}
+// Spotify's "slow down": wait out the cooldown the interceptor set, then try again
+const RATE_LIMITED = (err) => err?.message === 'RATE_LIMITED';
+async function patient(work, tries = 3) {
+  for (let n = 1; ; n++) {
+    try { return await work(); }
+    catch (err) {
+      if (!RATE_LIMITED(err) || n >= tries) throw err;
+      const until = useUserStore.getState().apiCooldownUntil || 0;
+      await new Promise((r) => setTimeout(r, Math.max(1000, until - Date.now() + 250)));
+    }
+  }
+}
 const genreCache = loadGenreCache();
 
 function loadGenreCache() {
@@ -39,7 +71,7 @@ function saveGenreCache() {
 async function ensureGenres(token, artistIds) {
   const missing = [...new Set(artistIds)].filter((id) => id && !genreCache.has(id));
   if (missing.length === 0) return;
-  const artists = await fetchArtistsByIds(token, missing);
+  const artists = await patient(() => fetchArtistsByIds(token, missing));
   for (const artist of artists) if (artist?.id) genreCache.set(artist.id, artist.genres || []);
   // Spotify can omit an artist from a batch; an empty answer stops it being asked for every visit
   for (const id of missing) if (!genreCache.has(id)) genreCache.set(id, []);
@@ -47,12 +79,16 @@ async function ensureGenres(token, artistIds) {
 }
 
 async function loadPlaylist(token, playlistId) {
-  const head = await fetchPlaylistSnapshot(token, playlistId);
   const cached = trackCache.get(playlistId);
+  // the library list carries each playlist's snapshot id: a match means no request at all
+  const known = useUserStore.getState().playlists?.find((p) => p.id === playlistId);
+  if (cached && known?.snapshot_id && cached.snapshotId === known.snapshot_id) return { ...cached, name: known.name || cached.name };
+  const head = await patient(() => fetchPlaylistSnapshot(token, playlistId));
   if (cached && cached.snapshotId === head.snapshot_id) return { ...cached, name: head.name };
-  const tracks = await fetchPlaylistTrackArtists(token, playlistId);
+  const tracks = await patient(() => fetchPlaylistTrackArtists(token, playlistId));
   const entry = { snapshotId: head.snapshot_id, name: head.name, tracks };
   trackCache.set(playlistId, entry);
+  saveTrackCache();
   return entry;
 }
 
@@ -62,6 +98,7 @@ export function noteTrackSorted(playlistId, track) {
   if (!entry || !track?.id) return;
   entry.tracks.push({ id: track.id, name: track.name, artists: (track.artists || []).filter((a) => a?.id) });
   entry.snapshotId = null; // no longer matches Spotify's; refetched next time
+  saveTrackCache();
 }
 
 export function useUnaddedSuggestions({ token, enabled, checkPlaylistIds, items }) {

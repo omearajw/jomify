@@ -63,7 +63,7 @@ function LoadError({ playlistId, name, status, reason, isSpotifyOwned, onRetry }
 export default function RoomPlaylist() {
   const {
     activePlaylistId, playlists, playlist, view, loadError, retryLoad, isCollaborative, collaboratorIds, collaborators, totalLength,
-    isUnaddedSongsPlaylist, configModalOpen, setConfigModalOpen, isSyncing, syncStatusText, selectedCheckPlaylistIds, runUnaddedSongsSync, openSortMode,
+    isUnaddedSongsPlaylist, configModalOpen, setConfigModalOpen, isSyncing, syncStatusText, selectedCheckPlaylistIds, runUnaddedSongsSync,
     ownsPlaylist, editDialogOpen, setEditDialogOpen, toggleSaved, savingPlaylist, inLibrary,
     sortQueue, setSortQueue, nextPageUrl, fetchingMore, suggestionsByTrack, suggestionStatus, sortModeTargets, removeRow, restoreRow,
     pickerQuery, setPickerQuery, pickerError, userPlaylists, pickerList, togglePlaylistSelection,
@@ -134,7 +134,7 @@ export default function RoomPlaylist() {
               {isUnaddedSongsPlaylist && <>
                 <Word onClick={() => setConfigModalOpen(true)} disabled={isSyncing}>Check playlists · {selectedCheckPlaylistIds.length}</Word>
                 <Word onClick={runUnaddedSongsSync} disabled={isSyncing || selectedCheckPlaylistIds.length === 0} title={selectedCheckPlaylistIds.length === 0 ? 'Pick playlists to check against first' : undefined}>{isSyncing ? (syncStatusText || 'Checking…') : 'Run the check'}</Word>
-                <Word onClick={openSortMode} disabled={isSyncing || selectedCheckPlaylistIds.length === 0}>Sort songs</Word>
+                <Word onClick={() => setCurrentView('unadded')} disabled={isSyncing || selectedCheckPlaylistIds.length === 0}>Sort songs</Word>
               </>}
             </span>
           </div>

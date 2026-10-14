@@ -8,6 +8,7 @@ import { getRecentlyPlayed, lastPlayedByContext } from '../services/recentlyPlay
 import { buildFolderTree, byOrder, getUnfolderedItems, isDescendant } from '../utils/library';
 import { SORT_OPTIONS, sortItems, ownerOf } from '../views/Library/libraryOrder';
 import { artUrl } from '../utils/images';
+import { isPile } from '../utils/unaddedSync';
 import { toast } from '../store/toastStore';
 import PlaylistFormDialog from '../components/PlaylistFormDialog';
 import FolderFormDialog from '../components/FolderFormDialog';
@@ -77,7 +78,7 @@ const Heading = ({ id, children, count, over, drop, drag, indent = 0, first = fa
 
 export default function RoomLibrary() {
   const {
-    token, profile, playlists, albums, followedArtists, customFolders, pinnedItems, currentView, activePlaylistId, currentAlbumId, currentArtistId, activeFolderId, setActiveFolderId,
+    token, profile, playlists: everyPlaylist, albums, followedArtists, customFolders, pinnedItems, currentView, activePlaylistId, currentAlbumId, currentArtistId, activeFolderId, setActiveFolderId,
     librarySort, setLibrarySort, libraryFilter, setLibraryFilter, libraryGridSize, setLibraryGridSize,
     navigateToPlaylist, navigateToAlbum, navigateToArtist, setContextMenu, addPlaylistToFolder, removePlaylistFromFolder, moveFolder, createFolder, setPlaylists, reorderFolders, reorderPlaylistInFolder
   } = useSlice(useUserStore, [
@@ -85,6 +86,7 @@ export default function RoomLibrary() {
     'librarySort', 'setLibrarySort', 'libraryFilter', 'setLibraryFilter', 'libraryGridSize', 'setLibraryGridSize',
     'navigateToPlaylist', 'navigateToAlbum', 'navigateToArtist', 'setContextMenu', 'addPlaylistToFolder', 'removePlaylistFromFolder', 'moveFolder', 'createFolder', 'setPlaylists', 'reorderFolders', 'reorderPlaylistInFolder'
   ]);
+  const playlists = useMemo(() => everyPlaylist.filter((p) => !isPile(p)), [everyPlaylist]);
   const sort = SORT_OPTIONS.some((o) => o.id === librarySort) ? librarySort : 'spotify';
   const filter = libraryFilter === 'folders' ? 'all' : (libraryFilter || 'all');
   const size = SIZES[libraryGridSize] || SIZES.medium;
@@ -267,7 +269,7 @@ export default function RoomLibrary() {
         try { await uploadPlaylistCoverImage(token, made.id, imageFile); }
         catch (err) { console.warn('Playlist created but cover image upload failed:', err); toast(`Created "${name}", but the cover didn't upload`, { tone: 'error', duration: 5000 }); }
       }
-      setPlaylists([...playlists, made]);
+      setPlaylists([...everyPlaylist, made]);
       setPlaylistDialog(false);
       navigateToPlaylist(made.id);
     } catch (err) {
