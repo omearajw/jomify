@@ -213,18 +213,28 @@ async function flushPush({ keepalive = false } = {}) {
     const doc = storeToDoc(useUserStore.getState(), getMeta());
     doc.ownerId = userId;
 
+    // Clean from here: a change made while the request is in flight sets dirty again (the
+    // store subscription calls schedulePush), and is merged in below rather than lost.
+    dirty = false;
     const result = await pushDoc(doc, getDeviceId(), { keepalive });
     setServerTime(result.serverTime);
 
-    // The server returns what it actually stored, so applying it keeps the client and server
-    // in exact agreement -- no second round trip, no divergence.
-    applyRemoteDoc(result.doc);
-    saveMeta({ lastRevision: result.revision, lastSyncedAt: Date.now() });
-
-    dirty = false;
+    // The server returns what it actually stored. Applying it as-is would overwrite anything
+    // changed during the flight (a song taken out of a Seven's batch came back that way), so
+    // when the store moved on, the server's copy is merged with the current state (newest
+    // stamp wins, as on a pull) and pushed again.
+    if (dirty) {
+      applyRemoteDoc(mergeSyncDoc(storeToDoc(useUserStore.getState(), getMeta()), result.doc));
+      saveMeta({ lastRevision: result.revision, lastSyncedAt: Date.now() });
+      schedulePush();
+    } else {
+      applyRemoteDoc(result.doc);
+      saveMeta({ lastRevision: result.revision, lastSyncedAt: Date.now() });
+      useSyncStore.getState().markSynced();
+    }
     backoffMs = BACKOFF_START_MS;
-    useSyncStore.getState().markSynced();
   } catch (err) {
+    dirty = true;
     handleFailure(err, 'push');
   } finally {
     inFlight = false;
