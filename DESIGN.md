@@ -317,6 +317,31 @@ flick from full goes to half and a flick again puts it away. *Why:* Jack, 14 Oct
 to always move"; "you shouldn't need to let go of the drag"; "a bit of room where you can drag it
 a little without it closing or opening."
 
+**2026-10-14 — At full the room is a column, not a strip; every part travels.** The strip was a
+second copy of the room (art, song, controls, three queue rows) that the room's parts travelled
+to, and the parts with no copy there (lyrics, volume, progress) grew and faded in place, which
+read as two things happening. Now there is one room: at full its own main becomes the right
+column (24% of the width), stacked top to bottom: the cover (24vh), the song and artist under
+it, the lyrics, the controls, the progress, then Up next with three rows at most, its foot
+fading. Every part carries Framer's `layout`, so a change of state measures each part's old and
+new place and moves it; nothing is transitioned by CSS any more (a CSS transition fights that
+measurement). The lyrics still fade: the box moves with the rest but is empty for the move, since
+the stage would otherwise re-set its type every frame as the box scales. The stage's type and the
+lite lines are sized by the lyric box, not the window, so they fit the column. *Why:* Jack, 14
+Oct: the non-moving parts "should still sort of move to the right and shrink and fade so it looks
+more unified"; "the controls on the right when the panel is full could have more information…
+make the album cover bigger at the top with the title and artist underneath, then lyrics, then
+media controls, and progress bar."
+
+**2026-10-14 — The lyrics travel too, and the queue takes what they leave.** The stage keeps each
+lyric face in the lyric box's own space (sized from the box's settled layout, origin at its
+corner) and maps them onto the screen through the box's rect as it draws, so when the room moves
+the box the lines ride along in it, type and all, instead of fading out and back. The volume,
+the progress and the queue dim while they travel. At full the queue is given whatever height the
+lyrics leave: the column measures the queue's box and tells it how many rows fit, so with no
+lyrics it grows and with them it drops back. *Why:* Jack, 14 Oct: "the lyrics fade in and out
+instead of moving"; "the queue can expand when the lyrics are gone and then shrink back down."
+
 **2026-10-14 — Back sits in the open thing's head, and steps through open things only.** The old
 corner arrow belonged to a layout where the page was the whole screen; in the room it stepped the
 right column's history while that column was off screen, and arrived late, shifting everything
@@ -474,6 +499,52 @@ turn" without entering the mode. `/` in Sevens opens this list, not the library.
 round of 14 Oct; one rule for every layer: a list on the left, the open thing on the right, half
 is the list alone, and the list has to be worth having on its own.
 
+**2026-10-14 — A Seven always takes the Sevens list.** A playlist keeps whichever list opened
+it, which is right for an ordinary playlist, but a Seven opened by Back after the library or
+search was keeping the library list and the rail's Library lit. A Seven is a Sevens thing: it
+takes the Sevens list and lights Sevens however it was reached. *Why:* Jack, 14 Oct.
+
+**2026-10-14 — Built: a Seven on the language, two faces.** The old workspace was split into a
+hook (`useSevenView`) and its markup; the room's surface (`src/room/RoomSeven.jsx`) is the
+second face. The head is the Seven: cover, "with Dad · 3 songs · Dad's turn" in mono, name,
+Play and Shuffle, then two words, "Build · n of 7" and "The Seven so far", the lit one the face
+shown; it opens on Build when it is your turn and the Seven is active. Building: the batch as
+rows on hairlines with "Send the batch" as the one pill, and the pool beside it with a find
+field, "The pool" / "On Spotify" as the two sources, the pool playlist chosen in a plain select,
+each candidate marked "in this Seven", "sent before · <Seven>" or "in the batch" in mono; a
+click adds to the end, a drag lands where it is dropped, batch rows drag to reorder. Reading:
+the batches as sections, newest first, "Jack · 1 Jan 2026" as each heading. *Why:* §7, built.
+
+**2026-10-14 — Seven slots, and the page is "Manage".** The batch is seven numbered slots, not a
+growing list: a song can sit in slot five with four still empty, a drop on an empty slot lands
+there, a drop on a taken one bumps its song to the next free slot, and the gaps close when the
+batch is sent (the store keeps the compacted order; the slots are this device's). A pool song
+already placed, in this Seven, or sent before is greyed with its mark, so the pool reads as what
+is left. The Sevens page (add a Seven, who it is with, its pool, running or finished,
+notifications) is on the language as `src/room/RoomSevensPage.jsx` over the shared
+`useSevensSettings` hook, and is a Back step like the library page. The column's head word is
+"Manage", not "Set up": the page is where Sevens are added, paired and finished, not a one-time
+setup. *Why:* Jack, 14 Oct: "7 slots that songs can go in, so you can leave empty slots";
+"greying out songs that have been added"; "the phrase 'Set up' doesn't quite describe what it is
+that it does"; "it also needs to be included in the back button."
+
+**2026-10-14 — The batch shifts, a selection drags as one, the pool plays and reorders, and the
+playlist has a face.** A song dropped on a slot takes that slot and the songs between its old
+slot and the new one move one along, empties included (the seven slots are a list of seven,
+some blank); never a swap. Songs from the pool land on the slot dropped on and the ones after,
+each taking an empty slot to make room, the first empty below if there is one, else the last
+above; a full batch takes nothing. Shift-click runs a selection in the batch or the pool,
+Ctrl/Cmd-click toggles, a plain click on a batch row picks it alone, Escape lets go before it
+steps the layer; a drag of a selected row carries the selection, in slot order, the grabbed song
+landing where it is dropped. The pool is a real playlist: each row has Play on hover and plays
+the pool as a context, and a drag between pool rows reorders the pool on Spotify (the local copy
+moves first and moves back if Spotify refuses), only with the find field empty. "The playlist" is
+a third face: the Seven in plain order, newest first, numbered from the oldest. The batch is sent
+with slot 1 last, so it is the newest, which is how Jack and his dad read a Seven (newest at the
+top). *Why:* Jack, 14 Oct: "shifting would be better"; "shift and ctrl selecting then dragging";
+"a way to view the playlist itself"; "re-order the pool… play the songs from the pool"; the
+order: "slot number 1 should be added last so that it is the newest."
+
 ## 8. Unadded
 
 Songs you have liked but never put in a playlist, and where each should go. Today it is a
@@ -508,6 +579,37 @@ deck and both were drawn first; this take, Jack's, uses the column instead of dr
 exists on Spotify so it plays and syncs; the mode is the only place it shows); and the song that
 just ended stays as a small "last: ⟵ *name*" ghost under the tiles for about ten seconds,
 draggable like the current one, so a late decision needs no back button.
+
+**2026-10-14 — Built: Unadded as a mode in the room.** The rail's Unadded opens a layer of its
+own: the pile on the left as the list, each song with the two playlists the suggestions rank
+highest as words (a quick filing without playing it), "Find songs" and "Check playlists · n" at
+its head; the targets on the right as covers, the two suggested for the card large with the
+reason under them, the rest small. The playing song is the card and sits in the room's own
+column; at full its cover is a handle, dragged onto a target to file it, as is any row of the
+pile; a click on a target files the card too, a second click on another target files it there
+as well, and a target it is already in, clicked again, takes it back out. A filing adds to the
+target and takes the song out of the pile; the first filing pins the card, so it stays until
+Next (or "Move on after filing" is on). The song that just left stays under the targets for ten
+seconds as "Last ⟵", draggable and with its own words. Skip is the word, or the column's Next:
+leaving a waiting song before its end is remembered as a skip (dimmed in the pile), and the
+card follows playback through the pile. The pile playlist is kept out of the library's lists.
+The mode's state lives outside React (`src/room/unadded.js`) because the pile, the targets and
+the room all read it and the follow logic must run whether or not either is on screen. Entering
+the mode plays the card if nothing of the pile is playing; the pile continues from it. The old
+sort mode stays for the old layout; "Sort songs" on the pile's playlist page opens this. *Why:*
+§8's take, built; Jack, 14 Oct: "onto unadded then."
+
+**2026-10-14 — The ranker's profiles are kept on the device and checked without a request.**
+Every open of Unadded after a reload refetched every check playlist's songs (a page per hundred)
+to profile them, which is what got Jomify rate limited. The profiles are now kept in storage by
+snapshot id and checked against the snapshot id the library list already carries, so an
+unchanged playlist costs nothing; a changed one costs its pages once. A rate limit is waited
+out and the playlist tried again rather than skipped. *Why:* Jack, 14 Oct: "I'm getting spotify
+rate limited… need to make our algorithm much more efficient."
+
+**2026-10-14 — `/` reopens a mode's own list.** Escape twice from Unadded put the layer away;
+`/` then brought the library up, because a mode used to have no list and `/` switched to the
+library first. A mode has a list now, so `/` reopens it. *Why:* Jack, 14 Oct.
 
 ## 9. Party
 
@@ -547,6 +649,20 @@ link; with no party on, a line of what it is and Start. Beside the room with the
 and the queue in the request order, half-open Party is nearly the wall display with the room
 still there, the state for a Mac on the table. The host's controls and the set-up are the open
 thing at full; the dedicated wall screen stays its own deliberate switch. *Why:* same round.
+
+**2026-10-14 — Built: the host view on the language.** The old page was split into a hook
+(`usePartyHost`) and its markup; the room's surface (`src/room/RoomParty.jsx`) is the second
+face, with the check and the device parts in a plain module both share. With no party on: "Start
+a party", a line of what it is, the fallback playlist as covers, one pill. Hosting: "Party JOMI"
+with the link under it and the words Share the link, The wall screen, Pause requests, End the
+party (armed on the first click); what is playing with Pause, Skip and volume that go through
+the party (a skip feeds the next request) and "asked for by" beside the artist; a field to add
+a song with Add and Play next on each hit; the requests on hairlines in their fair order, each
+with Play next (Pinned when it is), Block (armed, then "Block Amy?") and Remove; then the set-up
+as rows with a word each: the fallback playlist (Change shows the covers), the speaker (Choose
+lists Spotify's devices), this device's part as three words, and the check (Run the check, the
+rows marked ok, note or fix). A party left open from earlier asks to be resumed (the pill) or
+ended (a word). *Why:* §9, built.
 
 ## 10. Lyrics and Zen
 
@@ -599,6 +715,15 @@ Inter Tight to read, JetBrains Mono for facts; one tempo; one row design; rare b
 light behind everything is Zen's real stage — its ribbons in the cover's palette, the glass
 lyrics with the word fill — not the page's stand-in canvas; the room *is* Zen with its chrome on.
 Zen itself is then the same room with the chrome faded, as §10 says.
+
+**2026-10-14 — A word you can press carries a hair under it.** Words (`.ui-word`) and labels
+(`.room-mono`) were both mono caps, told apart by colour alone, and on a surface with many of
+each (Unadded) Jack could not tell "what is an option/button and what is just information."
+Now every pressable word is underlined by a hair, which brightens with the word on hover and
+when lit; a label never is. The column heads' proportional picks ("Manage", "The targets")
+carry the same hair. Information that is neither a label nor a word (a song's tags, a tile's
+reason) is plain sentence-case text. *Why:* Jack, 14 Oct: "we need to do something about the
+information vs options."
 
 **2026-10-14 — Reading: a high contrast mode, no text size of our own.** High contrast lifts every
 strength of the off-white (paper to pure white, dim to 78%, faint to 60%), makes the plane solid,

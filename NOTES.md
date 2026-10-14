@@ -39,3 +39,27 @@ The room). One line each, dated; nothing is too small. These feed the next round
   pre-blurred, which read as a box on a wide window until 14 Oct (now it covers). It is a flat
   blur, nothing moves. If the room is going to be lived in on Safari, the lite light needs its
   own slow drift, cheap enough for WebKit.
+- (Jack, 14 Oct) Lyrics between songs: a song with no lyrics followed by another with none goes
+  "no lyrics" → "finding the lyrics" → "no lyrics", which looks messy. Assume the next song
+  behaves like the last one, load silently, and only change the words when the answer differs;
+  make every combination of the transition smooth (none→none, none→some, some→none, some→some).
+
+## 14 Oct, Unadded as a mode
+
+- (Jack, 14 Oct) On the Unadded surface "there is just lots of text and it's hard to tell what
+  is an option/button and what is just information." The language puts both in mono caps: words
+  (`.ui-word`, dim → paper on hover) and labels (`.room-mono`, faint). Moved the surface's
+  information (tags, tile reasons, the ghost's line) to plain sentence-case text so mono caps
+  there are words and section heads only. The wider question stands for every surface: whether
+  words need a mark of their own (a hair under them, or sentence case) rather than relying on
+  colour alone.
+- The suggestions' profiles are built from every check playlist's songs plus genres for every
+  artist in the pile; on a real pile that is slow, and its status was invisible. The pile now
+  says "Working out where each would suit…" or "Couldn't work out… · Try again", and the status
+  goes to the debug log (`unadded · suggestions`).
+- (Jack, 14 Oct) In a browser tab that is not focused, the next song does not start. Not
+  needed (it is the installed app 99% of the time). Likely cause: the remote-state poll stops
+  while `document.hidden` (playbackController.js), so the queue's handover of the next
+  hand-added song waits for the tab to come back; the SDK's own state events still arrive, so
+  local playback in a context carries on. A fix would hand over on the SDK's end-of-song
+  event, or keep one slow poll while hidden.
