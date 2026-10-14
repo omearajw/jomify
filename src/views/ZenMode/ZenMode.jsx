@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { cloneElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, Projector } from 'lucide-react';
@@ -12,6 +12,7 @@ import { togglePlay, next as nextTrack, previous as previousTrack, seek, setVolu
 import Projection from './Projection';
 import ZenStage from './ZenStage';
 import { ZenFocusLyricsLite, ZenPlainLyrics } from './ZenLyricsDom';
+import { TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
 import { FALLBACK_PALETTE, paletteCss, paletteForArt } from './palette';
 import { beatAt, canHearComputer, hearComputer } from './zenPulse';
 import { soundFeaturesFor } from '../../services/soundFeatures';
@@ -103,6 +104,31 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
     return () => clearTimeout(t);
   }, [cross]);
   const roomGhost = cross === 'room';
+  // A beat across a change of layout, while the room's parts travel
+  const [moving, setMoving] = useState(false);
+  // the parts that are not the song (volume, progress, queue) go quiet while they travel, so the
+  // crossings of a row becoming a column do not read as noise; the art and the song stay solid
+  const quiet = { opacity: moving ? 0.25 : 1, transition: 'opacity var(--room-mid) var(--room-ease)' };
+  // At full the queue takes whatever the lyrics leave: the column measures the queue's box and
+  // tells it how many rows fit (a head of 32px, rows of 51px), so with no lyrics it grows
+  const asideRef = useRef(null);
+  const [asideRows, setAsideRows] = useState(3);
+  useEffect(() => {
+    if (roomLayout !== 'full' || !asideRef.current) return undefined;
+    const el = asideRef.current;
+    const fit = () => setAsideRows(Math.max(1, Math.floor((el.clientHeight - 32) / 51)));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [roomLayout]);
+  const firstLayout = useRef(true);
+  useEffect(() => {
+    if (firstLayout.current) { firstLayout.current = false; return undefined; }
+    setMoving(true);
+    const t = setTimeout(() => setMoving(false), 1100);
+    return () => clearTimeout(t);
+  }, [roomLayout]);
   const zenGhost = cross === 'zen';
   const fade = (ghost) => ({ position: 'absolute', inset: 0, pointerEvents: ghost ? 'none' : undefined, animation: `${ghost ? 'room-fade-out' : 'room-fade-in'} var(--room-mid) var(--room-ease) forwards` });
   const { isZenMode, toggleZenMode, savedVolume, setSavedVolume, playbackSettings, setPlaybackSetting } = useSlice(useUserStore, ['isZenMode', 'toggleZenMode', 'savedVolume', 'setSavedVolume', 'playbackSettings', 'setPlaybackSetting']);
@@ -332,7 +358,7 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
         <ZenStage
           lines={hasSynced ? syncedLyrics : null}
           linesKey={linesKey}
-          showLyrics={hasSynced && !(room && roomLayout === 'full')}
+          showLyrics={hasSynced}
           palette={palette}
           paused={isPaused}
           pulse={pulse}
@@ -365,45 +391,52 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
            controls, the queue column. At half the art goes and the rest moves beside the layer; at
            full the room leaves and the Room's strip stands in. One tempo for all of it. */}
         <main
-          className="relative z-10 flex h-full w-full items-center gap-[4%]"
-          style={{
-            paddingLeft: roomLayout === 'half' ? 'calc(58px + 300px + 4%)' : '5%', paddingRight: '5%',
-            pointerEvents: roomLayout === 'full' ? 'none' : 'auto',
-            transition: 'padding-left var(--room-slow) var(--room-ease)'
-          }}
+          className={roomLayout === 'full'
+            ? 'absolute right-0 top-0 z-10 flex h-full w-[24%] flex-col px-8 py-8'
+            : 'relative z-10 flex h-full w-full items-center gap-[4%]'}
+          style={roomLayout === 'full' ? undefined : { paddingLeft: roomLayout === 'half' ? 'calc(58px + 300px + 4%)' : '5%', paddingRight: '5%' }}
         >
-          {/* no overflow clip here: the art travels through this box on its way back from the strip */}
-          <section className="shrink-0" style={{ width: roomLayout === 'half' ? '24%' : '33%', transition: 'width var(--room-slow) var(--room-ease)' }}>
-            {/* The art, the song, the controls and the queue each carry one identity (layoutId)
-                here and in the Room's strip, so when the layer takes the screen they travel to
-                their places in the strip rather than fading; only the lyrics fade, since they
-                have nowhere to go. They unmount here at full so the strip's copies lead. */}
-            {currentTrack && roomLayout !== 'full' && (
-              <motion.div layoutId="room-art" transition={ROOM_LAYOUT} className="relative aspect-square w-full">
+          {/* Every part carries `layout`: when the layout changes (rest, half, full) the parts
+              measure their old and new places and travel between them, so the art, the song, the
+              lyrics, the controls, the progress and the queue all move as one. Nothing here is
+              transitioned by CSS, which would fight that measurement. */}
+          <section className="shrink-0" style={{ width: roomLayout === 'full' ? 'min(100%, 24vh)' : roomLayout === 'half' ? '24%' : '33%' }}>
+            {currentTrack && (
+              <motion.div
+                layout
+                transition={ROOM_LAYOUT}
+                className="relative aspect-square w-full"
+                // at full the cover is the handle: dragged onto a target in Unadded, it files the song
+                draggable={roomLayout === 'full'}
+                data-control={roomLayout === 'full' ? '' : undefined}
+                onDragStart={roomLayout === 'full' ? (e) => { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData(TRACK_DRAG_TYPE, currentTrack.uri); e.dataTransfer.setData('text/plain', currentTrack.uri); } : undefined}
+              >
               <motion.div key={trackId} className="relative aspect-square w-full" initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 16, filter: 'blur(10px)' }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: 1.1, ease: EASE }}>
                 <img src={albumArtUrl} alt="" draggable="false" className="absolute inset-0 h-full w-full rounded-[6px] object-cover shadow-[0_60px_120px_-40px_rgba(0,0,0,0.9)]" style={{ animation: reducedMotion ? 'none' : 'room-breathe 9s ease-in-out infinite' }} />
               </motion.div>
               </motion.div>
             )}
           </section>
-          <section className="min-w-0 flex-1">
-            {currentTrack && roomLayout !== 'full' ? (
-              <motion.div layoutId="room-song" layout="position" transition={ROOM_LAYOUT}>
+          <section className={roomLayout === 'full' ? 'mt-4 min-w-0 shrink-0' : 'min-w-0 flex-1'}>
+            {currentTrack ? (
+              <motion.div layout="position" transition={ROOM_LAYOUT}>
               <motion.div key={trackId} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE }}>
-                <h1 className="m-0 font-semibold leading-none tracking-[-0.025em] [text-wrap:balance]" style={{ fontSize: roomLayout === 'half' ? 26 : 36, transition: 'font-size var(--room-slow) var(--room-ease)' }}>{currentTrack.name}</h1>
-                <p className="room-mono mt-3 text-[var(--room-dim)]">{artists}</p>
+                <h1 className="m-0 font-semibold leading-none tracking-[-0.025em] [text-wrap:balance]" style={{ fontSize: roomLayout === 'full' ? 17 : roomLayout === 'half' ? 26 : 36, transition: 'font-size var(--room-slow) var(--room-ease)' }}>{currentTrack.name}</h1>
+                <p className={`room-mono text-[var(--room-dim)] ${roomLayout === 'full' ? 'mt-1.5' : 'mt-3'}`}>{artists}</p>
                 {requestedByGuest && <p className="room-mono mt-2 text-[var(--room-faint)]">Requested by {requestedByGuest}</p>}
               </motion.div>
               </motion.div>
-            ) : roomLayout !== 'full' ? (
+            ) : (
               <p className="room-mono text-[var(--room-faint)]">Waiting for music</p>
-            ) : null}
+            )}
             {/* the lyrics, between the song and the controls; the stage draws into this box */}
-            <div
+            <motion.div
+              layout
+              transition={ROOM_LAYOUT}
               ref={roomGhost ? undefined : boxRef}
               aria-label="Lyrics"
               className="relative overflow-hidden"
-              style={{ height: split ? (roomLayout === 'half' ? '22vh' : '26vh') : 0, marginTop: split ? 28 : 0, opacity: roomLayout === 'full' ? 0 : 1, transition: 'height var(--room-slow) var(--room-ease), margin var(--room-slow) var(--room-ease), opacity var(--room-mid) var(--room-ease)' }}
+              style={{ height: split ? (roomLayout === 'full' ? '24vh' : roomLayout === 'half' ? '22vh' : '26vh') : 0, marginTop: split ? (roomLayout === 'full' ? 14 : 28) : 0, }}
             >
               <p className="sr-only" aria-live="off">{sungLine || ''}</p>
               {hasPlain && split && <ZenPlainLyrics lines={plainLyrics} />}
@@ -412,27 +445,27 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
                 {[0, 1, 2].map((k) => <span key={k} className="zen-dot h-3.5 w-3.5 rounded-full bg-white" style={{ '--k': k }} />)}
               </div>
               {lyricsLoading && <div className="absolute left-0 top-1/2 flex -translate-y-1/2 gap-3" aria-label="Finding the lyrics">{[0, 1, 2].map((k) => <span key={k} className="h-3 w-3 animate-pulse rounded-full bg-white/40" style={{ animationDelay: `${k * 200}ms` }} />)}</div>}
-            </div>
+            </motion.div>
             {noLyrics && <p className="room-mono mt-4 text-[var(--room-faint)]">No lyrics for this one</p>}
-            <div className="mt-7 flex items-center gap-6" data-control>
-              {roomLayout !== 'full' && <motion.div layoutId="room-controls" layout="position" transition={ROOM_LAYOUT} className="flex items-center gap-6">
+            <div className={`flex flex-wrap items-center ${roomLayout === 'full' ? 'mt-4 gap-3' : 'mt-7 gap-6'}`} data-control>
+              <motion.div layout="position" transition={ROOM_LAYOUT} className={`flex items-center ${roomLayout === 'full' ? 'gap-3' : 'gap-6'}`}>
               <button onClick={previousTrack} aria-label="Previous" className="text-[var(--room-dim)] transition-colors hover:text-[var(--room-paper)]"><SkipBack className="h-5 w-5" /></button>
               <button onClick={togglePlay} aria-label={isPaused ? 'Play' : 'Pause'} className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">
                 {isPaused ? <Play className="ml-0.5 h-[18px] w-[18px] fill-current" /> : <Pause className="h-[18px] w-[18px] fill-current" />}
               </button>
               <button onClick={nextTrack} aria-label="Next" className="text-[var(--room-dim)] transition-colors hover:text-[var(--room-paper)]"><SkipForward className="h-5 w-5" /></button>
-              </motion.div>}
-              <span className="flex items-center gap-6" style={{ opacity: roomLayout === 'full' ? 0 : 1, transition: 'opacity var(--room-mid) var(--room-ease)' }}>
-              <button onClick={() => setShowLyrics(!showLyrics)} aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'} aria-pressed={showLyrics} className={`ml-2 transition-colors ${showLyrics ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-dim)]'}`}><Mic2 className="h-[17px] w-[17px]" /></button>
+              </motion.div>
+              <motion.span layout="position" transition={ROOM_LAYOUT} className={`flex items-center ${roomLayout === 'full' ? 'gap-3' : 'gap-6'}`} style={quiet}>
+              <button onClick={() => setShowLyrics(!showLyrics)} aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'} aria-pressed={showLyrics} className={`transition-colors ${roomLayout === 'full' ? '' : 'ml-2'} ${showLyrics ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-dim)]'}`}><Mic2 className="h-[17px] w-[17px]" /></button>
               <button onClick={toggleMute} disabled={!volumeSupported} aria-label={volumeValue === 0 ? 'Unmute' : 'Mute'} className="text-[var(--room-faint)] transition-colors hover:text-[var(--room-dim)] disabled:opacity-40">{volumeValue === 0 ? <VolumeX className="h-[17px] w-[17px]" /> : <Volume2 className="h-[17px] w-[17px]" />}</button>
               <input type="range" min="0" max="100" value={volumeValue} onChange={(e) => applyVolume(parseInt(e.target.value, 10))} disabled={!volumeSupported} aria-label="Volume" className="zen-range w-20" style={{ '--v': `${volumeValue}%` }} />
-              </span>
+              </motion.span>
             </div>
-            <div className="mt-7" data-control style={{ opacity: roomLayout === 'full' ? 0 : 1, transition: 'opacity var(--room-mid) var(--room-ease)' }}><ZenProgress /></div>
+            <motion.div layout="position" transition={ROOM_LAYOUT} className={roomLayout === 'full' ? 'mt-4' : 'mt-7'} style={quiet} data-control><ZenProgress /></motion.div>
           </section>
-          <aside className="shrink-0 self-center" style={{ width: roomLayout === 'half' ? '30%' : '23%', transition: 'width var(--room-slow) var(--room-ease)' }}>
-            {roomLayout !== 'full' && <motion.div layoutId="room-queue" layout="position" transition={ROOM_LAYOUT}>{aside}</motion.div>}
-          </aside>
+          <motion.aside ref={roomGhost ? undefined : asideRef} layout="position" transition={ROOM_LAYOUT} className={roomLayout === 'full' ? 'mt-6 min-h-0 w-full flex-1 overflow-hidden [mask-image:linear-gradient(to_bottom,black_85%,transparent)]' : 'shrink-0 self-center'} style={roomLayout === 'full' ? quiet : { ...quiet, width: roomLayout === 'half' ? '30%' : '23%' }}>
+            {roomLayout === 'full' && aside ? cloneElement(aside, { maxRows: asideRows }) : aside}
+          </motion.aside>
         </main>
         </div>
       )}

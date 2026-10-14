@@ -13,7 +13,7 @@ import { usePlayingFrom } from '../hooks/usePlayingFrom';
 // screen on the Mac. Rows on hairlines, the one row design the whole room uses; a remove at the
 // row's end. Below it, a word on what Spotify plays after: the context, by name.
 
-export default function QueueColumn({ compact = false }) {
+export default function QueueColumn({ compact = false, maxRows = 3 }) {
   const items = useQueueStore((s) => s.items);
   const remove = useQueueStore((s) => s.remove);
   const setContextMenu = useUserStore((s) => s.setContextMenu);
@@ -24,14 +24,17 @@ export default function QueueColumn({ compact = false }) {
   const nowUri = usePlayerStore((s) => s.playbackState?.track_window?.current_track?.uri || null);
   const [then, setThen] = useState([]);
   useEffect(() => {
-    if (!token || !nowUri || compact) return undefined;
+    if (!token || !nowUri) return undefined;
     let gone = false;
     fetchQueue(token).then((q) => { if (!gone) setThen((q?.queue || []).slice(0, 8)); }).catch(() => {});
     return () => { gone = true; };
-  }, [token, nowUri, compact]);
-  const upcoming = withoutQueued(then, items).slice(0, Math.max(2, 6 - items.length));
+  }, [token, nowUri]);
+  // compact is the room's full-state column: as many rows as the column has room for (the
+  // room measures and says), hand-added songs first
+  const cap = Math.max(1, maxRows);
+  const shown = compact ? items.slice(0, cap) : items;
+  const upcoming = withoutQueued(then, items).slice(0, compact ? Math.max(0, cap - shown.length) : Math.max(2, 6 - items.length));
   const openMenu = (e, track) => { e.preventDefault(); setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track }); };
-  const shown = compact ? items.slice(0, 3) : items;
 
   return (
     <div className="min-w-0" data-control style={{ fontFamily: 'var(--font-room)' }}>
@@ -55,10 +58,10 @@ export default function QueueColumn({ compact = false }) {
           </button>
         </div>
       ))}
-      {!compact && (from || upcoming.length > 0) && (
+      {(from || upcoming.length > 0) && upcoming.length > 0 && (
         <p className={`room-mono mb-1 ${items.length ? 'mt-5 text-[var(--room-faint)]' : 'mb-4 text-[var(--room-dim)]'}`}>{items.length ? 'Then' : 'Up next'}{from ? ` · ${from.name || from.type}` : ''}</p>
       )}
-      {!compact && upcoming.map((t, i) => (
+      {upcoming.map((t, i) => (
         <div key={`${t.uri}-${i}`} onContextMenu={(e) => openMenu(e, t)} className="flex min-w-0 items-center gap-3 py-2 text-[13px]" style={{ borderTop: '1px solid var(--room-hair)', opacity: 0.55 - Math.min(0.3, i * 0.07) }}>
           {t.album?.images?.[0] && <img src={artUrl(t.album.images, 34)} alt="" width="34" height="34" loading="lazy" decoding="async" className="h-[34px] w-[34px] flex-none rounded-[4px] object-cover" draggable="false" />}
           <div className="min-w-0 flex-1">

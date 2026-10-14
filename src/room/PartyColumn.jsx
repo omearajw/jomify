@@ -20,7 +20,7 @@ export default function PartyColumn({ onExpand }) {
     <div className="flex h-full min-h-0 flex-col" style={{ fontFamily: 'var(--font-room)' }}>
       <p className="room-mono flex justify-between border-b border-[var(--room-hair)] pb-3 text-[var(--room-dim)]">
         <span>Party</span>
-        <button type="button" onClick={open} aria-current={currentView === 'party' ? 'page' : undefined} className={`transition-colors ${currentView === 'party' ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-paper)]'}`}>{code ? 'Host' : 'Start'}</button>
+        <button type="button" onClick={open} aria-current={currentView === 'party' ? 'page' : undefined} className={`ui-headword transition-colors ${currentView === 'party' ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-paper)]'}`}>{code ? 'Host' : 'Start'}</button>
       </p>
       {!code ? (
         <div className="pt-5">

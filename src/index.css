@@ -269,8 +269,9 @@
 .zen-range::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px var(--zen-glow); }
 .zen-range::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 50%; background: #fff; }
 .zen-range:disabled { opacity: 0.4; cursor: default; }
-.zen-lite-line { font-size: clamp(1.05rem, 1.9vw, 1.6rem); transition: font-size 0.8s cubic-bezier(0.16, 1, 0.3, 1), text-shadow 0.8s ease; }
-.zen-lite-line.is-current { font-size: clamp(2.3rem, 5vw, 4.6rem); text-shadow: 0 0 2px #fff, 0 0 18px rgba(255, 255, 255, 0.45), 0 0 40px var(--zen-glow); }
+/* sized by the lyric box, not the window: the room's full-state column is a quarter of the width */
+.zen-lite-line { font-size: clamp(0.9rem, 3.2cqw, 1.6rem); transition: font-size 0.8s cubic-bezier(0.16, 1, 0.3, 1), text-shadow 0.8s ease; }
+.zen-lite-line.is-current { font-size: clamp(1.5rem, 8.5cqw, 4.6rem); text-shadow: 0 0 2px #fff, 0 0 18px rgba(255, 255, 255, 0.45), 0 0 40px var(--zen-glow); }
 /* Before the first line and in instrumental breaks: three dots that fill in as the wait runs out */
 .zen-dot { opacity: clamp(0.15, calc(var(--p, 0) * 3 - var(--k)), 1); transform: scale(clamp(0.7, calc(0.7 + (var(--p, 0) * 3 - var(--k)) * 0.3), 1));
   box-shadow: 0 0 14px rgba(255, 255, 255, 0.55), 0 0 30px var(--zen-glow); animation: zen-breathe 3.2s ease-in-out infinite; }
@@ -342,7 +343,11 @@ input, textarea, [contenteditable="true"], [contenteditable=""] { -webkit-user-s
 .ui-pill { background: var(--room-paper); color: #0a0810; border-radius: 999px; padding: 8px 18px; font-size: 13px; font-weight: 600; transition: opacity var(--room-mid) var(--room-ease); }
 .ui-pill:disabled { opacity: 0.4; }
 .ui-pill-danger { background: rgb(214, 96, 96); color: #fff; }
-.ui-word { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--room-dim); transition: color var(--room-mid) var(--room-ease); white-space: nowrap; }
-.ui-word:hover:not(:disabled), .ui-word[aria-pressed="true"] { color: var(--room-paper); }
+/* a word you can press carries a hair under it; a label never does, so the two read apart */
+.ui-word { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--room-dim); transition: color var(--room-mid) var(--room-ease), text-decoration-color var(--room-mid) var(--room-ease); white-space: nowrap; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 5px; text-decoration-color: var(--room-hair-strong, rgba(241, 239, 233, 0.22)); }
+.ui-word:hover:not(:disabled), .ui-word[aria-pressed="true"] { color: var(--room-paper); text-decoration-color: var(--room-paper); }
 .ui-word:disabled { opacity: 0.4; }
+/* the column head's pick, proportional, with the same hair */
+.ui-headword { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; text-decoration-color: rgba(241, 239, 233, 0.22); transition: color var(--room-mid) var(--room-ease), text-decoration-color var(--room-mid) var(--room-ease); }
+.ui-headword:hover, .ui-headword[aria-current] { text-decoration-color: var(--room-paper); }
 }

@@ -112,12 +112,18 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
       }
 
       // Which faces belong on stage, and where
-      const box = boxRef?.current?.getBoundingClientRect();
+      // The faces live in the box's own space (its settled layout size, origin at its corner)
+      // and are mapped onto the screen through the box's rect at draw time. So when the room
+      // moves the box with a transform, the lines ride along in it instead of being re-set, and
+      // the type is sized once from where the box is going, not from each frame on the way.
+      const boxEl = boxRef?.current;
+      const box = boxEl?.getBoundingClientRect();
+      const boxW = boxEl?.offsetWidth || 0, boxH = boxEl?.offsetHeight || 0;
       let targets = {};
       let focus = null;
-      if (L.showLyrics && L.lines?.length && box && box.width > 0) {
+      if (L.showLyrics && L.lines?.length && box && box.width > 0 && boxW > 0) {
         focus = focusAt(L.lines, pos);
-        big = Math.round(Math.max(40, Math.min(84, box.width * 0.105)) * dpr);
+        big = Math.round(Math.max(26, Math.min(84, boxW * 0.105)) * dpr); // the room's full-state column is ~290px wide: the type follows the box down
         const want = [];
         if (focus.current !== null) want.push([focus.current, 'big']);
         if (focus.prev !== null) want.push([focus.prev, 'small']);
@@ -131,7 +137,7 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
           if (made >= 1) break; // one new texture a frame keeps a new song from hitching
           made += 1;
           if (have) r.freeLine(have.line);
-          const line = r.makeLine(L.lines[index].text, size, box.width * dpr, face === 'big' ? L.lines[index].words : null);
+          const line = r.makeLine(L.lines[index].text, size, boxW * dpr, face === 'big' ? L.lines[index].words : null);
           if (have) { have.line = line; have.size = size; } else {
             const role = face === 'big' ? 'big' : (focus.current !== null ? index < focus.current : index <= (focus.prev ?? -1)) ? 'prev' : 'next';
             items.set(key, { key, index, face, linesKey: L.linesKey, line, size, x: 0, y: 0, scale: 1, alpha: 0, glass: 0, halo: 0, litVisible: 0, lit: 0, fresh: role });
@@ -139,7 +145,7 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
         }
         const blocks = {};
         for (const it of items.values()) if (it.linesKey === L.linesKey) blocks[faceKey(it.index, it.face)] = { w: it.line.blockW, h: it.line.blockH };
-        targets = layoutFocus({ focus, blocks, box: { x: box.left * dpr, y: box.top * dpr, w: box.width * dpr, h: box.height * dpr }, big, align: L.lyricAlign || 'left' });
+        targets = layoutFocus({ focus, blocks, box: { x: 0, y: 0, w: boxW * dpr, h: boxH * dpr }, big, align: L.lyricAlign || 'left' });
         if (focus.current !== lastCurrent) {
           lastCurrent = focus.current;
           L.onLine?.(focus.current === null ? null : L.lines[focus.current].text);
@@ -208,7 +214,10 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
         if (to.alpha === 0 && it.alpha < 0.01) { r.freeLine(it.line); items.delete(key); }
       }
 
-      const drawn = [...items.values()].filter((it) => it.alpha > 0.003).sort((a, b) => b.alpha - a.alpha).slice(0, 6);
+      const kx = box && boxW ? box.width / boxW : 1, ky = box && boxH ? box.height / boxH : 1;
+      const ox = box ? box.left * dpr : 0, oy = box ? box.top * dpr : 0;
+      const drawn = [...items.values()].filter((it) => it.alpha > 0.003).sort((a, b) => b.alpha - a.alpha).slice(0, 6)
+        .map((it) => ({ ...it, x: ox + it.x * kx, y: oy + it.y * ky, scale: it.scale * kx }));
       // In a scene the lines stand in the room: turned a little towards its middle about the lyric
       // column's centre, reflected in the floor, their glow cooled and quietened so they read
       let stage = null, tint = null, glowGain = 1, disperse = 1, strength = 280;

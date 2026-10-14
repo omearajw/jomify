@@ -24,7 +24,7 @@ export function ZenFocusLyricsLite({ lines }) {
   const focus = useFocus(lines);
   const shown = [focus.prev, focus.current, focus.next].filter((i) => i !== null);
   return (
-    <div className="absolute inset-0 flex flex-col justify-center gap-6">
+    <div className="@container absolute inset-0 flex flex-col justify-center gap-6">
       <AnimatePresence initial mode="popLayout">
         {shown.map((i) => {
           const isCurrent = i === focus.current;
