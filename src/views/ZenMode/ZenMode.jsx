@@ -13,6 +13,7 @@ import Projection from './Projection';
 import ZenStage from './ZenStage';
 import { ZenFocusLyricsLite, ZenPlainLyrics } from './ZenLyricsDom';
 import { TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
+import LikeButton from '../../components/LikeButton';
 import { FALLBACK_PALETTE, paletteCss, paletteForArt } from './palette';
 import { beatAt, canHearComputer, hearComputer } from './zenPulse';
 import { soundFeaturesFor } from '../../services/soundFeatures';
@@ -459,6 +460,7 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
               <button onClick={nextTrack} aria-label="Next" className="text-[var(--room-dim)] transition-colors hover:text-[var(--room-paper)]"><SkipForward className="h-5 w-5" /></button>
               </motion.div>
               <motion.span layout="position" transition={ROOM_LAYOUT} className={`flex items-center ${roomLayout === 'full' ? 'gap-3' : 'gap-6'}`} style={quiet}>
+              {currentTrack?.id && <span className="room-like flex items-center [&_button]:p-0 [&_svg]:h-[17px] [&_svg]:w-[17px]"><LikeButton trackId={currentTrack.id} /></span>}
               <button onClick={() => setShowLyrics(!showLyrics)} aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'} aria-pressed={showLyrics} className={`transition-colors ${roomLayout === 'full' ? '' : 'ml-2'} ${showLyrics ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-dim)]'}`}><Mic2 className="h-[17px] w-[17px]" /></button>
               <button onClick={toggleMute} disabled={!volumeSupported} aria-label={volumeValue === 0 ? 'Unmute' : 'Mute'} className="text-[var(--room-faint)] transition-colors hover:text-[var(--room-dim)] disabled:opacity-40">{volumeValue === 0 ? <VolumeX className="h-[17px] w-[17px]" /> : <Volume2 className="h-[17px] w-[17px]" />}</button>
               <input type="range" min="0" max="100" value={volumeValue} onChange={(e) => applyVolume(parseInt(e.target.value, 10))} disabled={!volumeSupported} aria-label="Volume" className="zen-range w-20" style={{ '--v': `${volumeValue}%` }} />
