@@ -26,8 +26,8 @@ const STARTS = [
   { id: 'library', label: 'Your Library' }
 ];
 const LAYOUTS = [
-  { id: 'off', label: 'As it is' },
-  { id: 'on', label: 'The room (new)', hint: 'The now-playing room is the app, and the library slides over it. Mac only for now; see DESIGN.md' }
+  { id: 'on', label: 'The room', hint: 'The now-playing room is the app, and the library slides over it' },
+  { id: 'off', label: 'The old layout', hint: 'The sidebar and pages Jomify had before the room' }
 ];
 const HEARTS = [
   { id: 'always', label: 'Always' },
@@ -271,8 +271,8 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
 
       <p className="pt-4 room-mono text-[var(--room-faint)]">App</p>
       <Choice label="Open on" value={playbackSettings?.startupPage || 'resume'} options={STARTS} onChange={(v) => setPlaybackSetting('startupPage', v)} />
-      <Choice label="Layout" value={playbackSettings?.newLayout || 'off'} options={LAYOUTS} onChange={(v) => setPlaybackSetting('newLayout', v)} />
-      {playbackSettings?.newLayout === 'on' && <Choice label="Hearts on song rows" value={playbackSettings?.rowHearts || 'always'} options={HEARTS} onChange={(v) => setPlaybackSetting('rowHearts', v)} />}
+      <Choice label="Layout" value={playbackSettings?.newLayout ?? 'on'} options={LAYOUTS} onChange={(v) => setPlaybackSetting('newLayout', v)} />
+      {(playbackSettings?.newLayout ?? 'on') === 'on' && <Choice label="Hearts on song rows" value={playbackSettings?.rowHearts || 'always'} options={HEARTS} onChange={(v) => setPlaybackSetting('rowHearts', v)} />}
       <Choice label="Contrast" value={playbackSettings?.contrast || 'auto'} options={CONTRASTS} onChange={(v) => setPlaybackSetting('contrast', v)} />
       <Choice label="Zen mode effects" value={playbackSettings?.zenEffects || 'auto'} options={ZEN_EFFECTS} onChange={(v) => { setPlaybackSetting('zenEffects', v); if (v !== 'auto') { try { localStorage.removeItem('jomify_zen_lite'); } catch { /* fine */ } } }} />
       {canHearComputer() && <Choice label="Zen mode moves to" value={playbackSettings?.zenSound || 'tempo'} options={ZEN_SOUNDS} onChange={(v) => setPlaybackSetting('zenSound', v)} />}

@@ -130,6 +130,7 @@ export default function RoomSeven() {
   const [overPool, setOverPool] = useState(null); // { uri, after }
   const dragPool = useRef(null);
   const batchRef = useRef(null);
+  const [overBar, setOverBar] = useState(false);
 
   if (loadError?.id === activePlaylistId && !playlist) return <p className="pt-6 text-[13px] text-[var(--room-dim)]">{loadError.message}</p>;
   if (!view) return <Mono className="pt-6 text-[var(--room-faint)]">Loading</Mono>;
@@ -306,9 +307,14 @@ export default function RoomSeven() {
 
           {/* one column (the phone): the batch is above and scrolls away while you pick from the
               pool, so its count, newest song and Send stay pinned over the pool; a tap goes back up */}
-          <div className="sticky top-0 z-10 -mb-4 hidden items-center gap-3 border-b border-[var(--room-hair)] bg-[var(--room-solid)] py-2.5 @max-md:flex">
+          <div
+            className={`sticky top-0 z-10 -mb-4 hidden items-center gap-3 border-b bg-[var(--room-solid)] py-2.5 transition-colors @max-md:flex ${overBar ? 'border-[var(--room-paper)]' : 'border-[var(--room-hair)]'}`}
+            onDragOver={(e) => { if (staged.length < 7 && Array.from(e.dataTransfer.types).includes(POOL_DRAG)) { e.preventDefault(); if (!overBar) setOverBar(true); } }}
+            onDragLeave={() => setOverBar(false)}
+            onDrop={(e) => { setOverBar(false); const tracks = fromPool(e); if (tracks.length && staged.length < 7) { e.preventDefault(); placeFrom(tracks, slots.indexOf(null)); } }}
+          >
             <button type="button" onClick={() => batchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="min-w-0 flex-1 text-left" aria-label="Back up to the batch">
-              <Mono className="block text-[var(--room-dim)]">↑ The batch · {staged.length} of 7</Mono>
+              <Mono className="block text-[var(--room-dim)]">{overBar ? 'Drop to add it to the batch' : `↑ The batch · ${staged.length} of 7`}</Mono>
               {staged.length > 0 && <span className="block truncate text-[12px] text-[var(--room-faint)]">{slots.filter(Boolean).map((t) => t.name).join(' · ')}</span>}
             </button>
             {staged.length === 7 && <button type="button" onClick={handlePublishSeven} disabled={isPublishing} className="ui-pill shrink-0">{isPublishing ? 'Sending…' : 'Send'}</button>}

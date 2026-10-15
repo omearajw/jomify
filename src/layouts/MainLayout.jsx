@@ -27,6 +27,7 @@ import DevicePicker from '../components/DevicePicker';
 import AccountSheet from './AccountSheet';
 import { useIsMobile, useIsCoarsePointer } from '../hooks/useMediaQuery';
 import { installLongPressContextMenu } from '../utils/longPressContextMenu';
+import { installTouchDrag } from '../utils/touchDrag';
 
 const registerServiceWorker = shouldRegisterServiceWorker();
 
@@ -47,6 +48,12 @@ export default function MainLayout({ children }) {
   useEffect(() => {
     if (!isCoarsePointer) return undefined;
     return installLongPressContextMenu();
+  }, [isCoarsePointer]);
+
+  // and every drag in the room starts from a held finger (utils/touchDrag.js)
+  useEffect(() => {
+    if (!isCoarsePointer) return undefined;
+    return installTouchDrag();
   }, [isCoarsePointer]);
 
   // Ctrl/Cmd+K jumps to Search from any page; the Search page itself focuses the box
@@ -172,7 +179,8 @@ export default function MainLayout({ children }) {
   }, [contrast]);
   // The room: on the Mac a panel beside the rail, on the phone a sheet from the bottom (DESIGN.md §5).
   // Behind the Layout setting on both until it is the default.
-  const newLayout = playbackSettings?.newLayout === 'on';
+  // the room is the default since 15 Oct; 'off' is only ever a choice someone made in Settings
+  const newLayout = (playbackSettings?.newLayout ?? 'on') === 'on';
   if (newLayout && isMobile) {
     return (
       <div className="relative h-dvh overflow-hidden">

@@ -28,6 +28,9 @@ export function installLongPressContextMenu() {
 
   const onPointerDown = (e) => {
     if (e.pointerType !== 'touch' || !e.isPrimary) return;
+    // a draggable row's long-press is touchDrag's: held still and let go it opens this same
+    // menu, moved it drags, so the menu must not fire at the half-second under a lifted row
+    if (e.target instanceof Element && e.target.closest('[draggable="true"]')) return;
     fired = false;
     start = { x: e.clientX, y: e.clientY, target: e.target };
     timer = setTimeout(() => {
