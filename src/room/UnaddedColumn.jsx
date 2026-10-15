@@ -5,7 +5,7 @@ import { artUrl } from '../utils/images';
 import { isSameTrack, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import ConfirmDialog from '../components/ConfirmDialog';
 import CheckPlaylistsDialog from './CheckPlaylistsDialog';
-import { useUnaddedStore, cardOf, isDecided, waitingCount, playFrom, fileInto, findSongs, applyPlan, dismissPlan, retrySuggestions } from './unadded';
+import { useUnaddedStore, cardOf, isDecided, waitingCount, playFrom, fileInto, findSongs, applyPlan, dismissPlan, retrySuggestions, blocked, blockedWhy } from './unadded';
 
 // The Unadded layer's list (DESIGN.md §8): the pile, in its own order, each song with the two
 // playlists the suggestions rank highest as words, for a quick filing without playing it. A row
@@ -35,13 +35,16 @@ export default function UnaddedColumn({ onExpand }) {
     const inLists = st.placed[uri] || [];
     const decided = isDecided(uri, st, skipped);
     const picks = decided ? [] : (st.suggestionsByTrack.get(track.id) || []).slice(0, 2);
+    const cannot = blocked(track);
     return (
       <div
         key={uri}
         draggable={!decided}
         onDragStart={(e) => { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData(TRACK_DRAG_TYPE, uri); e.dataTransfer.setData('text/plain', uri); }}
         onClick={() => { playFrom(uri); onExpand?.(); }}
-        className={`group flex cursor-pointer items-start gap-3 py-[8px] text-[13px] transition-colors hover:bg-white/[0.03] ${decided && !isCard ? 'opacity-45' : ''} ${isCard ? 'bg-white/[0.05]' : ''}`}
+        aria-disabled={cannot || undefined}
+        data-tip={cannot ? `${blockedWhy(track)}. It can still be filed.` : undefined}
+        className={`group flex cursor-pointer items-start gap-3 py-[8px] text-[13px] transition-colors hover:bg-white/[0.03] ${(decided || cannot) && !isCard ? 'opacity-45' : ''} ${isCard ? 'bg-white/[0.05]' : ''}`}
         style={{ borderTop: '1px solid var(--room-hair)', transitionDuration: 'var(--room-mid)' }}
         aria-current={isCard ? 'true' : undefined}
       >
@@ -52,6 +55,7 @@ export default function UnaddedColumn({ onExpand }) {
           <span className="block truncate text-[11.5px] text-[var(--room-dim)]">{(track.artists || []).map((a) => a.name).join(', ')}</span>
           {inLists.length > 0 && <Mono className="mt-1 block truncate text-[var(--room-faint)]">in {inLists.map(nameOf).join(', ')}</Mono>}
           {inLists.length === 0 && skipped.has(uri) && <Mono className="mt-1 block text-[var(--room-faint)]">skipped</Mono>}
+          {cannot && <span className="mt-1 block text-[11.5px] text-[var(--room-faint)]">{blockedWhy(track)}</span>}
           {picks.length > 0 && (
             <span className="mt-1.5 flex min-w-0 flex-col items-start gap-y-1 [&>button]:max-w-full [&>button]:truncate" onClick={(e) => e.stopPropagation()}>
               {picks.map((p) => <Word key={p.id} disabled={st.busy} onClick={() => fileInto(uri, p.id)} tip={`File into ${p.name}`}>→ {p.name}</Word>)}

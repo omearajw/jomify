@@ -5,7 +5,7 @@ import { artUrl } from '../utils/images';
 import { TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import { tagCache } from '../services/tags';
 import { MOOD_WORDS } from '../utils/playlistSuggestions';
-import { useUnaddedStore, cardOf, waitingCount, fileInto, takeOut, undo, skip, retrySuggestions } from './unadded';
+import { useUnaddedStore, cardOf, waitingCount, fileInto, takeOut, undo, skip, retrySuggestions, blocked, blockedWhy } from './unadded';
 
 // The Unadded mode's open thing (DESIGN.md §8): the targets. The playing song is the card, so
 // it is already in the room's column on the right; here is where it can go: the check playlists
@@ -81,6 +81,7 @@ export default function RoomUnadded() {
         <>
           <h1 className="mt-2 truncate text-[30px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">{track.name}</h1>
           <Mono className="mt-2 text-[var(--room-dim)]">{(track.artists || []).map((a) => a.name).join(', ')}{track.album?.name ? ` · ${track.album.name}` : ''}</Mono>
+          {blocked(track) && <p className="mt-2 text-[12.5px] text-[var(--room-dim)]">{blockedWhy(track)}, so it won't play. You can still file it.</p>}
           {songTags.length > 0 && <p className="mt-2 text-[12px] text-[var(--room-faint)]">{songTags.map((t, i) => <span key={t.name} className={MOOD_WORDS.has(t.name) ? 'text-[var(--room-dim)]' : ''}>{i ? ' · ' : ''}{t.name}</span>)}</p>}
         </>
       ) : (

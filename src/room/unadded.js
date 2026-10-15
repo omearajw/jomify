@@ -4,7 +4,8 @@ import { usePlayerStore } from '../store/playerStore';
 import { toast } from '../store/toastStore';
 import { playOn } from '../services/spotify/playbackController';
 import { fetchPlaylistDetails, fetchMoreTracks, playUris, addTracksToPlaylist, removeTrackFromPlaylist } from '../services/spotify/api';
-import { isSameTrack } from '../utils/spotifyUri';
+import { isSameTrack, isUnplayable, unplayableWhy, applyPlayability } from '../utils/spotifyUri';
+import { confirmPlayability } from '../services/playability';
 import { log } from '../services/debugLog';
 import { isPile, planUnaddedCheck, applyUnaddedPlan } from '../utils/unaddedSync';
 import { noteTrackSorted } from '../views/Library/useUnaddedSuggestions';
@@ -68,6 +69,11 @@ function waitingAfter(index, limit = 1, state = get()) {
   return found;
 }
 const indexOf = (uri, state = get()) => state.pile.findIndex((i) => i?.track?.uri === uri);
+// Songs Spotify can't play here stay in the pile (they can still be filed) but are never played
+const country = () => useUserStore.getState().profile?.country;
+export const blocked = (track) => isUnplayable(track, country());
+export const blockedWhy = (track) => unplayableWhy(track, country());
+const playable = (uris, state = get()) => uris.filter((u) => { const it = state.pile.find((i) => i?.track?.uri === u); return it && !blocked(it.track); });
 
 // --- the pile ---
 let loadGeneration = 0;
@@ -81,12 +87,15 @@ export async function loadPile(pileId) {
     if (mine !== loadGeneration) return;
     let items = (data.tracks?.items || []).filter((i) => i?.track?.uri);
     set({ pile: items, total: data.tracks?.total ?? items.length });
+    confirmPage(t, items, mine);
     let next = data.tracks?.next;
     while (next) {
       const page = await fetchMoreTracks(t, next);
       if (mine !== loadGeneration) return;
-      items = [...items, ...(page.items || []).filter((i) => i?.track?.uri)];
+      const fresh = (page.items || []).filter((i) => i?.track?.uri);
+      items = [...items, ...fresh];
       set({ pile: items });
+      confirmPage(t, fresh, mine);
       next = page.next;
     }
     set({ loading: false });
@@ -94,6 +103,14 @@ export async function loadPile(pileId) {
     if (mine !== loadGeneration) return;
     set({ loading: false, loadError: err?.message || "Couldn't load the pile" });
   }
+}
+
+// Each page is logged and its greyed rows asked about by id, exactly as a playlist's are
+function confirmPage(t, pageItems, generation) {
+  confirmPlayability(t, pageItems, country()).then((answers) => {
+    if (generation !== loadGeneration || !Object.keys(answers).length) return;
+    set({ pile: applyPlayability(get().pile, answers) });
+  });
 }
 
 // --- the card ---
@@ -137,9 +154,15 @@ export function playFrom(uri) {
   const st = get();
   const at = indexOf(uri, st);
   if (at < 0 || !token()) return;
-  const uris = [uri, ...waitingAfter(at, PLAY_AHEAD - 1, st)];
   const item = st.pile[at];
   clearTimeout(settleTimer);
+  if (blocked(item.track)) {
+    // it becomes the card, so it can be filed, but Spotify is not asked to play it
+    setCard(uri, { why: 'chose a song Spotify cannot play here' });
+    toast(`${blockedWhy(item.track)}. You can still file it.`, { tone: 'info' });
+    return;
+  }
+  const uris = [uri, ...playable(waitingAfter(at, PLAY_AHEAD - 1, st), st)];
   setCard(uri, { why: 'playing' });
   playOn((deviceId) => {
     if (cardOf()?.track?.uri !== uri) return Promise.resolve();
@@ -150,12 +173,12 @@ function scheduleAutoplay() {
   clearTimeout(settleTimer);
   if (!useUserStore.getState().sortModeSettings?.autoplay) return;
   const card = cardOf();
-  if (!card || isSameTrack(nowPlaying(), card.track)) return;
+  if (!card || isSameTrack(nowPlaying(), card.track) || blocked(card.track)) return;
   settleTimer = setTimeout(() => {
     const c = cardOf();
     if (c && c.track.uri === card.track.uri && !isSameTrack(nowPlaying(), c.track)) {
       const at = indexOf(c.track.uri);
-      const uris = [c.track.uri, ...waitingAfter(at, PLAY_AHEAD - 1)];
+      const uris = [c.track.uri, ...playable(waitingAfter(at, PLAY_AHEAD - 1))];
       log('unadded', 'playing the card', `${c.track.name}, ${uris.length - 1} more behind it`);
       playOn((deviceId) => (cardOf()?.track?.uri === c.track.uri ? playUris(token(), deviceId, uris, 0) : Promise.resolve()), { track: c.track });
     }
