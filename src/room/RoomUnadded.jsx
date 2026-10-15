@@ -16,7 +16,7 @@ import { useUnaddedStore, cardOf, waitingCount, fileInto, takeOut, undo, skip, r
 // Back. Skip is the column's Next, or the word here.
 
 const Mono = ({ children, className = '' }) => <p className={`room-mono ${className}`}>{children}</p>;
-const Word = ({ onClick, children, lit, disabled }) => <button type="button" onClick={onClick} disabled={disabled} aria-pressed={lit || undefined} className="ui-word">{children}</button>;
+const Word = ({ onClick, children, lit, disabled, tip }) => <button type="button" data-tip={tip} onClick={onClick} disabled={disabled} aria-pressed={lit || undefined} className="ui-word">{children}</button>;
 
 const uriFrom = (e) => e.dataTransfer.getData(TRACK_DRAG_TYPE) || (e.dataTransfer.getData('text/plain') || '').trim();
 
@@ -87,9 +87,9 @@ export default function RoomUnadded() {
         <h1 className="mt-2 text-[30px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">{st.loading ? 'Loading' : st.pile.length ? 'Every song is dealt with' : 'Nothing in the pile'}</h1>
       )}
       <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
-        <Word onClick={skip} disabled={!track || st.busy}>{placedHere.length ? 'Next' : 'Skip'}</Word>
-        <Word onClick={undo} disabled={!st.lastAction || st.busy}>Undo</Word>
-        <Word onClick={() => setSettings({ advance: !settings.advance })} lit={settings.advance}>Move on after filing</Word>
+        <Word onClick={skip} disabled={!track || st.busy} tip="Leave this song in the pile and move on; it is remembered as skipped">{placedHere.length ? 'Next' : 'Skip'}</Word>
+        <Word onClick={undo} disabled={!st.lastAction || st.busy} tip="Take the last filing back out of its playlist">Undo</Word>
+        <Word onClick={() => setSettings({ advance: !settings.advance })} lit={settings.advance} tip="On: filing a song plays the next one. Off: it stays, so it can go in a second playlist">Move on after filing</Word>
       </div>
 
       {st.targets.length === 0 && <p className="mt-8 text-[13px] text-[var(--room-dim)]">No targets yet: choose the check playlists in the pile's head.</p>}

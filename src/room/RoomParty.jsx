@@ -22,7 +22,7 @@ import { toast } from '../store/toastStore';
 // page.
 
 const Mono = ({ children, className = '' }) => <p className={`room-mono ${className}`}>{children}</p>;
-const Word = ({ onClick, children, lit, disabled, danger, label }) => <button type="button" onClick={onClick} disabled={disabled} aria-pressed={lit || undefined} aria-label={label} className={`ui-word ${danger ? 'ui-row-danger' : ''}`}>{children}</button>;
+const Word = ({ onClick, children, lit, disabled, danger, label, tip }) => <button type="button" data-tip={tip} onClick={onClick} disabled={disabled} aria-pressed={lit || undefined} aria-label={label} className={`ui-word ${danger ? 'ui-row-danger' : ''}`}>{children}</button>;
 const Head = ({ children, right }) => <div className="mt-9 flex items-center justify-between border-b border-[var(--room-hair)] pb-2"><Mono className="text-[var(--room-faint)]">{children}</Mono>{right}</div>;
 const Note = ({ children, alert }) => <p role={alert ? 'alert' : undefined} className={`mt-3 text-[13px] ${alert ? 'text-[rgb(240,160,160)]' : 'text-[var(--room-dim)]'}`}>{children}</p>;
 
@@ -179,7 +179,7 @@ export default function RoomParty() {
       <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
         <Word onClick={copyLink}>{copied ? 'Copied' : 'Share the link'}</Word>
         <a href={partyScreenLink(code)} target="_blank" rel="noreferrer" className="ui-word" title="Open this on a TV or a spare screen: QR, now playing and what's next">The wall screen</a>
-        <Word onClick={() => op({ op: 'settings', paused: !party?.paused })} lit={Boolean(party?.paused)}>{party?.paused ? 'Requests paused' : 'Pause requests'}</Word>
+        <Word onClick={() => op({ op: 'settings', paused: !party?.paused })} lit={Boolean(party?.paused)} tip="Guests can still see what is playing but cannot ask for songs">{party?.paused ? 'Requests paused' : 'Pause requests'}</Word>
         <Word onClick={end} danger>{endArmed ? 'Click again to end' : 'End the party'}</Word>
       </div>
       {party?.speaker && speakerOk === false && <Note alert>{party.speaker.name} has dropped off Spotify. Wake it (for an Alexa: "Alexa, play Spotify"). Until it's back the music plays wherever Spotify can, and it moves back by itself.</Note>}

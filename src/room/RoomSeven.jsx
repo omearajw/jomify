@@ -19,7 +19,7 @@ import LikeButton from '../components/LikeButton';
 // Shuffle for the whole Seven. The logic is useSevenView, shared with the old page.
 
 const Mono = ({ children, className = '' }) => <p className={`room-mono ${className}`}>{children}</p>;
-const Word = ({ onClick, children, lit, disabled }) => <button type="button" onClick={onClick} disabled={disabled} aria-pressed={lit || undefined} className="ui-word">{children}</button>;
+const Word = ({ onClick, children, lit, disabled, tip }) => <button type="button" data-tip={tip} onClick={onClick} disabled={disabled} aria-pressed={lit || undefined} className="ui-word">{children}</button>;
 const POOL_DRAG = 'application/x-jomify-pool';
 const BATCH_DRAG = 'application/x-jomify-batch';
 
@@ -274,9 +274,9 @@ export default function RoomSeven() {
             <button type="button" onClick={() => (isShuffled ? shufflePlay() : playFromTop())} aria-label={`Play ${view.name}`} className="grid h-[40px] w-[40px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95"><Play className="ml-0.5 h-4 w-4 fill-current" /></button>
             <button type="button" onClick={shufflePlay} aria-label="Shuffle play" className={`transition-colors ${isShuffled ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-dim)]'}`}><Shuffle className="h-4 w-4" /></button>
             <span className="ml-1 flex items-center gap-4">
-              <Word lit={building} onClick={() => { setPlain(false); setIsWorkspaceOpen(true); }}>Build{staged.length ? ` · ${staged.length} of 7` : ''}</Word>
-              <Word lit={!building && !plain} onClick={() => { setPlain(false); setIsWorkspaceOpen(false); }}>The Seven so far</Word>
-              <Word lit={plain} onClick={() => setPlain(true)}>The playlist</Word>
+              <Word lit={building} tip="Choose your seven songs from the pool and send them" onClick={() => { setPlain(false); setIsWorkspaceOpen(true); }}>Build{staged.length ? ` · ${staged.length} of 7` : ''}</Word>
+              <Word lit={!building && !plain} tip="Every batch sent so far, newest first, by who sent it" onClick={() => { setPlain(false); setIsWorkspaceOpen(false); }}>The Seven so far</Word>
+              <Word lit={plain} tip="The whole playlist in order, newest song first" onClick={() => setPlain(true)}>The playlist</Word>
             </span>
           </div>
         </div>
@@ -284,8 +284,9 @@ export default function RoomSeven() {
 
       {building ? (
         <div className="mt-8 grid gap-10" style={{ gridTemplateColumns: 'minmax(0, 5fr) minmax(0, 6fr)' }}>
-          {/* the batch */}
+          {/* the batch: it holds its place at the top of the column while the pool scrolls past */}
           <section
+            className="sticky top-0 self-start"
             onDragOver={(e) => { if (Array.from(e.dataTransfer.types).includes(POOL_DRAG)) { e.preventDefault(); } }}
             onDrop={(e) => { if (e.defaultPrevented) return; const tracks = fromPool(e); if (tracks.length && staged.length < 7) { e.preventDefault(); placeFrom(tracks, slots.indexOf(null)); } }}
           >

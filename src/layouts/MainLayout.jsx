@@ -1,3 +1,4 @@
+import Tooltips from '../components/Tooltips';
 import { useEffect, useState, lazy, Suspense } from 'react';
 import Sidebar from './Sidebar';
 import PlayerBar from './PlayerBar';
@@ -178,6 +179,7 @@ export default function MainLayout({ children }) {
         <AccountSheet />
         <ContextMenu />
         <ToastHost />
+        <Tooltips />
         <SyncConflictDialog />
         <ShortcutsHelp />
         {registerServiceWorker && <UpdatePrompt />}
@@ -226,6 +228,7 @@ export default function MainLayout({ children }) {
       <AccountSheet />
       <ContextMenu />
       <ToastHost />
+        <Tooltips />
       <SyncConflictDialog />
       <ShortcutsHelp />
       {isZenMode && <Suspense fallback={null}><ZenMode /></Suspense>}

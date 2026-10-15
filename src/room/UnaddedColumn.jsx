@@ -14,7 +14,7 @@ import { useUnaddedStore, cardOf, isDecided, waitingCount, playFrom, fileInto, f
 // which playlists count as added and are offered as targets.
 
 const Mono = ({ children, className = '' }) => <span className={`room-mono ${className}`}>{children}</span>;
-const Word = ({ onClick, children, lit, disabled }) => <button type="button" onClick={onClick} disabled={disabled} aria-pressed={lit || undefined} className="ui-word">{children}</button>;
+const Word = ({ onClick, children, lit, disabled, tip }) => <button type="button" data-tip={tip} onClick={onClick} disabled={disabled} aria-pressed={lit || undefined} className="ui-word">{children}</button>;
 
 export default function UnaddedColumn({ onExpand }) {
   const st = useSlice(useUnaddedStore, ['pileId', 'pile', 'total', 'loading', 'loadError', 'cardUri', 'placed', 'busy', 'suggestionsByTrack', 'targets', 'suggestionStatus', 'checking', 'checkStatus', 'plan', 'ghost']);
@@ -53,8 +53,8 @@ export default function UnaddedColumn({ onExpand }) {
           {inLists.length > 0 && <Mono className="mt-1 block truncate text-[var(--room-faint)]">in {inLists.map(nameOf).join(', ')}</Mono>}
           {inLists.length === 0 && skipped.has(uri) && <Mono className="mt-1 block text-[var(--room-faint)]">skipped</Mono>}
           {picks.length > 0 && (
-            <span className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1" onClick={(e) => e.stopPropagation()}>
-              {picks.map((p) => <Word key={p.id} disabled={st.busy} onClick={() => fileInto(uri, p.id)}>→ {p.name}</Word>)}
+            <span className="mt-1.5 flex min-w-0 flex-col items-start gap-y-1 [&>button]:max-w-full [&>button]:truncate" onClick={(e) => e.stopPropagation()}>
+              {picks.map((p) => <Word key={p.id} disabled={st.busy} onClick={() => fileInto(uri, p.id)} tip={`File into ${p.name}`}>→ {p.name}</Word>)}
             </span>
           )}
         </span>
@@ -69,8 +69,8 @@ export default function UnaddedColumn({ onExpand }) {
         <button type="button" onClick={() => onExpand?.()} className="ui-headword transition-colors hover:text-[var(--room-paper)]">The targets</button>
       </p>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-3">
-        <Word onClick={findSongs} disabled={st.checking || !st.pileId}>{st.checking ? 'Checking' : 'Find songs'}</Word>
-        <Word onClick={() => setPicking(true)} lit={picking}>Check playlists · {checkIds.length}</Word>
+        <Word onClick={findSongs} disabled={st.checking || !st.pileId} tip="Look through your liked songs for ones in none of the check playlists; shows what would change first">{st.checking ? 'Checking' : 'Find songs'}</Word>
+        <Word onClick={() => setPicking(true)} lit={picking} tip="The playlists that count as added, and the targets to file into">Check playlists · {checkIds.length}</Word>
       </div>
       {st.checkStatus && <p className="room-mono pt-2 text-[var(--room-faint)]">{st.checkStatus}</p>}
       {checkIds.length === 0 && <p className="pt-3 text-[13px] text-[var(--room-faint)]">Choose the playlists that count as added first; they are the targets too.</p>}
