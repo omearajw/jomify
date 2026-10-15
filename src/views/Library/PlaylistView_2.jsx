@@ -18,7 +18,7 @@ import MoreButton from '../../components/MoreButton';
 import UserChip from '../../components/UserChip';
 import { rowButtonProps } from '../../utils/a11y';
 import { getCollaboratorStyle } from '../../utils/collaboratorStyle';
-import { isSameTrack, isUnplayable } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable, unplayableWhy } from '../../utils/spotifyUri';
 import { useSevenView, formatBatchDate } from './useSevenView';
 
 // One batch's worth of placeholder rows while earlier pages stream in
@@ -538,7 +538,7 @@ export default function PlaylistView_2() {
                       onContextMenu={(e) => openTrackMenu(e, track)}
                       style={collaboratorStyleFor(chunk.adderId, true, isFirst, isLast, isMobile)}
                       aria-disabled={isUnplayable(track, profile?.country) || undefined}
-                      title={isUnplayable(track, profile?.country) ? 'Not available on Spotify' : undefined}
+                      title={isUnplayable(track, profile?.country) ? unplayableWhy(track, profile?.country) : undefined}
                       // Rows keep their natural height; they used to be flex-1 min-h-0 and got
                       // squashed and clipped whenever seven didn't fit the card
                       className={`min-h-[52px] shrink-0 flex items-center gap-2.5 md:gap-3 px-2 md:px-3 py-1.5 group/track text-sm cursor-pointer hover:bg-white/10 transition-colors ${radiusClass} ${marginClass} ${isUnplayable(track, profile?.country) ? 'opacity-45' : ''}`}

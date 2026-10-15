@@ -5,7 +5,7 @@ import LikeButton from '../../components/LikeButton';
 import { rowButtonProps } from '../../utils/a11y';
 import MoreButton from '../../components/MoreButton';
 import { Skeleton, SkeletonRows } from '../../components/Skeleton';
-import { isSameTrack, isUnplayable } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable, unplayableWhy } from '../../utils/spotifyUri';
 import SelectionBar from '../../components/SelectionBar';
 
 import { useLikedSongsView, SORTS, GRID } from './useLikedSongsView';
@@ -103,7 +103,7 @@ export default function LikedSongsView() {
               onClick={(e) => (selection.wantsSelect(e) && track.uri ? selection.toggle(track.uri, { range: e.shiftKey }) : handleTrackSelect(index))}
               {...rowButtonProps(() => handleTrackSelect(index))}
               onContextMenu={(e) => { e.preventDefault(); openRowMenu(e, track); }}
-              aria-disabled={unplayable || undefined}
+              aria-disabled={unplayable || undefined} data-tip={unplayable ? unplayableWhy(track, country) : undefined}
               aria-selected={selection.active ? selection.has(track.uri) : undefined}
               title={unplayable ? 'Not available on Spotify' : undefined}
               className={`grid ${GRID} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 hover:bg-neutral-800/50 rounded-md group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${unplayable ? 'opacity-45' : ''} ${selection.has(track.uri) ? 'bg-white/10 ring-1 ring-inset ring-white/20' : ''}`}

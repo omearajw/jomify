@@ -12,7 +12,7 @@ import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfil
 import { cleanString } from '../../utils/strings';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { scrollParent } from '../../utils/dom';
-import { isUnplayable, applyPlayability } from '../../utils/spotifyUri';
+import { isUnplayable, unplayableWhy, applyPlayability } from '../../utils/spotifyUri';
 import { confirmPlayability } from '../../services/playability';
 import { useSelection } from '../../hooks/useSelection';
 
@@ -567,7 +567,7 @@ export function usePlaylistView() {
 
   const handleTrackSelect = (originalIndex) => {
     if (!token) return;
-    if (playlist && isUnplayable(sortedTracks[originalIndex]?.track, country)) { toast("Spotify can't play this song."); return; }
+    if (playlist && isUnplayable(sortedTracks[originalIndex]?.track, country)) { toast(`${unplayableWhy(sortedTracks[originalIndex]?.track, country)}.`); return; }
     // Before the tracks arrive, Play still works: the playlist context starts from the top
     if (!playlist) {
       if (originalIndex === 0 && activePlaylistId) playOn((deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, 0));

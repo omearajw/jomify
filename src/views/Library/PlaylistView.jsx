@@ -12,7 +12,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import { collaboratorStyleFor } from '../../utils/collaboratorStyle';
 import { rowButtonProps } from '../../utils/a11y';
 import { artUrl } from '../../utils/images';
-import { isSameTrack, isUnplayable, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable, unplayableWhy, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
 import SelectionBar from '../../components/SelectionBar';
 
 import { usePlaylistView, UNDO_MS } from './usePlaylistView';
@@ -636,7 +636,7 @@ export default function PlaylistView() {
               } : undefined}
               onDragEnd={canReorder ? () => { dragRow.current = null; setDropAt(null); setDraggedItem(null); } : undefined}
               style={collaboratorStyleFor(adderId, isCollaborative, isFirstInGroup, isLastInGroup)}
-              aria-disabled={unplayable || undefined}
+              aria-disabled={unplayable || undefined} data-tip={unplayable ? unplayableWhy(track, country) : undefined}
               title={unplayable ? 'Not available on Spotify' : undefined}
               className={`grid ${gridColumns} gap-3 md:gap-4 px-2 md:px-4 py-2.5 md:py-3 group text-sm items-center transition-colors cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_72px] ${bgHoverClass} ${radiusClass} ${marginClass} ${unplayable ? 'opacity-45' : ''} ${selection.has(track.uri) ? 'bg-white/10 ring-1 ring-inset ring-white/20' : ''} ${dropAt === index ? 'shadow-[inset_0_2px_0_var(--brand-mid)]' : ''} ${dropAt === index + 1 && index === totalRows - 1 ? 'shadow-[inset_0_-2px_0_var(--brand-mid)]' : ''}`}
             >

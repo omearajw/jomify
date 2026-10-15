@@ -8,7 +8,7 @@ import LikeButton from '../components/LikeButton';
 import { artUrl } from '../utils/images';
 import { formatTime } from '../utils/formatTime';
 import { rowButtonProps } from '../utils/a11y';
-import { isSameTrack, isUnplayable, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
+import { isSameTrack, isUnplayable, unplayableWhy, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 
 // Search on the room's language (DESIGN.md §6): the tree's field is the field, so there is none
 // here. Results are one list: "In your library" first, then songs as rows on hairlines, then
@@ -90,7 +90,7 @@ export default function RoomSearch() {
         draggable
         onDragStart={(e) => { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData(TRACK_DRAG_TYPE, track.uri); e.dataTransfer.setData('text/plain', track.uri); setTimeout(() => setDraggedItem({ type: 'track', uri: track.uri }), 0); }}
         onDragEnd={() => setDraggedItem(null)}
-        aria-disabled={unplayable || undefined}
+        aria-disabled={unplayable || undefined} data-tip={unplayable ? unplayableWhy(track, country) : undefined}
         title={unplayable ? 'Not available on Spotify' : undefined}
         className={`group grid cursor-pointer grid-cols-[28px_34px_minmax(0,1.3fr)_minmax(0,1fr)_24px_44px] items-center gap-3 py-[9px] text-[13px] transition-colors hover:bg-white/[0.03] ${unplayable ? 'opacity-40' : ''}`}
         style={{ borderTop: '1px solid var(--room-hair)', transitionDuration: 'var(--room-mid)' }}

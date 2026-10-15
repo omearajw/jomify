@@ -10,7 +10,7 @@ import { Search, Play, ChevronLeft, Loader, X } from 'lucide-react';
 import LikeButton from '../../components/LikeButton';
 import MoreButton, { CardMoreButton } from '../../components/MoreButton';
 import { rowButtonProps } from '../../utils/a11y';
-import { isSameTrack, isUnplayable, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable, unplayableWhy, TRACK_DRAG_TYPE } from '../../utils/spotifyUri';
 
 
 
@@ -81,7 +81,7 @@ export default function Browse() {
                     onClick={() => handleTrackPlay(track)}
                     {...rowButtonProps(() => handleTrackPlay(track))}
                     aria-disabled={isUnplayable(track, country) || undefined}
-                    title={isUnplayable(track, country) ? 'Not available on Spotify' : undefined}
+                    title={isUnplayable(track, country) ? unplayableWhy(track, country) : undefined}
                     className={`flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors ${isUnplayable(track, country) ? 'opacity-45' : ''}`}
                   >
                     <div className="flex items-center space-x-4 truncate pr-4">
@@ -398,7 +398,7 @@ export default function Browse() {
                       onClick={() => handleTrackPlay(track)}
                       {...rowButtonProps(() => handleTrackPlay(track))}
                       aria-disabled={isUnplayable(track, country) || undefined}
-                      title={isUnplayable(track, country) ? 'Not available on Spotify' : undefined}
+                      title={isUnplayable(track, country) ? unplayableWhy(track, country) : undefined}
                       className={`flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors ${isUnplayable(track, country) ? 'opacity-45' : ''}`}
                     >
                       <div className="flex items-center space-x-4 truncate pr-4">

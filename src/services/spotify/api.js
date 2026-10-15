@@ -237,7 +237,7 @@ export async function fetchPlayability(token, ids) {
     const response = await spotifyFetch(`${API}/tracks?ids=${chunk.join(',')}&market=from_token`, { headers: auth(token) });
     if (!response.ok) { log('api', `playability check refused with ${response.status}`); break; }
     const body = await response.json();
-    for (const t of body?.tracks || []) if (t?.id) { out[t.linked_from?.id || t.id] = { is_playable: t.is_playable !== false, linked_from: t.linked_from || null }; if (t.linked_from?.id) out[t.id] = out[t.linked_from.id]; }
+    for (const t of body?.tracks || []) if (t?.id) { out[t.linked_from?.id || t.id] = { is_playable: t.is_playable !== false, linked_from: t.linked_from || null, restrictions: t.restrictions || null }; if (t.linked_from?.id) out[t.id] = out[t.linked_from.id]; }
   }
   return out;
 }

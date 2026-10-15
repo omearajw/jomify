@@ -24,7 +24,7 @@ const formatReleaseDate = (date, precision) => {
 import LikeButton from '../../components/LikeButton';
 import TrackArtists from '../../components/TrackArtists';
 import { rowButtonProps } from '../../utils/a11y';
-import { isSameTrack, isUnplayable } from '../../utils/spotifyUri';
+import { isSameTrack, isUnplayable, unplayableWhy } from '../../utils/spotifyUri';
 import { toast } from '../../store/toastStore';
 
 export default function Album() {
@@ -115,7 +115,7 @@ export default function Album() {
   const handleTrackPlay = (trackUri) => {
     if (!token) return;
     const index = Math.max(0, tracks.findIndex(t => t.uri === trackUri));
-    if (isUnplayable(tracks[index], country)) { toast("Spotify can't play this song."); return; }
+    if (isUnplayable(tracks[index], country)) { toast(`${unplayableWhy(tracks[index], country)}.`); return; }
     // The tapped song shows at once rather than after Spotify's next report
     const track = tracks[index] ? { ...tracks[index], album: tracks[index].album || album } : null;
     playOn((deviceId) => playContext(token, deviceId, `spotify:album:${currentAlbumId}`, index), { track });
@@ -272,7 +272,7 @@ export default function Album() {
                   onClick={() => handleTrackPlay(track.uri)}
                   {...rowButtonProps(() => handleTrackPlay(track.uri))}
                   onContextMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track, sourceAlbumId: currentAlbumId }); }}
-                  aria-disabled={unplayable || undefined}
+                  aria-disabled={unplayable || undefined} data-tip={unplayable ? unplayableWhy(track, country) : undefined}
                   title={unplayable ? 'Not available on Spotify' : undefined}
                   className={`flex items-center justify-between px-4 py-3 hover:bg-neutral-800/50 rounded-md group text-sm cursor-pointer transition-colors ${unplayable ? 'opacity-45' : ''}`}
                 >

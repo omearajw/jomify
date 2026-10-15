@@ -7,7 +7,7 @@ import { searchSpotify, playSingleTrack, playContext, playUris, checkTracksLiked
 
 import { useIsMobile } from '../../hooks/useMediaQuery';
 
-import { isUnplayable } from '../../utils/spotifyUri';
+import { isUnplayable, unplayableWhy } from '../../utils/spotifyUri';
 import { normalizePlaylist } from '../../services/spotify/compat';
 import { toast } from '../../store/toastStore';
 
@@ -262,7 +262,7 @@ export function useBrowse() {
   // instead of stopping after one song
   const handleTrackPlay = (track) => {
     if (!token || !track?.uri) return;
-    if (isUnplayable(track, country)) { toast("Spotify can't play this song."); return; }
+    if (isUnplayable(track, country)) { toast(`${unplayableWhy(track, country)}.`); return; }
     const list = (results?.tracks?.items || []).filter((t) => t?.uri && !isUnplayable(t, country));
     const at = list.findIndex((t) => t.uri === track.uri);
     const uris = at >= 0 ? list.slice(at).map((t) => t.uri).slice(0, 100) : [track.uri];

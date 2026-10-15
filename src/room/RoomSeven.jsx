@@ -5,7 +5,7 @@ import { searchSpotify } from '../services/spotify/api';
 import { artUrl } from '../utils/images';
 import { formatTime } from '../utils/formatTime';
 import { rowButtonProps } from '../utils/a11y';
-import { isSameTrack, isUnplayable, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
+import { isSameTrack, isUnplayable, unplayableWhy, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import LikeButton from '../components/LikeButton';
 
 // A Seven on the room's language (DESIGN.md §7): two faces. Building, when it is your turn:
@@ -244,7 +244,7 @@ export default function RoomSeven() {
     const current = isSameTrack(track, currentPlayingTrack);
     const unplayable = isUnplayable(track);
     return (
-      <div key={`${track.uri}-${i}`} onClick={() => handleTrackSelect(track.uri)} {...rowButtonProps(() => handleTrackSelect(track.uri))} onContextMenu={(e) => openTrackMenu(e, track)} aria-disabled={unplayable || undefined}
+      <div key={`${track.uri}-${i}`} onClick={() => handleTrackSelect(track.uri)} {...rowButtonProps(() => handleTrackSelect(track.uri))} onContextMenu={(e) => openTrackMenu(e, track)} aria-disabled={unplayable || undefined} data-tip={unplayable ? unplayableWhy(track) : undefined}
         className={`group grid cursor-pointer grid-cols-[28px_34px_minmax(0,1.3fr)_minmax(0,1fr)_24px_44px] items-center gap-3 py-[9px] text-[13px] transition-colors hover:bg-white/[0.03] ${unplayable ? 'opacity-40' : ''}`} style={{ borderTop: i ? '1px solid var(--room-hair)' : 'none', transitionDuration: 'var(--room-mid)' }}>
         <span className="room-mono flex items-center justify-center text-[var(--room-faint)]">{current && !isCurrentTrackPaused ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--room-paper)] animate-pulse" aria-label="Playing" /> : <><span className="group-hover:hidden">{number}</span><Play className="hidden h-3 w-3 fill-current text-[var(--room-paper)] group-hover:block" /></>}</span>
         <span className="h-[34px] w-[34px] overflow-hidden rounded-[3px] bg-white/5">{track.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 34)} alt="" width="34" height="34" loading="lazy" decoding="async" draggable="false" className="h-full w-full object-cover" />}</span>

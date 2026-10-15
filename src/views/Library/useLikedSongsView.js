@@ -5,7 +5,7 @@ import { fetchInitialLikedSongs, playLikedSongsQueue, fetchMoreTracks } from '..
 import { playOn, setShuffle } from '../../services/spotify/playbackController';
 import { scrollParent } from '../../utils/dom';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
-import { isUnplayable, applyPlayability } from '../../utils/spotifyUri';
+import { isUnplayable, unplayableWhy, applyPlayability } from '../../utils/spotifyUri';
 import { confirmPlayability } from '../../services/playability';
 import { toast } from '../../store/toastStore';
 import { toggleTrackLike } from '../../services/spotify/api';
@@ -170,7 +170,7 @@ export function useLikedSongsView() {
 
   const handleTrackSelect = (index) => {
     if (!token || !trackData) return;
-    if (isUnplayable(items[index]?.track, country)) { toast("Spotify can't play this song."); return; }
+    if (isUnplayable(items[index]?.track, country)) { toast(`${unplayableWhy(items[index]?.track, country)}.`); return; }
 
     const allUris = items
       .map(item => item.track?.uri)

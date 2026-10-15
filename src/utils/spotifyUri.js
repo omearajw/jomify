@@ -95,6 +95,27 @@ export function isUnplayable(track, country) {
   return Boolean(country) && !markets.includes(country);
 }
 
+// What decided a song's availability: Spotify's own answer for this market ('spotify'), only
+// the release's market list ('markets', the weaker word: a page that ignored the market), or
+// nothing at all ('unknown', treated as playable)
+export function availabilitySource(track) {
+  if (!track || track.is_local) return 'local';
+  if (typeof track.is_playable === 'boolean') return 'spotify';
+  return Array.isArray(track.available_markets) ? 'markets' : 'unknown';
+}
+
+// Why a song can't be played, in words for the person: Spotify's restriction reason when it
+// gave one, else what the market list says
+const REASONS = { market: 'Not available in your region', product: 'Needs Spotify Premium', explicit: 'Blocked by your explicit-content setting' };
+export function unplayableWhy(track, country) {
+  if (!track) return "Spotify can't play this song";
+  if (track.is_local) return 'A file on your computer; Spotify only plays it in its own app';
+  const reason = track.restrictions?.reason;
+  if (reason && REASONS[reason]) return REASONS[reason];
+  if (typeof track.is_playable !== 'boolean' && Array.isArray(track.available_markets) && (track.available_markets.length === 0 || (country && !track.available_markets.includes(country)))) return 'Not released in your region';
+  return "Spotify can't play this song here";
+}
+
 // A row the market list greyed without Spotify having said is_playable either way: one worth
 // asking Spotify about by id (see services/playability.js)
 export const needsCheck = (track, country) => Boolean(track && !track.is_local && typeof track.is_playable !== 'boolean' && isUnplayable(track, country));
@@ -111,7 +132,7 @@ export function applyPlayability(items, answers) {
     const a = it?.track?.id ? answers[it.track.id] : null;
     if (!a) return it;
     changed = true;
-    return { ...it, track: { ...it.track, is_playable: a.is_playable, relinked_to: a.linked_from ? { id: it.track.id, uri: it.track.uri } : it.track.relinked_to } };
+    return { ...it, track: { ...it.track, is_playable: a.is_playable, restrictions: a.restrictions || it.track.restrictions, relinked_to: a.linked_from ? { id: it.track.id, uri: it.track.uri } : it.track.relinked_to } };
   });
   return changed ? out : items;
 }

@@ -15,7 +15,7 @@ import { fromSpotifyText } from '../utils/strings';
 import { formatTime } from '../utils/formatTime';
 import { artUrl } from '../utils/images';
 import { rowButtonProps } from '../utils/a11y';
-import { isSameTrack, isUnplayable, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
+import { isSameTrack, isUnplayable, unplayableWhy, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import { TRACKS_DRAG_TYPE } from './LibraryTree';
 
 // The open playlist, on the room's language (DESIGN.md §6, §11): the record-sleeve head, cover,
@@ -232,7 +232,7 @@ export default function RoomPlaylist() {
               {...rowButtonProps(() => handleTrackSelect(index))}
               onContextMenu={(e) => handleRightClick(e, track, item)}
               aria-selected={selection.active ? selected : undefined}
-              aria-disabled={unplayable || undefined}
+              aria-disabled={unplayable || undefined} data-tip={unplayable ? unplayableWhy(track, country) : undefined}
               title={unplayable ? 'Not available on Spotify' : undefined}
               draggable
               onDragStart={(e) => {

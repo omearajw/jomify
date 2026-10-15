@@ -5,7 +5,7 @@ import LikeButton from '../components/LikeButton';
 import { formatTime } from '../utils/formatTime';
 import { artUrl } from '../utils/images';
 import { rowButtonProps } from '../utils/a11y';
-import { isSameTrack, isUnplayable, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
+import { isSameTrack, isUnplayable, unplayableWhy, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import { TRACKS_DRAG_TYPE } from './LibraryTree';
 
 // Liked Songs on the room's language: the same head and rows as the open playlist
@@ -65,7 +65,7 @@ export default function RoomLikedSongs() {
               onClick={(e) => (selection.wantsSelect(e) && track.uri ? selection.toggle(track.uri, { range: e.shiftKey }) : handleTrackSelect(index))}
               {...rowButtonProps(() => handleTrackSelect(index))}
               onContextMenu={(e) => { e.preventDefault(); openRowMenu(e, track); }}
-              aria-disabled={unplayable || undefined}
+              aria-disabled={unplayable || undefined} data-tip={unplayable ? unplayableWhy(track, country) : undefined}
               aria-selected={selection.active ? selected : undefined}
               title={unplayable ? 'Not available on Spotify' : undefined}
               draggable
