@@ -37,14 +37,18 @@
   ::-webkit-scrollbar-track {
     background: transparent;
   }
+  /* Hidden until wanted: shown while the element scrolls or while the mouse is over it (both
+     marked by utils/scrollbars.js), in the room's paper, no gradient. The track keeps its width,
+     so nothing moves when the thumb appears. */
   ::-webkit-scrollbar-thumb {
-    background-color: #262626; /* tailwind neutral-800 */
+    background-color: transparent;
     border-radius: 10px;
-    border: 2px solid #000000; /* Adds padding inside the track */
+    border: 3px solid transparent;
+    background-clip: padding-box;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(to bottom, var(--brand-start), var(--brand-mid), var(--brand-end));
-  }
+  .is-pointed::-webkit-scrollbar-thumb { background-color: rgba(241, 239, 233, 0.16); }
+  .is-scrolling::-webkit-scrollbar-thumb { background-color: rgba(241, 239, 233, 0.28); }
+  ::-webkit-scrollbar-thumb:hover { background-color: rgba(241, 239, 233, 0.42); }
   /* Remove arrows */
   ::-webkit-scrollbar-button {
     display: none;
@@ -286,6 +290,7 @@
   --room-paper: #f1efe9;
   --room-dim: rgba(241, 239, 233, 0.5);
   --room-faint: rgba(241, 239, 233, 0.28);
+  --room-mark: 0.5;  /* the mark's strength: as the rail's words */
   --room-plane: rgba(12, 12, 18, 0.78);
   --room-hair: rgba(241, 239, 233, 0.08);
   --room-solid: rgb(13, 13, 18);      /* menus and dialogs: a solid plane, nothing shows through */
@@ -319,6 +324,7 @@ input, textarea, [contenteditable="true"], [contenteditable=""] { -webkit-user-s
   --room-paper: #ffffff;
   --room-dim: rgba(255, 255, 255, 0.78);
   --room-faint: rgba(255, 255, 255, 0.6);
+  --room-mark: 0.8;
   --room-plane: rgb(12, 12, 16);
   --room-hair: rgba(255, 255, 255, 0.22);
 }
@@ -350,4 +356,15 @@ input, textarea, [contenteditable="true"], [contenteditable=""] { -webkit-user-s
 /* the column head's pick, proportional, with the same hair */
 .ui-headword { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; text-decoration-color: rgba(241, 239, 233, 0.22); transition: color var(--room-mid) var(--room-ease), text-decoration-color var(--room-mid) var(--room-ease); }
 .ui-headword:hover, .ui-headword[aria-current] { text-decoration-color: var(--room-paper); }
+}
+
+/* iOS Safari zooms the whole page into any field smaller than 16px when it is tapped */
+@media (pointer: coarse) {
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: max(16px, 1em) !important; }
+}
+
+/* Firefox has no thumb pseudo-element: the same idea with scrollbar-color */
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  .is-pointed, .is-scrolling { scrollbar-color: rgba(241, 239, 233, 0.28) transparent; }
 }

@@ -190,14 +190,14 @@ export default function RoomParty() {
 
       {/* what is playing, with the controls that go through the party */}
       <Head>{paused ? 'Paused' : 'Playing'}{activeDevice?.name ? ` · ${activeDevice.name}` : ''}</Head>
-      <div className="mt-4 flex items-center gap-4">
+      <div className="mt-4 flex items-center gap-4 @max-md:flex-wrap">
         <span className="h-[56px] w-[56px] shrink-0 overflow-hidden rounded-[4px] bg-white/5">{track?.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 56)} alt="" draggable="false" className="h-full w-full object-cover" />}</span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] font-semibold text-[var(--room-paper)]">{track?.name || 'Nothing yet'}</span>
           <span className="block truncate text-[12px] text-[var(--room-dim)]">{(track?.artists || []).map((a) => a.name).join(', ')}{fromGuest ? ` · asked for by ${fromGuest}` : ''}</span>
           {upNext && (!track || upNext.uri !== track.uri) && <Mono className="mt-1 truncate text-[var(--room-faint)]">Next · {upNext.name} · {upNext.guestName}</Mono>}
         </span>
-        <span className="flex shrink-0 items-center gap-5" data-control>
+        <span className="flex shrink-0 items-center gap-5 @max-md:w-full @max-md:justify-between" data-control>
           <button type="button" onClick={() => { setHostPaused(!paused); togglePlay(); }} aria-label={paused ? 'Play' : 'Pause'} className="grid h-[40px] w-[40px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">{paused ? <Play className="ml-0.5 h-4 w-4 fill-current" /> : <Pause className="h-4 w-4 fill-current" />}</button>
           <button type="button" onClick={() => { setHostPaused(false); skipWithParty(); }} aria-label="Skip" aria-busy={skipping || undefined} disabled={skipping} className="text-[var(--room-dim)] transition-colors hover:text-[var(--room-paper)] disabled:opacity-40"><SkipForward className="h-5 w-5" /></button>
           <Volume2 className="h-4 w-4 text-[var(--room-faint)]" />

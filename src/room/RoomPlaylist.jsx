@@ -110,13 +110,13 @@ export default function RoomPlaylist() {
     <div className="relative min-h-full pb-10" style={{ fontFamily: 'var(--font-room)' }}>
 
       {/* the head */}
-      <header className="relative flex items-end gap-7 pt-4">
-        <div className="h-[168px] w-[168px] shrink-0 overflow-hidden rounded-[5px] bg-white/5 shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)]">
+      <header className="relative flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4">
+        <div className="h-[168px] w-[168px] shrink-0 overflow-hidden rounded-[5px] @max-md:h-[132px] @max-md:w-[132px] bg-white/5 shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)]">
           {coverUrl && <img src={coverUrl} alt="" className="h-full w-full object-cover" draggable="false" />}
         </div>
         <div className="min-w-0 flex-1 pb-1">
           <Mono className="text-[var(--room-faint)]">{facts}</Mono>
-          <h1 className="mt-2 text-[34px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] [text-wrap:balance] line-clamp-2">{view.name}</h1>
+          <h1 className="mt-2 text-[34px] @max-md:text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] [text-wrap:balance] line-clamp-2">{view.name}</h1>
           {description && <p className="mt-2 max-w-xl text-[13px] text-[var(--room-dim)] line-clamp-2">{description}</p>}
           {isCollaborative && collaboratorIds.length > 0 && (
             <div className="mt-3 flex items-center gap-2" aria-label="Collaborators">
@@ -142,13 +142,13 @@ export default function RoomPlaylist() {
       </header>
 
       {/* find and sort, on one hairline */}
-      <div className="mt-8 flex items-center gap-6 border-b border-[var(--room-hair)] pb-3">
+      <div className="mt-8 flex items-center gap-6 border-b border-[var(--room-hair)] pb-3 @max-md:mt-6 @max-md:flex-wrap @max-md:gap-y-2">
         {playlist && sortedTracks.length > 8 && (
           <input type="search" value={find} onChange={(e) => setFind(e.target.value)} placeholder="Find in playlist" aria-label="Find in playlist"
             className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--room-paper)] outline-none placeholder:text-[var(--room-faint)] [&::-webkit-search-cancel-button]:hidden" />
         )}
         {needle && <Mono className="text-[var(--room-faint)]">{rows.length} match{rows.length === 1 ? '' : 'es'}</Mono>}
-        <span className="ml-auto flex items-center gap-4">
+        <span className="ml-auto flex items-center gap-4 @max-md:ml-0 @max-md:w-full @max-md:overflow-x-auto @max-md:pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {SORTS.map((o) => <Word key={o.id} lit={sortBy === o.id} onClick={() => updateSortSettings(o.id, sortOrder)}>{o.label}</Word>)}
           {sortBy !== 'custom' && (
             <button type="button" onClick={() => updateSortSettings(sortBy, sortOrder === 'asc' ? 'desc' : 'asc')} aria-label={sortOrder === 'asc' ? 'Ascending; switch to descending' : 'Descending; switch to ascending'} className="text-[var(--room-dim)] hover:text-[var(--room-paper)]">
@@ -248,7 +248,7 @@ export default function RoomPlaylist() {
               onDragOver={canReorder ? (e) => { if (dragRow.current === null) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; const r = e.currentTarget.getBoundingClientRect(); setDropAt(e.clientY < r.top + r.height / 2 ? index : index + 1); } : undefined}
               onDrop={canReorder ? (e) => { if (dragRow.current === null) return; e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); reorderTo(dragRow.current, e.clientY < r.top + r.height / 2 ? index : index + 1); dragRow.current = null; setDropAt(null); } : undefined}
               onDragEnd={() => { dragRow.current = null; setDropAt(null); setDraggedItem(null); }}
-              className={`group grid ${cols} cursor-pointer items-center gap-3 py-[9px] text-[13px] transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_54px] ${unplayable ? 'opacity-40' : ''} ${selected ? 'bg-white/[0.06]' : 'hover:bg-white/[0.03]'}`}
+              className={`group grid ${cols} @max-md:grid-cols-[22px_36px_minmax(0,1fr)_36px] @max-md:gap-2.5 cursor-pointer items-center gap-3 py-[9px] text-[13px] transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_54px] ${unplayable ? 'opacity-40' : ''} ${selected ? 'bg-white/[0.06]' : 'hover:bg-white/[0.03]'}`}
               style={{ borderTop: dropAt === index ? '1px solid var(--room-paper)' : '1px solid var(--room-hair)', borderBottom: dropAt === index + 1 && index === totalRows - 1 ? '1px solid var(--room-paper)' : undefined, transitionDuration: 'var(--room-mid)' }}
             >
               <span className="room-mono flex items-center justify-center text-[var(--room-faint)]">
@@ -263,13 +263,13 @@ export default function RoomPlaylist() {
                 </span>
                 {isUnaddedSongsPlaylist && <SortIntoChips suggestions={suggestionsByTrack.get(track.id) || []} targets={sortTargets} busy={sortingUri === track.uri} onPick={(playlistId) => sortTrackInto(item, playlistId)} />}
               </span>
-              <span className="min-w-0 truncate pr-3 text-[var(--room-dim)]">
+              <span className="min-w-0 truncate pr-3 text-[var(--room-dim)] @max-md:hidden">
                 {track.album?.id ? <button type="button" onClick={(e) => { e.stopPropagation(); navigateToAlbum(track.album.id); }} className="block w-full truncate text-left hover:text-[var(--room-paper)]">{track.album.name}</button> : track.album?.name}
               </span>
-              <Mono className="truncate text-[var(--room-faint)]">{formatDateAdded(item.added_at)}</Mono>
-              {isCollaborative && <span className="min-w-0 truncate"><UserChip userId={adderId} fallbackName={collaborators[adderId]?.display_name || adderId} size="sm" /></span>}
+              <Mono className="truncate text-[var(--room-faint)] @max-md:hidden">{formatDateAdded(item.added_at)}</Mono>
+              {isCollaborative && <span className="min-w-0 truncate @max-md:hidden"><UserChip userId={adderId} fallbackName={collaborators[adderId]?.display_name || adderId} size="sm" /></span>}
               <span className={`flex items-center justify-center [&_svg]:h-4 [&_svg]:w-4 room-like ${heartsAlways ? '' : 'opacity-0 transition-opacity group-hover:opacity-100 pointer-coarse:opacity-100'}`}><LikeButton trackId={track.id} /></span>
-              <Mono className="text-right text-[var(--room-faint)]">{formatTime(track.duration_ms)}</Mono>
+              <Mono className="text-right text-[var(--room-faint)] @max-md:hidden">{formatTime(track.duration_ms)}</Mono>
             </div>
           );
         })}

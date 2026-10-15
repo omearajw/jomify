@@ -187,14 +187,14 @@ export default function RoomSeven() {
         style={{ borderTop: `1px solid ${overPool?.uri === track.uri && !overPool.after ? 'var(--room-paper)' : 'var(--room-hair)'}`, boxShadow: overPool?.uri === track.uri && overPool.after ? 'inset 0 -1px 0 var(--room-paper)' : undefined }}
       >
         <button type="button" onClick={(e) => { e.stopPropagation(); playPoolTrack(track); }} aria-label={`Play ${track.name}`} className="grid h-6 w-5 shrink-0 place-items-center text-[var(--room-paper)]">
-          {current && !isCurrentTrackPaused ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--room-paper)]" aria-label="Playing" /> : <Play className="h-3 w-3 fill-current opacity-0 group-hover:opacity-100" />}
+          {current && !isCurrentTrackPaused ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--room-paper)]" aria-label="Playing" /> : <Play className="h-3 w-3 fill-current opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100" />}
         </button>
         <span className="h-[32px] w-[32px] shrink-0 overflow-hidden rounded-[3px] bg-white/5">{track.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 32)} alt="" width="32" height="32" loading="lazy" decoding="async" draggable="false" className="h-full w-full object-cover" />}</span>
         <span className="min-w-0 flex-1">
           <span className={`block truncate font-medium ${current ? 'text-[var(--room-paper)]' : 'text-[var(--room-paper)]/90'}`}>{track.name}</span>
           <span className="block truncate text-[11.5px] text-[var(--room-dim)]">{(track.artists || []).map((a) => a.name).join(', ')}</span>
         </span>
-        {mark ? <Mono className="shrink-0 text-[var(--room-faint)]">{mark}</Mono> : <Mono className="shrink-0 text-[var(--room-faint)] opacity-0 group-hover:opacity-100">Add</Mono>}
+        {mark ? <Mono className="shrink-0 text-[var(--room-faint)]">{mark}</Mono> : <Mono className="shrink-0 text-[var(--room-faint)] opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100">Add</Mono>}
       </div>
     );
   };
@@ -245,16 +245,16 @@ export default function RoomSeven() {
     const unplayable = isUnplayable(track);
     return (
       <div key={`${track.uri}-${i}`} onClick={() => handleTrackSelect(track.uri)} {...rowButtonProps(() => handleTrackSelect(track.uri))} onContextMenu={(e) => openTrackMenu(e, track)} aria-disabled={unplayable || undefined} data-tip={unplayable ? unplayableWhy(track) : undefined}
-        className={`group grid cursor-pointer grid-cols-[28px_34px_minmax(0,1.3fr)_minmax(0,1fr)_24px_44px] items-center gap-3 py-[9px] text-[13px] transition-colors hover:bg-white/[0.03] ${unplayable ? 'opacity-40' : ''}`} style={{ borderTop: i ? '1px solid var(--room-hair)' : 'none', transitionDuration: 'var(--room-mid)' }}>
+        className={`group grid cursor-pointer grid-cols-[28px_34px_minmax(0,1.3fr)_minmax(0,1fr)_24px_44px] @max-md:grid-cols-[22px_36px_minmax(0,1fr)_36px] @max-md:gap-2.5 items-center gap-3 py-[9px] text-[13px] transition-colors hover:bg-white/[0.03] ${unplayable ? 'opacity-40' : ''}`} style={{ borderTop: i ? '1px solid var(--room-hair)' : 'none', transitionDuration: 'var(--room-mid)' }}>
         <span className="room-mono flex items-center justify-center text-[var(--room-faint)]">{current && !isCurrentTrackPaused ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--room-paper)] animate-pulse" aria-label="Playing" /> : <><span className="group-hover:hidden">{number}</span><Play className="hidden h-3 w-3 fill-current text-[var(--room-paper)] group-hover:block" /></>}</span>
         <span className="h-[34px] w-[34px] overflow-hidden rounded-[3px] bg-white/5">{track.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 34)} alt="" width="34" height="34" loading="lazy" decoding="async" draggable="false" className="h-full w-full object-cover" />}</span>
         <span className="min-w-0 pr-3">
           <span className={`block truncate ${current ? 'font-semibold text-[var(--room-paper)]' : 'font-medium text-[var(--room-paper)]/90'}`}>{track.name}</span>
           <span className="block truncate text-[11.5px] text-[var(--room-dim)]">{(track.artists || []).map((a, j) => <span key={a.id || j}><button type="button" onClick={(e) => { e.stopPropagation(); if (a.id) navigateToArtist(a.id); }} className="hover:text-[var(--room-paper)]">{a.name}</button>{j < track.artists.length - 1 ? ', ' : ''}</span>)}</span>
         </span>
-        <span className="min-w-0 truncate pr-3 text-[var(--room-dim)]">{track.album?.id ? <button type="button" onClick={(e) => { e.stopPropagation(); navigateToAlbum(track.album.id); }} className="block w-full truncate text-left hover:text-[var(--room-paper)]">{track.album.name}</button> : track.album?.name}</span>
+        <span className="min-w-0 truncate pr-3 text-[var(--room-dim)] @max-md:hidden">{track.album?.id ? <button type="button" onClick={(e) => { e.stopPropagation(); navigateToAlbum(track.album.id); }} className="block w-full truncate text-left hover:text-[var(--room-paper)]">{track.album.name}</button> : track.album?.name}</span>
         <span className="room-like flex items-center justify-center [&_svg]:h-4 [&_svg]:w-4"><LikeButton trackId={track.id} /></span>
-        <Mono className="text-right text-[var(--room-faint)]">{formatTime(track.duration_ms)}</Mono>
+        <Mono className="text-right text-[var(--room-faint)] @max-md:hidden">{formatTime(track.duration_ms)}</Mono>
       </div>
     );
   };
@@ -266,10 +266,10 @@ export default function RoomSeven() {
     <div className="relative min-h-full pb-12" style={{ fontFamily: 'var(--font-room)' }}>
       {/* the head: the Seven, its facts, the two faces */}
       <header className="flex items-end gap-6">
-        <div className="h-[112px] w-[112px] shrink-0 overflow-hidden rounded-[5px] bg-white/5">{coverUrl && <img src={coverUrl} alt="" className="h-full w-full object-cover" draggable="false" />}</div>
+        <div className="h-[112px] w-[112px] shrink-0 overflow-hidden rounded-[5px] bg-white/5 @max-md:h-[84px] @max-md:w-[84px]">{coverUrl && <img src={coverUrl} alt="" className="h-full w-full object-cover" draggable="false" />}</div>
         <div className="min-w-0 flex-1 pb-1">
           <Mono className="text-[var(--room-faint)]">Seven · {facts}</Mono>
-          <h1 className="mt-2 truncate text-[30px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">{view.name}</h1>
+          <h1 className="mt-2 truncate text-[30px] @max-md:text-[24px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">{view.name}</h1>
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
             <button type="button" onClick={() => (isShuffled ? shufflePlay() : playFromTop())} aria-label={`Play ${view.name}`} className="grid h-[40px] w-[40px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95"><Play className="ml-0.5 h-4 w-4 fill-current" /></button>
             <button type="button" onClick={shufflePlay} aria-label="Shuffle play" className={`transition-colors ${isShuffled ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-dim)]'}`}><Shuffle className="h-4 w-4" /></button>
@@ -283,10 +283,10 @@ export default function RoomSeven() {
       </header>
 
       {building ? (
-        <div className="mt-8 grid gap-10" style={{ gridTemplateColumns: 'minmax(0, 5fr) minmax(0, 6fr)' }}>
+        <div className="mt-8 grid grid-cols-[minmax(0,5fr)_minmax(0,6fr)] gap-10 @max-md:grid-cols-1 @max-md:gap-8">
           {/* the batch: it holds its place at the top of the column while the pool scrolls past */}
           <section
-            className="sticky top-0 self-start"
+            className="sticky top-0 self-start @max-md:static"
             onDragOver={(e) => { if (Array.from(e.dataTransfer.types).includes(POOL_DRAG)) { e.preventDefault(); } }}
             onDrop={(e) => { if (e.defaultPrevented) return; const tracks = fromPool(e); if (tracks.length && staged.length < 7) { e.preventDefault(); placeFrom(tracks, slots.indexOf(null)); } }}
           >

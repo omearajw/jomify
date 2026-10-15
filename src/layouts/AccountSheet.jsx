@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
 import AccountPanel from '../components/AccountPanel';
+import JomifyMark from '../components/JomifyMark';
 import { useIsMobile } from '../hooks/useMediaQuery';
 
 // Account, sync, notifications, backup and the debug log in one place: a bottom sheet on the
@@ -34,7 +35,7 @@ export default function AccountSheet() {
       >
         {isMobile && <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/25" aria-hidden="true" />}
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="room-mono text-[var(--room-dim)]">Settings</h2>
+          <h2 className="room-mono flex items-center gap-3 text-[var(--room-dim)]"><JomifyMark word size={30} />Settings</h2>
           <button type="button" onClick={close} className="ui-word">Close</button>
         </div>
         <AccountPanel variant="sheet" />

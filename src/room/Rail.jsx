@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { UnfoldingMark } from '../components/JomifyMark';
 
 // The launcher: Library · Search · Sevens · Unadded · Party, living at the left edge and shown
 // only when reached for (DESIGN.md §5). The reveal must not be finicky: it opens on a deliberate
@@ -82,6 +83,7 @@ export default function Rail({ open, held = false, pinned = false, active, onPic
         className="absolute left-0 top-0 bottom-0 z-30 flex w-[58px] flex-col items-center justify-center gap-7"
         style={{ transform: shown ? 'none' : 'translateX(-100%)', transition: `transform var(--room-mid) var(--room-ease)`, fontFamily: 'var(--font-mono)' }}
       >
+        <UnfoldingMark open={open} left={8} top={6} />
         {RAIL_ITEMS.map((it) => (
           <button
             key={it.id}

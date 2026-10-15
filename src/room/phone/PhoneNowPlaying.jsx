@@ -12,6 +12,7 @@ import LikeButton from '../../components/LikeButton';
 import QueueColumn from '../QueueColumn';
 import { ZenFocusLyricsLite, ZenPlainLyrics } from '../../views/ZenMode/ZenLyricsDom';
 import { useNowLyrics } from './useNowLyrics';
+import JomifyMark from '../../components/JomifyMark';
 
 // The room on a phone (DESIGN.md §5, 13 Oct): the cover, the song, the controls and up next, on
 // the cover's own light. The queue stays here because it is edited; the phone is the controller.
@@ -78,7 +79,7 @@ export default function PhoneNowPlaying({ bottomInset }) {
       <div className="relative flex h-full flex-col px-6 pt-[calc(env(safe-area-inset-top)+14px)]" style={{ paddingBottom: bottomInset }}>
         {/* where it comes from and where it plays; nothing to drag up here, the top edge is the system's */}
         <div className="flex items-center justify-between gap-4">
-          <p className="room-mono min-w-0 truncate text-[var(--room-faint)]">{from ? playingFromLabel(from).replace(/^Playing from /, 'From ') : 'Jomify'}</p>
+          <p className="room-mono flex min-w-0 items-center gap-2.5 text-[var(--room-faint)]"><JomifyMark size={20} className="-ml-1" /><span className="truncate">{from ? playingFromLabel(from).replace(/^Playing from /, 'From ') : ''}</span></p>
           <button type="button" onClick={() => setDevicePickerOpen(true)} className="ui-word inline-flex min-h-[44px] max-w-[55%] items-center gap-1.5 truncate" aria-label={`Playing on ${device}; choose where it plays`}>
             <Speaker className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{device}</span>
           </button>
@@ -86,7 +87,7 @@ export default function PhoneNowPlaying({ bottomInset }) {
 
         {/* the cover and the song: stacked at rest, side by side when the lyrics are on */}
         <div className={`mt-3 ${lyricsOn ? 'flex items-center gap-4' : ''}`}>
-          <motion.div layout transition={MOVE} className={`shrink-0 overflow-hidden rounded-[6px] bg-white/5 ${lyricsOn ? 'h-16 w-16' : 'mx-auto aspect-square w-full max-w-[min(100%,40dvh)]'}`}>
+          <motion.div layout transition={MOVE} className={`shrink-0 overflow-hidden rounded-[6px] bg-white/5 ${lyricsOn ? 'h-16 w-16' : 'mx-auto aspect-square w-full max-w-[min(100%,34dvh)]'}`}>
             {art && <img src={art} alt="" draggable="false" className="h-full w-full object-cover" />}
           </motion.div>
           <motion.div layout="position" transition={MOVE} className={`min-w-0 ${lyricsOn ? 'flex-1' : 'mt-5'}`}>

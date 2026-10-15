@@ -27,13 +27,13 @@ export default function RoomLikedSongs() {
 
   return (
     <div className="relative pb-10" style={{ fontFamily: 'var(--font-room)' }}>
-      <header className="relative flex items-end gap-7 pt-4">
-        <div className="grid h-[168px] w-[168px] shrink-0 place-items-center rounded-[5px] bg-[var(--room-paper)]/[0.07] shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)]">
+      <header className="relative flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4">
+        <div className="grid h-[168px] w-[168px] @max-md:h-[132px] @max-md:w-[132px] shrink-0 place-items-center rounded-[5px] bg-[var(--room-paper)]/[0.07] shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)]">
           <Heart className="h-12 w-12 fill-[var(--room-paper)] text-[var(--room-paper)] opacity-80" />
         </div>
         <div className="min-w-0 flex-1 pb-1">
           <Mono className="text-[var(--room-faint)]">Your songs · {facts}</Mono>
-          <h1 className="mt-2 text-[34px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">Liked Songs</h1>
+          <h1 className="mt-2 text-[34px] @max-md:text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">Liked Songs</h1>
           {loadError && <p className="room-mono mt-2 flex items-center gap-3 text-amber-300/80">{loadError}<Word onClick={() => { if (!trackData) setReloadNonce((n) => n + 1); else if (data.next && !isFetchingMore.current) loadRestOfTracks(data.next); }}>Try again</Word></p>}
           <div className="mt-5 flex items-center gap-5">
             <button type="button" onClick={() => (isShuffled ? handleShufflePlay() : handleTrackSelect(0))} aria-label="Play Liked Songs" className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95"><Play className="ml-0.5 h-[18px] w-[18px] fill-current" /></button>
@@ -42,10 +42,10 @@ export default function RoomLikedSongs() {
         </div>
       </header>
 
-      <div className="mt-8 flex items-center gap-6 border-b border-[var(--room-hair)] pb-3">
+      <div className="mt-8 flex items-center gap-6 border-b border-[var(--room-hair)] pb-3 @max-md:mt-6 @max-md:flex-wrap @max-md:gap-y-2">
         <input type="search" value={find} onChange={(e) => setFind(e.target.value)} placeholder="Find in Liked Songs" aria-label="Find in Liked Songs" className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--room-paper)] outline-none placeholder:text-[var(--room-faint)] [&::-webkit-search-cancel-button]:hidden" />
         {needle && <Mono className="text-[var(--room-faint)]">{items.length} match{items.length === 1 ? '' : 'es'}{trackData?.next ? ' so far' : ''}</Mono>}
-        <span className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+        <span className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-1 @max-md:ml-0 @max-md:w-full @max-md:justify-start">
           {SORTS.map((s) => <Word key={s.id} lit={sortMode === s.id} onClick={() => setSortMode(s.id)}>{s.label}</Word>)}
         </span>
       </div>
@@ -70,7 +70,7 @@ export default function RoomLikedSongs() {
               title={unplayable ? 'Not available on Spotify' : undefined}
               draggable
               onDragStart={(e) => { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData(TRACK_DRAG_TYPE, track.uri); e.dataTransfer.setData('text/plain', track.uri); if (selected && selectedTracks.length > 1) e.dataTransfer.setData(TRACKS_DRAG_TYPE, JSON.stringify(selectedTracks.map((t) => t.uri))); }}
-              className={`group grid cursor-pointer grid-cols-[28px_34px_minmax(0,1.3fr)_minmax(0,1fr)_92px_24px_44px] items-center gap-3 py-[9px] text-[13px] transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_54px] ${unplayable ? 'opacity-40' : ''} ${selected ? 'bg-white/[0.06]' : 'hover:bg-white/[0.03]'}`}
+              className={`group grid cursor-pointer grid-cols-[28px_34px_minmax(0,1.3fr)_minmax(0,1fr)_92px_24px_44px] @max-md:grid-cols-[22px_36px_minmax(0,1fr)_36px] @max-md:gap-2.5 items-center gap-3 py-[9px] text-[13px] transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_54px] ${unplayable ? 'opacity-40' : ''} ${selected ? 'bg-white/[0.06]' : 'hover:bg-white/[0.03]'}`}
               style={{ borderTop: '1px solid var(--room-hair)', transitionDuration: 'var(--room-mid)' }}
             >
               <span className="room-mono flex items-center justify-center text-[var(--room-faint)]">
@@ -82,12 +82,12 @@ export default function RoomLikedSongs() {
                 <span className={`block truncate ${current ? 'font-semibold text-[var(--room-paper)]' : 'font-medium text-[var(--room-paper)]/90'}`}>{track.name}</span>
                 <span className="block truncate text-[11.5px] text-[var(--room-dim)]">{track.artists.map((a) => a.name).join(', ')}</span>
               </span>
-              <span className="min-w-0 truncate pr-3 text-[var(--room-dim)]">
+              <span className="min-w-0 truncate pr-3 text-[var(--room-dim)] @max-md:hidden">
                 {track.album?.id ? <button type="button" onClick={(e) => { e.stopPropagation(); navigateToAlbum(track.album.id); }} className="block w-full truncate text-left hover:text-[var(--room-paper)]">{track.album.name}</button> : track.album?.name}
               </span>
-              <Mono className="truncate text-[var(--room-faint)]">{formatDateAdded(item.added_at)}</Mono>
+              <Mono className="truncate text-[var(--room-faint)] @max-md:hidden">{formatDateAdded(item.added_at)}</Mono>
               <span className="flex items-center justify-center [&_svg]:h-4 [&_svg]:w-4 room-like"><LikeButton trackId={track.id} /></span>
-              <Mono className="text-right text-[var(--room-faint)]">{formatTime(track.duration_ms)}</Mono>
+              <Mono className="text-right text-[var(--room-faint)] @max-md:hidden">{formatTime(track.duration_ms)}</Mono>
             </div>
           );
         })}

@@ -149,7 +149,7 @@ export default function PhoneSheet({ state, onState, lit, onPick, onSettings, he
         </nav>
       </div>
       {head}
-      <div className="min-h-0 overflow-y-auto overscroll-y-contain px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-2" style={{ height: contentH }}>
+      <div className="@container min-h-0 overflow-y-auto overscroll-y-contain px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-2" style={{ height: contentH }}>
         {state !== 'closed' || dragH !== null ? children : null}
       </div>
     </section>

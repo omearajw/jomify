@@ -9,10 +9,12 @@ import PartyScreen from './views/Party/PartyScreen.jsx'
 import ProjectorWindow from './views/ZenMode/ProjectorWindow.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { installDebugLog } from './services/debugLog'
+import { installScrollbarReveal } from './utils/scrollbars'
 import './services/wordLyrics'
 
 // First, so it hears about everything from start-up onwards
 installDebugLog()
+installScrollbarReveal()
 
 // A guest at a party has no account and never sees the sign-in page: /p/<code> is its own app,
 // and /p/<code>/screen the display for a screen on the wall

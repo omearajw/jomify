@@ -92,7 +92,7 @@ export default function RoomSearch() {
         onDragEnd={() => setDraggedItem(null)}
         aria-disabled={unplayable || undefined} data-tip={unplayable ? unplayableWhy(track, country) : undefined}
         title={unplayable ? 'Not available on Spotify' : undefined}
-        className={`group grid cursor-pointer grid-cols-[28px_34px_minmax(0,1.3fr)_minmax(0,1fr)_24px_44px] items-center gap-3 py-[9px] text-[13px] transition-colors hover:bg-white/[0.03] ${unplayable ? 'opacity-40' : ''}`}
+        className={`group grid cursor-pointer grid-cols-[28px_34px_minmax(0,1.3fr)_minmax(0,1fr)_24px_44px] @max-md:grid-cols-[22px_36px_minmax(0,1fr)_36px] @max-md:gap-2.5 items-center gap-3 py-[9px] text-[13px] transition-colors hover:bg-white/[0.03] ${unplayable ? 'opacity-40' : ''}`}
         style={{ borderTop: '1px solid var(--room-hair)', transitionDuration: 'var(--room-mid)' }}
       >
         <span className="room-mono flex items-center justify-center text-[var(--room-faint)]">
@@ -105,11 +105,11 @@ export default function RoomSearch() {
             {(track.artists || []).map((a, k) => <span key={a.id || k}><button type="button" onClick={(e) => { e.stopPropagation(); if (a.id) navigateToArtist(a.id); }} className="hover:text-[var(--room-paper)] pointer-coarse:pointer-events-none">{a.name}</button>{k < track.artists.length - 1 ? ', ' : ''}</span>)}
           </span>
         </span>
-        <span className="min-w-0 truncate pr-3 text-[var(--room-dim)]">
+        <span className="min-w-0 truncate pr-3 text-[var(--room-dim)] @max-md:hidden">
           {track.album?.id ? <button type="button" onClick={(e) => { e.stopPropagation(); navigateToAlbum(track.album.id); }} className="block w-full truncate text-left hover:text-[var(--room-paper)]">{track.album.name}</button> : track.album?.name}
         </span>
         <span className="room-like flex items-center justify-center [&_svg]:h-4 [&_svg]:w-4"><LikeButton trackId={track.id} /></span>
-        <Mono className="text-right text-[var(--room-faint)]">{formatTime(track.duration_ms)}</Mono>
+        <Mono className="text-right text-[var(--room-faint)] @max-md:hidden">{formatTime(track.duration_ms)}</Mono>
       </div>
     );
   };
@@ -164,12 +164,12 @@ export default function RoomSearch() {
               {recent.map((r) => (
                 <span key={r} className="group flex items-center gap-2">
                   <button type="button" onClick={() => useRoomStore.getState().setSearchQuery(r)} className="text-[13px] text-[var(--room-dim)] hover:text-[var(--room-paper)]">{r}</button>
-                  <button type="button" onClick={() => forgetSearch(r)} aria-label={`Forget ${r}`} className="room-mono text-[var(--room-faint)] opacity-0 group-hover:opacity-100">×</button>
+                  <button type="button" onClick={() => forgetSearch(r)} aria-label={`Forget ${r}`} className="room-mono text-[var(--room-faint)] opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100">×</button>
                 </span>
               ))}
             </div>
           ) : (
-            <p className="text-[13px] text-[var(--room-faint)]">Type in the field on the left. Your library comes first, then Spotify.</p>
+            <p className="text-[13px] text-[var(--room-faint)]">Type in the field <span className="@max-md:hidden">on the left</span><span className="hidden @max-md:inline">above</span>. Your library comes first, then Spotify.</p>
           )}
         </div>
       )}
