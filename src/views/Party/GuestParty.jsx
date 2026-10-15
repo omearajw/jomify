@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Music2, Search, Plus, Check, Loader2, X, PauseCircle, WifiOff, ChevronUp, ExternalLink } from 'lucide-react';
+import { X } from 'lucide-react';
 import { guestApi } from '../../party/client';
 import { orderQueue, positionsFor } from '../../party/order';
 
@@ -27,6 +27,10 @@ const withOrder = (state, queue, guestId) => {
 // A request as it will look once the server confirms it, shown before it does
 const guessRequest = (track, guest) => ({ id: `tmp-${Date.now()}`, ...track, guestId: guest.id, guestName: guest.name, at: Date.now(), votes: 0 });
 const fmt = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
+
+const Label = ({ children, right }) => <p className="room-mono flex items-center justify-between border-b border-[var(--room-hair)] pb-2 text-[var(--room-faint)]"><span>{children}</span>{right}</p>;
+const Word = ({ children, ...props }) => <button type="button" className="ui-word inline-flex min-h-[44px] items-center" {...props}>{children}</button>;
+const Cover = ({ src, size }) => <span className="shrink-0 overflow-hidden rounded-[4px]" style={{ width: size, height: size, background: 'rgba(241,239,233,0.06)' }}>{src && <img src={src} alt="" className="h-full w-full object-cover" />}</span>;
 
 export default function GuestParty({ code }) {
   const [guest, setGuest] = useState(() => loadGuest());
@@ -136,30 +140,36 @@ export default function GuestParty({ code }) {
     try { setState(await guestApi.op(code, { op: 'withdraw', guestId: guest.id, id: item.id })); } catch (err) { setState(before); say(err?.message || "Couldn't remove it", 'error'); } finally { pending.current -= 1; }
   };
 
+  // The room's language on a phone: ink, paper, mono labels, hairlines; words you can press carry
+  // a hair under them. The song playing tints the top of the page through a small blurred copy of
+  // its cover scaled up (a large CSS blur is what WebKit drops). The app's stylesheet holds the
+  // page body still for its own layout, so this page scrolls itself.
+  const art = state?.nowPlaying?.image || null;
   const shell = (children) => (
-    // The app's stylesheet holds the page body still for its own layout, so this page scrolls itself
-    <div className="fixed inset-0 overflow-y-auto overscroll-y-contain bg-black text-white">
-      <div className="fixed inset-0 z-0 bg-aurora opacity-20" />
-      <div className="relative z-10 max-w-lg mx-auto px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] flex flex-col gap-5">
+    <div className="fixed inset-0 overflow-y-auto overscroll-y-contain" style={{ background: 'var(--room-ink)', color: 'var(--room-paper)', fontFamily: 'var(--font-room)' }}>
+      {art && <div aria-hidden="true" className="pointer-events-none fixed left-1/2 top-0 z-0 h-[120px] w-[120px] -translate-x-1/2 bg-cover bg-center opacity-40" style={{ backgroundImage: `url(${art})`, filter: 'blur(18px)', transform: 'translate(-50%, -20%) scale(4.5)' }} />}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0" style={{ background: 'linear-gradient(to bottom, rgba(13,12,18,0.35), var(--room-ink) 420px)' }} />
+      <div className="relative z-10 mx-auto flex max-w-lg flex-col gap-7 px-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]">
         {children}
       </div>
     </div>
   );
 
   if (gone) {
-    return shell(<div className="pt-20 text-center">
-      <p className="text-5xl mb-4">🎉</p>
-      <h1 className="text-2xl font-extrabold">{gone}</h1>
-      <p className="text-neutral-400 mt-2">Thanks for coming.</p>
+    return shell(<div className="pt-24 text-center">
+      <p className="room-mono text-[var(--room-faint)]">Party {code}</p>
+      <h1 className="mt-3 text-[30px] font-semibold leading-[1.05] tracking-[-0.025em]">{gone}</h1>
+      <p className="mt-3 text-[15px] text-[var(--room-dim)]">Thanks for coming.</p>
     </div>);
   }
 
   if (!guest) {
-    return shell(<form className="pt-16 flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); const name = nameDraft.trim().slice(0, 40); if (!name) return; const g = { id: loadGuest()?.id || newGuestId(), name }; saveGuest(g); setGuest(g); }}>
-      <h1 className="text-4xl font-extrabold text-brand-gradient tracking-tighter">Jomify party</h1>
-      <p className="text-neutral-300">You're joining party <span className="font-mono font-bold text-white tracking-widest">{code}</span>. What should we call you?</p>
-      <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="Your name" aria-label="Your name" maxLength={40} className="w-full rounded-2xl bg-white/10 border border-white/15 px-5 py-4 text-lg text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--brand-mid)]" />
-      <button type="submit" disabled={!nameDraft.trim()} className="rounded-full bg-brand-gradient py-4 text-lg font-bold shadow-brand-glow disabled:opacity-50">Join the party</button>
+    return shell(<form className="flex flex-col gap-5 pt-20" onSubmit={(e) => { e.preventDefault(); const name = nameDraft.trim().slice(0, 40); if (!name) return; const g = { id: loadGuest()?.id || newGuestId(), name }; saveGuest(g); setGuest(g); }}>
+      <p className="room-mono text-[var(--room-faint)]">Jomify · party <span className="tracking-[0.3em] text-[var(--room-paper)]">{code}</span></p>
+      <h1 className="text-[34px] font-semibold leading-[1.05] tracking-[-0.025em]">Pick the music</h1>
+      <p className="text-[15px] text-[var(--room-dim)]">Find songs and ask for them; vote for other people's. No account needed. What should we call you?</p>
+      <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="Your name" aria-label="Your name" maxLength={40} className="ui-field text-[18px]" />
+      <p><button type="submit" disabled={!nameDraft.trim()} className="ui-pill min-h-[44px] px-6 text-[15px]">Join the party</button></p>
     </form>);
   }
 
@@ -174,53 +184,55 @@ export default function GuestParty({ code }) {
   const myTurn = np && !np.paused && history.some((h) => h.uri === np.uri && h.guestId === guest.id);
 
   return shell(<>
-    <header className="flex items-center justify-between">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">{state?.party?.hostName ? `${state.party.hostName}'s party` : 'Party'}</p>
-        <p className="font-mono text-2xl font-extrabold tracking-[0.3em]">{code}</p>
+    <header className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <p className="room-mono truncate text-[var(--room-faint)]">{state?.party?.hostName ? `${state.party.hostName}'s party` : 'Party'}</p>
+        <p className="mt-1 text-[22px] font-semibold tracking-[0.3em]" style={{ fontFamily: 'var(--font-mono)' }}>{code}</p>
       </div>
-      <button type="button" onClick={() => { setGuest(null); }} className="text-xs text-neutral-400 underline">Hi {guest.name}</button>
+      <Word onClick={() => { setGuest(null); }} aria-label={`You are ${guest.name}; change your name`}>{guest.name}</Word>
     </header>
 
-    {state?.hostAway && <p className="flex items-center gap-2 rounded-2xl bg-amber-500/15 border border-amber-400/30 px-4 py-3 text-sm text-amber-200"><WifiOff className="w-4 h-4" /> The host's Jomify is away. Requests still land; searching comes back when it does.</p>}
-    {state?.party?.paused && <p className="flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-3 text-sm text-neutral-200"><PauseCircle className="w-4 h-4" /> The host has paused requests for now.</p>}
+    {state?.hostAway && <p className="text-[13.5px] text-[var(--room-dim)]">The host's Jomify is away for the moment. Requests still land; searching comes back when it does.</p>}
+    {state?.party?.paused && <p className="text-[13.5px] text-[var(--room-dim)]">The host has paused requests for now.</p>}
 
-    {myTurn && <p role="status" className="rounded-2xl bg-brand-gradient px-4 py-3 text-sm font-bold text-white shadow-brand-glow animate-fade-in">🎉 Your song is playing!</p>}
-    <section className={`rounded-3xl border p-4 flex items-center gap-4 ${myTurn ? 'bg-white/10 border-[var(--brand-mid)]' : 'bg-white/5 border-white/10'}`}>
-      {np?.image ? <img src={np.image} alt="" className="w-20 h-20 rounded-2xl object-cover shadow-xl" /> : <div className="w-20 h-20 rounded-2xl bg-white/10 flex items-center justify-center"><Music2 className="w-8 h-8 text-neutral-400" /></div>}
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">{np ? (np.paused ? 'Paused' : 'Now playing') : 'Waiting for music'}</p>
-        <p className="font-bold text-lg truncate">{np?.name || '…'}</p>
-        <p className="text-neutral-400 truncate">{np?.artists || ''}</p>
-        {state?.upNext && <p className="text-xs text-neutral-500 mt-1 truncate">Next: {state.upNext.name} · {state.upNext.guestName}</p>}
+    {/* playing */}
+    <section>
+      <Label right={spotifyUrl(np) ? <a href={spotifyUrl(np)} target="_blank" rel="noreferrer" className="ui-word">Spotify</a> : null}>{myTurn ? 'Your song is playing' : np ? (np.paused ? 'Paused' : 'Playing') : 'Waiting for music'}</Label>
+      <div className="mt-4 flex items-center gap-4">
+        <Cover src={np?.image} size={72} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[19px] font-semibold leading-tight tracking-[-0.015em]">{np?.name || '…'}</p>
+          <p className="room-mono mt-1.5 truncate text-[var(--room-dim)]">{np?.artists || ''}</p>
+        </div>
       </div>
-      {spotifyUrl(np) && <a href={spotifyUrl(np)} target="_blank" rel="noreferrer" aria-label="Open in Spotify" className="p-2 text-neutral-400 hover:text-white shrink-0"><ExternalLink className="w-5 h-5" /></a>}
+      {state?.upNext && <p className="mt-3 truncate text-[13px] text-[var(--room-dim)]"><span className="room-mono text-[var(--room-faint)]">Next</span> · {state.upNext.name}{state.upNext.guestName ? ` · ${state.upNext.guestName}` : ''}</p>}
     </section>
 
-    <section className="flex flex-col gap-3">
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a song to request" aria-label="Find a song" className="w-full rounded-2xl bg-white/10 border border-white/15 pl-12 pr-10 py-4 text-lg text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--brand-mid)]" />
-        {query && <button type="button" onClick={() => { setQuery(''); setResults(null); }} aria-label="Clear" className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-neutral-400"><X className="w-5 h-5" /></button>}
+    {/* find and ask */}
+    <section>
+      <Label>Ask for a song</Label>
+      <div className="relative mt-1">
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="A song, an artist" aria-label="Find a song" className="ui-field pr-10 text-[17px]" />
+        {query && <button type="button" onClick={() => { setQuery(''); setResults(null); }} aria-label="Clear" className="absolute right-0 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center text-[var(--room-faint)]"><X className="h-4 w-4" /></button>}
       </div>
-      {notice && <p role="status" className={`rounded-2xl px-4 py-3 text-sm font-semibold ${notice.tone === 'error' ? 'bg-red-500/15 text-red-200' : notice.tone === 'success' ? 'bg-emerald-500/15 text-emerald-200' : 'bg-white/10'}`}>{notice.text}</p>}
-      {searching && <p className="text-sm text-neutral-400 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Searching…</p>}
-      {shownResults && shownResults.length === 0 && !searching && <p className="text-sm text-neutral-400">Nothing found.</p>}
+      {notice && <p role="status" className={`mt-3 text-[13.5px] ${notice.tone === 'error' ? 'text-[rgb(240,160,160)]' : 'text-[var(--room-paper)]'}`}>{notice.text}</p>}
+      {searching && <p className="room-mono mt-3 text-[var(--room-faint)]">Searching</p>}
+      {shownResults && shownResults.length === 0 && !searching && <p className="mt-3 text-[13.5px] text-[var(--room-faint)]">Nothing found.</p>}
       {shownResults && shownResults.length > 0 && (
-        <ul className="flex flex-col gap-2">
-          {shownResults.map((t) => {
+        <ul className="mt-2">
+          {shownResults.map((t, n) => {
             const queued = busyUris.has(t.uri) || queuedUris.has(t.uri);
             return (
-            <li key={t.uri}>
-              <button type="button" onClick={() => request(t)} disabled={queued} aria-label={queued ? `${t.name}, in the queue` : `Request ${t.name}`} className={`w-full flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors ${queued ? 'bg-white/[0.03] border-white/5' : 'bg-white/5 active:bg-white/15 border-white/10'}`}>
-                {t.image ? <img src={t.image} alt="" className="w-12 h-12 rounded-lg object-cover" /> : <div className="w-12 h-12 rounded-lg bg-white/10" />}
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold truncate">{t.name}</span>
-                  <span className="block text-sm text-neutral-400 truncate">{queued ? 'In the queue' : `${t.artists}${t.durationMs ? ` · ${fmt(t.durationMs)}` : ''}`}</span>
-                </span>
-                {queued ? <Check className="w-7 h-7 text-[var(--brand-mid)]" /> : <Plus className="w-7 h-7 text-[var(--brand-mid)]" />}
-              </button>
-            </li>
+              <li key={t.uri} style={{ borderTop: n ? '1px solid var(--room-hair)' : 'none' }}>
+                <button type="button" onClick={() => request(t)} disabled={queued} aria-label={queued ? `${t.name}, in the queue` : `Ask for ${t.name}`} className="flex min-h-[56px] w-full items-center gap-3 py-2 text-left">
+                  <Cover src={t.image} size={40} />
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate text-[15px] font-medium ${queued ? 'text-[var(--room-dim)]' : ''}`}>{t.name}</span>
+                    <span className="block truncate text-[12.5px] text-[var(--room-dim)]">{queued ? 'In the queue' : `${t.artists}${t.durationMs ? ` · ${fmt(t.durationMs)}` : ''}`}</span>
+                  </span>
+                  <span className={`room-mono shrink-0 ${queued ? 'text-[var(--room-faint)]' : 'text-[var(--room-paper)] underline decoration-[rgba(241,239,233,0.3)] underline-offset-[5px]'}`}>{queued ? 'Asked' : 'Ask'}</span>
+                </button>
+              </li>
             );
           })}
         </ul>
@@ -229,13 +241,13 @@ export default function GuestParty({ code }) {
 
     {myItems.length > 0 && (
       <section>
-        <h2 className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">Your requests</h2>
-        <ul className="flex flex-col gap-2">
-          {myItems.map((i) => (
-            <li key={i.id} className="flex items-center gap-3 rounded-2xl bg-white/5 border border-white/10 p-3">
-              <span className="w-8 h-8 rounded-full bg-brand-gradient flex items-center justify-center text-sm font-extrabold">{mine[i.id]}</span>
-              <span className="min-w-0 flex-1"><span className="block font-semibold truncate">{i.name}</span><span className="block text-sm text-neutral-400 truncate">{i.artists}</span></span>
-              <button type="button" onClick={() => withdraw(i)} aria-label={`Remove ${i.name}`} className="p-2 text-neutral-400"><X className="w-5 h-5" /></button>
+        <Label>Yours</Label>
+        <ul>
+          {myItems.map((i, n) => (
+            <li key={i.id} className="flex min-h-[56px] items-center gap-3 py-2" style={{ borderTop: n ? '1px solid var(--room-hair)' : 'none' }}>
+              <span className="room-mono w-12 shrink-0 text-[var(--room-paper)]">{ordinal(mine[i.id])}</span>
+              <span className="min-w-0 flex-1"><span className="block truncate text-[15px] font-medium">{i.name}</span><span className="block truncate text-[12.5px] text-[var(--room-dim)]">{i.artists}</span></span>
+              <Word onClick={() => withdraw(i)} aria-label={`Take back ${i.name}`}>Take back</Word>
             </li>
           ))}
         </ul>
@@ -243,38 +255,42 @@ export default function GuestParty({ code }) {
     )}
 
     <section>
-      <h2 className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">Coming up{waiting ? ` · ${waiting}` : ''}</h2>
+      <Label right={waiting ? <span>{waiting}</span> : null}>Coming up</Label>
       {waiting === 0 ? (
-        <p className="text-sm text-neutral-500">Nothing requested yet. {state?.party?.backing?.name ? `${state.party.backing.name} is playing in the meantime.` : 'Be the first.'}</p>
+        <p className="pt-3 text-[13.5px] text-[var(--room-faint)]">Nothing asked for yet. {state?.party?.backing?.name ? `${state.party.backing.name} plays in the meantime.` : 'Be the first.'}</p>
       ) : (
-        <ol className="flex flex-col gap-1.5">
+        <ol>
           {(state?.queue || []).slice(0, 12).map((i, n) => (
-            <li key={i.id} className="flex items-center gap-2 px-1 py-1.5 text-sm">
-              <span className="w-5 text-right text-neutral-500 tabular-nums">{n + 1}</span>
-              <span className="min-w-0 flex-1 truncate"><span className="font-semibold">{i.name}</span> <span className="text-neutral-500">· {i.artists}</span></span>
-              <span className="text-xs text-neutral-400 shrink-0 flex items-center gap-1">{mine[i.id] ? <Check className="w-3 h-3" /> : null}{i.guestName}</span>
+            <li key={i.id} className="flex min-h-[52px] items-center gap-3 py-1.5" style={{ borderTop: n ? '1px solid var(--room-hair)' : 'none' }}>
+              <span className="room-mono w-5 shrink-0 text-right text-[var(--room-faint)]">{n + 1}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14.5px] font-medium">{i.name}</span>
+                <span className="block truncate text-[12px] text-[var(--room-dim)]">{i.artists} · {mine[i.id] ? 'you' : i.guestName}</span>
+              </span>
               {mine[i.id] ? (
-                <span className="w-14 text-right text-xs text-neutral-500 tabular-nums shrink-0">{i.votes ? `▲ ${i.votes}` : ''}</span>
+                <span className="room-mono w-14 shrink-0 text-right text-[var(--room-faint)]">{i.votes ? `▲ ${i.votes}` : ''}</span>
               ) : (
-                <button type="button" onClick={() => vote(i)} aria-pressed={voted.has(i.id)} aria-label={`${voted.has(i.id) ? 'Take back your vote for' : 'Vote for'} ${i.name}`} className={`w-14 shrink-0 flex items-center justify-end gap-0.5 rounded-full px-2 py-1 text-xs font-bold tabular-nums transition-transform active:scale-90 ${voted.has(i.id) ? 'bg-brand-gradient text-white' : 'bg-white/10 text-neutral-300 active:bg-white/20'}`}><ChevronUp className="w-4 h-4" />{i.votes || 0}</button>
+                <button type="button" onClick={() => vote(i)} aria-pressed={voted.has(i.id)} aria-label={`${voted.has(i.id) ? 'Take back your vote for' : 'Vote for'} ${i.name}`} className="ui-word inline-flex min-h-[44px] w-16 shrink-0 items-center justify-end">
+                  ▲ {i.votes || 0}
+                </button>
               )}
             </li>
           ))}
-          {waiting > 12 && <li className="text-xs text-neutral-500 pl-9">and {waiting - 12} more</li>}
+          {waiting > 12 && <li className="room-mono pt-2 text-[var(--room-faint)]">and {waiting - 12} more</li>}
         </ol>
       )}
-      {waiting > 0 && <p className="text-xs text-neutral-500 mt-2">Upvoted songs jump the queue, most votes first. The rest take turns: everyone's first request plays before anyone's second.</p>}
+      {waiting > 0 && <p className="mt-3 text-[12.5px] text-[var(--room-faint)]">Voted songs go first, most votes first. The rest take turns: everyone's first song plays before anyone's second.</p>}
     </section>
 
     {history.length > 0 && (
       <section>
-        <h2 className="text-xs font-bold uppercase tracking-widest text-neutral-400 mb-2">Played</h2>
-        <ul className="flex flex-col gap-1.5">
-          {history.map((h) => (
-            <li key={`${h.id}-${h.playedAt}`} className="flex items-center gap-2 px-1 py-1.5 text-sm">
-              <span className="min-w-0 flex-1 truncate"><span className="font-semibold">{h.name}</span> <span className="text-neutral-500">· {h.artists}</span></span>
-              <span className="text-xs text-neutral-400 shrink-0">{h.guestName}</span>
-              {spotifyUrl(h) && <a href={spotifyUrl(h)} target="_blank" rel="noreferrer" aria-label={`Open ${h.name} in Spotify`} className="p-1.5 text-neutral-400 hover:text-white shrink-0"><ExternalLink className="w-4 h-4" /></a>}
+        <Label>Played</Label>
+        <ul>
+          {history.map((h, n) => (
+            <li key={`${h.id}-${h.playedAt}`} className="flex min-h-[44px] items-center gap-3 py-1.5 text-[13.5px]" style={{ borderTop: n ? '1px solid var(--room-hair)' : 'none' }}>
+              <span className="min-w-0 flex-1 truncate"><span className="font-medium">{h.name}</span> <span className="text-[var(--room-dim)]">· {h.artists}</span></span>
+              <span className="shrink-0 text-[12px] text-[var(--room-faint)]">{h.guestName}</span>
+              {spotifyUrl(h) && <a href={spotifyUrl(h)} target="_blank" rel="noreferrer" aria-label={`Open ${h.name} in Spotify`} className="ui-word inline-flex min-h-[44px] items-center">Open</a>}
             </li>
           ))}
         </ul>

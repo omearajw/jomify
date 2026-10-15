@@ -11,7 +11,9 @@ import { qrSvg } from '../party/view';
 // room still there. The host's controls and the set-up are the open thing, at full.
 
 export default function PartyColumn({ onExpand }) {
-  const { code, guestCount, dormant } = useSlice(usePartyStore, ['code', 'guestCount', 'dormant']);
+  const { code, guestCount, dormant, queue, upNext } = useSlice(usePartyStore, ['code', 'guestCount', 'dormant', 'queue', 'upNext']);
+  // the requests in the order they will play, the one already lined up first
+  const coming = [...(upNext ? [{ ...upNext, lined: true }] : []), ...(queue || [])];
   const setCurrentView = useUserStore((s) => s.setCurrentView);
   const currentView = useUserStore((s) => s.currentView);
   const open = () => { if (currentView !== 'party') setCurrentView('party'); onExpand?.(); };
@@ -38,7 +40,17 @@ export default function PartyColumn({ onExpand }) {
           </div>
           <p className="room-mono mt-5 flex justify-between text-[var(--room-dim)]"><span>In the party</span><span>{guestCount}</span></p>
           <a href={partyScreenLink(code)} target="_blank" rel="noreferrer" className="room-mono mt-3 flex items-center gap-2 text-[var(--room-faint)] transition-colors hover:text-[var(--room-paper)]"><Monitor className="h-3.5 w-3.5" /> Wall screen</a>
-          <button type="button" onClick={open} className="mt-6 rounded-full bg-[var(--room-paper)] px-4 py-2 text-[13px] font-semibold text-[#0a0810]">Requests and controls</button>
+          <p className="room-mono mt-7 flex justify-between border-b border-[var(--room-hair)] pb-2 text-[var(--room-faint)]"><span>Coming up</span><span>{coming.length || ''}</span></p>
+          {coming.length === 0 && <p className="pt-3 text-[12.5px] text-[var(--room-faint)]">Nothing asked for yet.</p>}
+          {coming.slice(0, 8).map((i, n) => (
+            <div key={i.id || i.uri} className="flex items-center gap-3 py-2 text-[12.5px]" style={{ borderTop: n ? '1px solid var(--room-hair)' : 'none' }}>
+              <span className="room-mono w-8 shrink-0 text-[var(--room-faint)]">{i.lined ? 'Next' : n + (upNext ? 0 : 1)}</span>
+              <span className="min-w-0 flex-1"><span className="block truncate font-medium text-[var(--room-paper)]/90">{i.name}</span><span className="block truncate text-[11px] text-[var(--room-dim)]">{i.guestName || i.artists}</span></span>
+              {i.votes > 0 && <span className="room-mono shrink-0 text-[var(--room-dim)]">▲ {i.votes}</span>}
+            </div>
+          ))}
+          {coming.length > 8 && <p className="room-mono pt-2 text-[var(--room-faint)]">and {coming.length - 8} more</p>}
+          <button type="button" onClick={open} className="ui-pill mt-6">Requests and controls</button>
         </div>
       )}
     </div>

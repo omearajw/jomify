@@ -1,17 +1,22 @@
-import { useEffect, useState } from 'react';
-import { Music2, ChevronUp, Maximize, WifiOff } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { guestApi, partyLink } from '../../party/client';
 import { qrSvg, requestedBy } from '../../party/view';
 
-// A screen on the wall at a party: the join QR, what is playing and who asked for it, and what
-// comes next. No account, no buttons to press; it keeps its screen awake and takes a tap to go
-// fullscreen. Any browser will do: a TV, an old tablet, a spare laptop.
+// A screen on the wall at a party, on the room's language: the join QR on a paper tile, what is
+// playing and who asked for it, and the requests in the order they will play, the one already
+// lined up first. No account and nothing to press except a word for full screen, which appears
+// with the cursor when the mouse moves and goes again when it rests. Escape leaves full screen as
+// anywhere; a click no longer puts it back. It keeps its screen awake. Any browser will do.
 
 const POLL_MS = 3000;
+const IDLE_MS = 2500;
 
 export default function PartyScreen({ code }) {
   const [state, setState] = useState(null);
   const [gone, setGone] = useState('');
+  const [stirred, setStirred] = useState(true);
+  const [isFull, setIsFull] = useState(false);
+  const idle = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,73 +44,98 @@ export default function PartyScreen({ code }) {
     return () => { document.removeEventListener('visibilitychange', onVisible); lock?.release?.().catch(() => {}); };
   }, []);
 
-  const fullscreen = () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {}); };
+  useEffect(() => {
+    const onChange = () => setIsFull(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onChange);
+    idle.current = setTimeout(() => setStirred(false), IDLE_MS);
+    return () => { document.removeEventListener('fullscreenchange', onChange); clearTimeout(idle.current); };
+  }, []);
+  const stir = () => { setStirred(true); clearTimeout(idle.current); idle.current = setTimeout(() => setStirred(false), IDLE_MS); };
+  const toggleFull = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else document.documentElement.requestFullscreen?.().catch(() => {});
+  };
   const link = partyLink(code);
 
   if (gone) {
     return (
-      <div className="fixed inset-0 bg-black text-white flex flex-col items-center justify-center gap-4 text-center p-8">
-        <p className="text-7xl">🎉</p>
-        <h1 className="text-5xl font-extrabold">{gone}</h1>
-        <p className="text-2xl text-neutral-400">Thanks for coming.</p>
+      <div className="fixed inset-0 flex flex-col items-center justify-center gap-[2vmin] p-8 text-center" style={{ background: 'var(--room-ink)', color: 'var(--room-paper)', fontFamily: 'var(--font-room)' }}>
+        <p className="room-mono text-[var(--room-faint)]" style={{ fontSize: '1.6vmin' }}>Party {code}</p>
+        <h1 className="font-semibold tracking-[-0.025em]" style={{ fontSize: '6vmin' }}>{gone}</h1>
+        <p className="text-[var(--room-dim)]" style={{ fontSize: '2.6vmin' }}>Thanks for coming.</p>
       </div>
     );
   }
 
   const np = state?.nowPlaying;
   const by = requestedBy(np, state || {});
-  const next = (state?.queue || []).slice(0, 5);
+  // the request already handed to Spotify plays next, so it heads the list
+  const lined = state?.upNext && (!np || state.upNext.uri !== np.uri) ? [{ ...state.upNext, lined: true }] : [];
+  const next = [...lined, ...(state?.queue || [])].slice(0, 6);
 
   return (
-    <div onClick={fullscreen} className="fixed inset-0 overflow-hidden bg-black text-white select-none cursor-none">
-      {np?.image && <div className="absolute inset-0 bg-cover bg-center opacity-25 blur-3xl scale-110" style={{ backgroundImage: `url(${np.image})` }} />}
-      <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/50 to-black/80" />
-      <div className="relative h-full grid grid-cols-1 landscape:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-[4vmin] p-[5vmin]">
-        {/* Join */}
-        <section className="flex flex-col items-center justify-center gap-[2vmin] min-h-0">
-          <div className="bg-white rounded-[3vmin] p-[3vmin] shadow-2xl">
-            <div className="w-[34vmin] h-[34vmin] max-w-full [&>svg]:w-full [&>svg]:h-full" dangerouslySetInnerHTML={{ __html: qrSvg(link) }} />
+    <div
+      onPointerMove={stir}
+      className={`fixed inset-0 overflow-hidden select-none ${stirred ? '' : 'cursor-none'}`}
+      style={{ background: 'var(--room-ink)', color: 'var(--room-paper)', fontFamily: 'var(--font-room)' }}
+    >
+      {np?.image && <div aria-hidden="true" className="absolute inset-0 scale-110 bg-cover bg-center opacity-30 blur-3xl" style={{ backgroundImage: `url(${np.image})` }} />}
+      <div aria-hidden="true" className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, rgba(13,12,18,0.45) 0%, rgba(13,12,18,0.85) 100%)' }} />
+      <div className="relative grid h-full grid-cols-1 gap-[5vmin] p-[6vmin] landscape:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        {/* join */}
+        <section className="flex min-h-0 flex-col items-center justify-center gap-[2.4vmin]">
+          <div className="rounded-[1.2vmin] p-[2.4vmin]" style={{ background: 'var(--room-paper)' }}>
+            <div className="h-[34vmin] w-[34vmin] max-w-full [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: qrSvg(link) }} />
           </div>
-          <p className="text-[3.6vmin] font-extrabold text-center leading-tight">Scan to pick the music</p>
-          <p className="text-[2.4vmin] text-neutral-300 text-center">or go to <span className="font-semibold text-white">{link.replace(/^https?:\/\//, '')}</span></p>
-          <p className="font-mono text-[6vmin] font-extrabold tracking-[0.3em]">{code}</p>
+          <p className="text-center font-semibold tracking-[-0.02em]" style={{ fontSize: '3.4vmin' }}>Scan to pick the music</p>
+          <p className="text-center text-[var(--room-dim)]" style={{ fontSize: '2.2vmin' }}>or go to <span className="text-[var(--room-paper)]">{link.replace(/^https?:\/\//, '')}</span></p>
+          <p className="font-semibold tracking-[0.3em]" style={{ fontFamily: 'var(--font-mono)', fontSize: '6vmin' }}>{code}</p>
         </section>
 
-        {/* Now and next */}
-        <section className="flex flex-col justify-center gap-[4vmin] min-h-0 min-w-0">
-          <div className="flex items-center gap-[3vmin] min-w-0">
-            {np?.image ? <img src={np.image} alt="" className="w-[26vmin] h-[26vmin] rounded-[2vmin] object-cover shadow-2xl shrink-0" /> : <div className="w-[26vmin] h-[26vmin] rounded-[2vmin] bg-white/10 flex items-center justify-center shrink-0"><Music2 className="w-[10vmin] h-[10vmin] text-neutral-500" /></div>}
+        {/* now, and what follows */}
+        <section className="flex min-h-0 min-w-0 flex-col justify-center gap-[5vmin]">
+          <div className="flex min-w-0 items-center gap-[3vmin]">
+            <span className="h-[24vmin] w-[24vmin] shrink-0 overflow-hidden rounded-[1vmin]" style={{ background: 'rgba(241,239,233,0.06)' }}>
+              {np?.image && <img src={np.image} alt="" className="h-full w-full object-cover" />}
+            </span>
             <div className="min-w-0">
-              <p className="text-[2.2vmin] font-bold uppercase tracking-[0.3em] text-neutral-400">{np ? (np.paused ? 'Paused' : 'Now playing') : 'Waiting for music'}</p>
-              <p className="text-[6vmin] font-black leading-[1.05] tracking-tight line-clamp-2">{np?.name || '…'}</p>
-              <p className="text-[3.4vmin] text-neutral-300 truncate">{np?.artists || ''}</p>
-              {by && <p className="text-[3vmin] font-bold text-[var(--brand-mid)] mt-[1vmin] truncate">Requested by {by}</p>}
+              <p className="room-mono text-[var(--room-faint)]" style={{ fontSize: '1.7vmin' }}>{np ? (np.paused ? 'Paused' : 'Playing') : 'Waiting for music'}</p>
+              <p className="line-clamp-2 font-semibold leading-[1.05] tracking-[-0.025em]" style={{ fontSize: '5.6vmin' }}>{np?.name || '…'}</p>
+              <p className="room-mono mt-[1vmin] truncate text-[var(--room-dim)]" style={{ fontSize: '2vmin' }}>{np?.artists || ''}</p>
+              {by && <p className="mt-[1.2vmin] truncate text-[var(--room-paper)]" style={{ fontSize: '2.6vmin' }}>Asked for by {by}</p>}
             </div>
           </div>
           <div className="min-h-0">
-            <p className="text-[2.2vmin] font-bold uppercase tracking-[0.3em] text-neutral-400 mb-[1.5vmin]">{next.length ? 'Coming up' : 'Nothing requested yet'}</p>
+            <p className="room-mono pb-[1.2vmin] text-[var(--room-faint)]" style={{ fontSize: '1.7vmin', borderBottom: '1px solid var(--room-hair)' }}>{next.length ? 'Coming up' : 'Nothing asked for yet'}</p>
             {next.length === 0 ? (
-              <p className="text-[3vmin] text-neutral-400">{state?.party?.backing?.name ? `${state.party.backing.name} is playing until someone asks for a song.` : 'Be the first.'}</p>
+              <p className="pt-[2vmin] text-[var(--room-dim)]" style={{ fontSize: '2.6vmin' }}>{state?.party?.backing?.name ? `${state.party.backing.name} plays until someone asks for a song.` : 'Be the first.'}</p>
             ) : (
-              <ol className="flex flex-col gap-[1.4vmin]">
+              <ol>
                 {next.map((i, n) => (
-                  <li key={i.id} className="flex items-center gap-[2vmin] min-w-0">
-                    <span className="w-[4vmin] text-right text-[3vmin] font-black text-neutral-500 tabular-nums">{n + 1}</span>
-                    {i.image ? <img src={i.image} alt="" className="w-[6vmin] h-[6vmin] rounded-[0.8vmin] object-cover" /> : <div className="w-[6vmin] h-[6vmin] rounded-[0.8vmin] bg-white/10" />}
+                  <li key={i.id || i.uri} className="flex min-w-0 items-center gap-[2vmin] py-[1.2vmin]" style={{ borderTop: n ? '1px solid var(--room-hair)' : 'none' }}>
+                    <span className="room-mono w-[4vmin] text-right text-[var(--room-faint)]" style={{ fontSize: '1.8vmin' }}>{i.lined ? 'Next' : n + (lined.length ? 0 : 1)}</span>
+                    <span className="h-[6vmin] w-[6vmin] shrink-0 overflow-hidden rounded-[0.6vmin]" style={{ background: 'rgba(241,239,233,0.06)' }}>{i.image && <img src={i.image} alt="" className="h-full w-full object-cover" />}</span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[3vmin] font-bold truncate">{i.name}</span>
-                      <span className="block text-[2.2vmin] text-neutral-400 truncate">{i.artists} · {i.guestName}</span>
+                      <span className="block truncate font-medium" style={{ fontSize: '2.8vmin' }}>{i.name}</span>
+                      <span className="block truncate text-[var(--room-dim)]" style={{ fontSize: '2vmin' }}>{i.artists}{i.guestName ? ` · ${i.guestName}` : ''}</span>
                     </span>
-                    {i.votes > 0 && <span className="text-[2.6vmin] font-bold text-[var(--brand-mid)] flex items-center tabular-nums"><ChevronUp className="w-[3vmin] h-[3vmin]" />{i.votes}</span>}
+                    {i.votes > 0 && <span className="room-mono shrink-0 text-[var(--room-dim)]" style={{ fontSize: '2vmin' }}>▲ {i.votes}</span>}
                   </li>
                 ))}
               </ol>
             )}
           </div>
-          {state?.hostAway && <p className="text-[2vmin] text-amber-300 flex items-center gap-2"><WifiOff className="w-[2.4vmin] h-[2.4vmin]" /> The host's Jomify is away; requests still land.</p>}
+          {state?.hostAway && <p className="text-[var(--room-dim)]" style={{ fontSize: '2vmin' }}>The host's Jomify is away for the moment; requests still land.</p>}
         </section>
       </div>
-      <p className="absolute bottom-[2vmin] right-[2.5vmin] text-[1.6vmin] text-neutral-600 flex items-center gap-1"><Maximize className="w-[1.8vmin] h-[1.8vmin]" /> Tap for full screen</p>
+      <button
+        type="button"
+        onClick={toggleFull}
+        className="ui-word absolute bottom-[2.4vmin] right-[3vmin] transition-opacity"
+        style={{ opacity: stirred ? 1 : 0, pointerEvents: stirred ? 'auto' : 'none', transitionDuration: 'var(--room-mid)' }}
+      >
+        {isFull ? 'Leave full screen · Esc' : 'Full screen'}
+      </button>
     </div>
   );
 }

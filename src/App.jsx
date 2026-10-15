@@ -15,6 +15,7 @@ import PlaylistView from './views/Library/PlaylistView';
 import { startPlaybackController, playOn } from './services/spotify/playbackController';
 import { installHistorySync, syncSheetWithHistory } from './pwa/historySync';
 import { pathToFrame } from './pwa/routes';
+import { startProjectorFeed } from './views/ZenMode/projectorBridge';
 import { hydrateLibraryFromCache, startLibraryCache } from './services/libraryCache';
 import { resumePartyIfAny } from './party/conductor';
 import { isMobileViewport, useIsMobile } from './hooks/useMediaQuery';
@@ -214,6 +215,9 @@ function App() {
     ];
     return () => { unsubscribes.forEach((fn) => fn()); stop(); };
   }, [signedIn]);
+
+  // A projector window, if one is opened, is fed from here (it never talks to Spotify itself)
+  useEffect(() => (signedIn ? startProjectorFeed() : undefined), [signedIn]);
 
   // A party survives a reload: the phone that hosts it picks the baton back up
   useEffect(() => { if (signedIn && !isDemo()) resumePartyIfAny(); }, [signedIn]);

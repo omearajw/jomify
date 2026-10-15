@@ -668,6 +668,25 @@ lists Spotify's devices), this device's part as three words, and the check (Run 
 rows marked ok, note or fix). A party left open from earlier asks to be resumed (the pill) or
 ended (a word). *Why:* §9, built.
 
+**2026-10-15 — The party's other screens on the language, and the requests everywhere.** The
+guest page and the wall screen are on the room's language: ink and paper, mono labels, hairline
+rows, words with their hair (Ask, Take back, a vote as "▲ 2"), one pill (Join). The guests'
+requests show wherever the next music is shown: the wall screen, the Party column at half, and
+the room's own queue during a party ("Requests" above Spotify's "Up next"), the request already
+handed to Spotify first, as "Next". The wall screen no longer re-enters full screen on every
+click: a "Full screen" word appears with the cursor when the mouse moves, and Escape leaves as
+anywhere. *Why:* Jack, 15 Oct: "the guest webpage be on brand"; "the guest queue doesn't appear
+anywhere on the party screen"; "the full screen mode … i can't get out of."
+
+**2026-10-15 — The projector can have its own window.** For a laptop and a projector: the
+projector opens in a second window (/projector, from the party's set-up or the projector's own
+"Own window") that is dragged onto the projector's screen and made full screen there, while the
+laptop keeps Jomify and its controls. The window is a display only: it never plays, polls or
+renews the sign-in (a second renewal would rotate the token out from under the main window);
+playback, the party and the up-next list reach it from the main window over a BroadcastChannel.
+P opens the projector only from Zen now; in the room it opened from anywhere, black with the
+cursor hidden. A movement brings the cursor back with a line on how to leave. *Why:* Jack, 15 Oct.
+
 ## 10. Lyrics and Zen
 
 **2026-10-13 — Zen is the room with the chrome gone.** The lyrics live in the room (between the

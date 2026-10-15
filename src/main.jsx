@@ -6,6 +6,7 @@ import './index.css'
 import App from './App.jsx'
 import GuestParty from './views/Party/GuestParty.jsx'
 import PartyScreen from './views/Party/PartyScreen.jsx'
+import ProjectorWindow from './views/ZenMode/ProjectorWindow.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { installDebugLog } from './services/debugLog'
 import './services/wordLyrics'
@@ -18,11 +19,13 @@ installDebugLog()
 const partyPath = location.pathname.match(/^\/p\/([A-Za-z0-9]{4})(\/screen)?\/?$/)
 const guestCode = partyPath?.[1]
 const partyScreen = Boolean(partyPath?.[2])
+// /projector: the projector's own window, a display fed by the main window (projectorBridge.js)
+const projectorWindow = /^\/projector\/?$/.test(location.pathname)
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
-      {guestCode ? (partyScreen ? <PartyScreen code={guestCode.toUpperCase()} /> : <GuestParty code={guestCode.toUpperCase()} />) : <App />}
+      {projectorWindow ? <ProjectorWindow /> : guestCode ? (partyScreen ? <PartyScreen code={guestCode.toUpperCase()} /> : <GuestParty code={guestCode.toUpperCase()} />) : <App />}
     </ErrorBoundary>
   </StrictMode>,
 )

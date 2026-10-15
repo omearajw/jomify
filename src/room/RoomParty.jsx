@@ -10,6 +10,7 @@ import { togglePlay, setVolume } from '../services/spotify/playbackController';
 import { fetchDevices, transferPlayback } from '../services/spotify/api';
 import { requestedBy } from '../party/view';
 import { artUrl } from '../utils/images';
+import { openProjectorWindow } from '../views/ZenMode/projectorBridge';
 import { toast } from '../store/toastStore';
 
 // The host's view on the room's language (DESIGN.md §9): the open thing at full while the
@@ -263,6 +264,12 @@ export default function RoomParty() {
           {showPlaylists && <div className="mt-3 flex flex-wrap gap-5">{choices.map((p) => <Cover key={p.id} playlist={p} size={92} lit={p.id === backingId} onClick={() => changeBacking(p)} />)}</div>}
         </div>
         <Speaker party={party} op={op} />
+        <div className="py-3" style={{ borderTop: '1px solid var(--room-hair)' }}>
+          <div className="flex items-center justify-between gap-6">
+            <span className="min-w-0 text-[13px] text-[var(--room-dim)]">Projector <span className="text-[var(--room-faint)]">· its own window, to drag onto the projector's screen; this one keeps the controls</span></span>
+            <Word onClick={() => { if (!openProjectorWindow()) toast('The browser blocked the window. Allow pop-ups for Jomify and try again.', { tone: 'error' }); }} tip="Opens the projection in a separate window for a second screen">Open</Word>
+          </div>
+        </div>
         <ThisDevice />
         <Check code={code} />
       </div>

@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { useQueueStore } from '../store/queueStore';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
+import { usePartyStore } from '../store/partyStore';
 import { fetchQueue } from '../services/spotify/api';
 import { withoutQueued } from '../services/queueLogic';
 import { artUrl } from '../utils/images';
@@ -34,6 +35,12 @@ export default function QueueColumn({ compact = false, maxRows = 3 }) {
   // compact is the room's full-state column: as many rows as the column has room for (the
   // room measures and says), hand-added songs first
   const cap = Math.max(1, maxRows);
+  // During a party the guests' requests are what plays next, the one already lined up first
+  const partyCode = usePartyStore((s) => s.code);
+  const partyQueue = usePartyStore((s) => s.queue);
+  const partyNext = usePartyStore((s) => s.upNext);
+  const requests = partyCode ? [...(partyNext && !(now && partyNext.uri === now.uri) ? [{ ...partyNext, lined: true }] : []), ...(partyQueue || [])] : [];
+  const requestRows = compact ? requests.slice(0, cap) : requests.slice(0, 6);
   // Spotify's queue, asked for the moment a song changes, can still lead with the song that
   // has just started, and a hand-added song leaves Jomify's queue only once it is heard; the
   // playing song is never "up next", so it is dropped from the front of both
@@ -45,6 +52,22 @@ export default function QueueColumn({ compact = false, maxRows = 3 }) {
 
   return (
     <div className="min-w-0" data-control style={{ fontFamily: 'var(--font-room)' }}>
+      {partyCode && (
+        <div className="mb-5">
+          <p className="room-mono mb-4 flex justify-between text-[var(--room-dim)]"><span>Requests</span><span>{requests.length || ''}</span></p>
+          {requests.length === 0 && <p className="text-[13px] text-[var(--room-faint)]">Nothing asked for yet.</p>}
+          {requestRows.map((r, i) => (
+            <div key={r.id || r.uri} className="flex min-w-0 items-center gap-3 py-2 text-[13px]" style={{ borderTop: i ? '1px solid var(--room-hair)' : 'none', opacity: 1 - Math.min(0.5, i * 0.12) }}>
+              {r.image ? <img src={r.image} alt="" width="34" height="34" className="h-[34px] w-[34px] flex-none rounded-[4px] object-cover" draggable="false" /> : <span className="h-[34px] w-[34px] flex-none rounded-[4px] bg-white/5" />}
+              <div className="min-w-0 flex-1">
+                <b className="block truncate font-semibold text-[var(--room-paper)]">{r.name}</b>
+                <i className="block truncate text-[11px] not-italic text-[var(--room-dim)]">{r.lined ? 'next · ' : ''}{r.guestName || r.artists}</i>
+              </div>
+              {r.votes > 0 && <span className="room-mono shrink-0 text-[var(--room-dim)]">▲ {r.votes}</span>}
+            </div>
+          ))}
+        </div>
+      )}
       {(waiting.length > 0 || upcoming.length === 0) && <p className="room-mono mb-4 flex justify-between text-[var(--room-dim)]"><span>Up next</span><span>{waiting.length || ''}</span></p>}
       {shown.length === 0 && upcoming.length === 0 && <p className="text-[13px] text-[var(--room-faint)]">Nothing queued. Add songs from a song's menu.</p>}
       {shown.map((t, i) => (

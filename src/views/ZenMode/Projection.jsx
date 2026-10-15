@@ -11,6 +11,7 @@ import { solveHomography, homographyToMatrix3d, invertHomography, applyHomograph
 import { fitFontSize } from '../../utils/fitText';
 import AudioWaveform from '../../components/AudioWaveform';
 import { usePartyStore } from '../../store/partyStore';
+import { isProjectorWindow, requestQueue, openProjectorWindow } from './projectorBridge';
 import { partyLink } from '../../party/client';
 import { qrSvg, requestedBy } from '../../party/view';
 import {
@@ -167,9 +168,12 @@ function NextWidget({ track, box }) {
   useEffect(() => {
     if (!token) return undefined;
     let cancelled = false;
-    const load = () => fetchQueue(token)
-      .then((data) => { if (!cancelled) setUpNext((data?.queue || []).filter((t) => t && t.type !== 'episode').slice(0, 3)); })
-      .catch(() => {});
+    // the projector's own window asks the main window, which holds the sign-in
+    const load = () => (isProjectorWindow()
+      ? requestQueue().then((q) => { if (!cancelled && q) setUpNext(q.slice(0, 3)); })
+      : fetchQueue(token)
+        .then((data) => { if (!cancelled) setUpNext((data?.queue || []).filter((t) => t && t.type !== 'episode').slice(0, 3)); })
+        .catch(() => {}));
     load();
     const id = setInterval(load, 20000);
     return () => { cancelled = true; clearInterval(id); };
@@ -370,7 +374,14 @@ function Wall({ wall, items, track, vw, vh, editing, mode, selectedWallId, selec
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 const clamp01 = (n) => clamp(n, -0.25, 1.25);
 
-export default function Projection({ onClose }) {
+export default function Projection({ onClose, detached = false }) {
+  // Off the editor the cursor hides; a movement brings it back with a line on how to leave, for a
+  // couple of seconds, so a black screen is never a trap
+  const [stirred, setStirred] = useState(false);
+  const stirTimer = useRef(null);
+  const stir = () => { setStirred(true); clearTimeout(stirTimer.current); stirTimer.current = setTimeout(() => setStirred(false), 2500); };
+  useEffect(() => () => clearTimeout(stirTimer.current), []);
+  const goFullscreen = () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {}); else document.exitFullscreen().catch(() => {}); };
   const track = usePlayerStore((s) => s.playbackState?.track_window?.current_track || null);
   const { w: vw, h: vh } = useViewport();
   const [state, setState] = useState(loadProjectorState);
@@ -584,12 +595,17 @@ export default function Projection({ onClose }) {
 
   return (
     <div
-      className={`fixed inset-0 z-[9500] bg-black select-none overflow-hidden ${editing ? '' : 'cursor-none'}`}
-      onPointerMove={onPointerMove}
+      className={`fixed inset-0 z-[9500] bg-black select-none overflow-hidden ${editing || stirred ? '' : 'cursor-none'}`}
+      onPointerMove={(e) => { if (!editing) stir(); onPointerMove(e); }}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
       onPointerDown={(e) => { if (e.target === e.currentTarget) { setSelectedItemId(null); if (mode === 'walls') selectWall(null); } }}
     >
+      {!editing && stirred && (
+        <p className="pointer-events-none fixed bottom-6 left-1/2 z-[9600] -translate-x-1/2 rounded-[4px] px-3 py-2 text-[12.5px] text-[var(--room-paper)]" style={{ background: 'var(--room-solid)', boxShadow: '0 0 0 1px var(--room-hair)', fontFamily: 'var(--font-room)' }}>
+          {detached ? 'E to edit · Escape leaves full screen, again closes this window' : 'E to edit · Escape or P to leave the projector'}
+        </p>
+      )}
       {layout.walls.map((w) => (
         <Wall
           key={w.id}
@@ -641,7 +657,9 @@ export default function Projection({ onClose }) {
             <div className="flex items-center gap-1">
               <button type="button" onClick={() => setShowGrid((v) => !v)} aria-pressed={showGrid} title="Alignment grid (G)" className={`w-8 h-8 rounded-lg flex items-center justify-center ${showGrid ? 'bg-white text-black' : 'text-neutral-400 hover:text-white hover:bg-white/10'}`}><Grid3x3 className="w-4 h-4" /></button>
               <button type="button" onClick={() => setEditing(false)} title="Done (E)" className="w-8 h-8 rounded-lg flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/10"><Check className="w-4 h-4" /></button>
-              <button type="button" onClick={onClose} title="Leave the projector (P)" className="w-8 h-8 rounded-lg flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/10"><X className="w-4 h-4" /></button>
+              {!detached && <button type="button" onClick={() => { if (openProjectorWindow()) onClose(); }} title="Open in its own window, to drag onto the projector's screen" className="h-8 rounded-lg px-2 text-[11px] font-bold text-neutral-300 hover:text-white hover:bg-white/10">Own window</button>}
+              {detached && <button type="button" onClick={goFullscreen} title="Full screen on this display (Escape leaves it)" className="h-8 rounded-lg px-2 text-[11px] font-bold text-neutral-300 hover:text-white hover:bg-white/10">Full screen</button>}
+              <button type="button" onClick={onClose} title={detached ? 'Close the projector window' : 'Leave the projector (P or Escape)'} className="w-8 h-8 rounded-lg flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/10"><X className="w-4 h-4" /></button>
             </div>
           </div>
 

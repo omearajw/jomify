@@ -144,15 +144,18 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
   const reducedMotion = usePrefersReducedMotion();
 
   // Projection mapping onto a wall: hidden behind a small button and the P key
+  // Only from Zen itself. In the room this component is always mounted under the layer, and P
+  // there used to open a full-screen black projector from anywhere, with the cursor hidden.
   const [projecting, setProjecting] = useState(false);
   useEffect(() => {
     const onKey = (e) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (mode !== 'zen' && !projecting) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target?.isContentEditable) return;
       if (e.key.toLowerCase() === 'p' && !e.metaKey && !e.ctrlKey && !e.altKey) setProjecting((v) => !v);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, []);
+  }, [projecting, mode]);
 
   // Remembered with the other playback settings, so Zen opens the way it was left
   const showLyrics = Boolean(playbackSettings?.zenLyrics);
