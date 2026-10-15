@@ -528,6 +528,10 @@ setup. *Why:* Jack, 14 Oct: "7 slots that songs can go in, so you can leave empt
 "greying out songs that have been added"; "the phrase 'Set up' doesn't quite describe what it is
 that it does"; "it also needs to be included in the back button."
 
+**2026-10-15 — The batch holds its place.** While building, the batch sticks to the top of the
+column and only the pool moves when you scroll, so the seven slots are always in view to drop
+onto. *Why:* Jack, 15 Oct.
+
 **2026-10-14 — The batch shifts, a selection drags as one, the pool plays and reorders, and the
 playlist has a face.** A song dropped on a slot takes that slot and the songs between its old
 slot and the new one move one along, empties included (the seven slots are a list of seven,
@@ -715,6 +719,18 @@ Inter Tight to read, JetBrains Mono for facts; one tempo; one row design; rare b
 light behind everything is Zen's real stage — its ribbons in the cover's palette, the glass
 lyrics with the word fill — not the page's stand-in canvas; the room *is* Zen with its chrome on.
 Zen itself is then the same room with the chrome faded, as §10 says.
+
+**2026-10-15 — The rail stays.** The launcher no longer hides until reached for: it is always at
+the left edge while the room has its chrome, and the room at rest starts after it. Zen, which
+takes the chrome away, still hides it. *Why:* Jack, 15 Oct: "the navigation bar should stick."
+
+**2026-10-15 — Tooltips, one for the whole app.** After the pointer rests on a control for about
+half a second, a small solid plane names it: an icon-only control by its accessible name, a
+control with a `title` by that (the native tooltip is held back), and a word whose meaning is
+not plain from the word (Skip, Undo, Move on after filing, Find songs, Check playlists, Pause
+requests, a Seven's three faces) by a hint written for it. A word that says what it does gets
+no tooltip. Mouse and pen only; a press, a key or a scroll hides it. *Why:* Jack, 15 Oct:
+"Tooltips would be ace."
 
 **2026-10-14 — A word you can press carries a hair under it.** Words (`.ui-word`) and labels
 (`.room-mono`) were both mono caps, told apart by colour alone, and on a surface with many of

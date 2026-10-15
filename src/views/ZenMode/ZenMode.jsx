@@ -394,7 +394,7 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
           className={roomLayout === 'full'
             ? 'absolute right-0 top-0 z-10 flex h-full w-[24%] flex-col px-8 py-8'
             : 'relative z-10 flex h-full w-full items-center gap-[4%]'}
-          style={roomLayout === 'full' ? undefined : { paddingLeft: roomLayout === 'half' ? 'calc(58px + 300px + 4%)' : '5%', paddingRight: '5%' }}
+          style={roomLayout === 'full' ? undefined : { paddingLeft: roomLayout === 'half' ? 'calc(58px + 300px + 4%)' : (inRoom && !zenGhost ? 'calc(58px + 4%)' : '5%'), paddingRight: '5%' }}
         >
           {/* Every part carries `layout`: when the layout changes (rest, half, full) the parts
               measure their old and new places and travel between them, so the art, the song, the

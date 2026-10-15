@@ -5,6 +5,9 @@ import { useEffect, useRef, useState } from 'react';
 // reach (the pointer held near the edge, or a drag of real distance from it), never on a pointer
 // passing through; it closes on a click elsewhere or on the pointer leaving the rail for a
 // while, never because it drifted off a pixel. The rail never moves the room.
+// Since 15 Oct it is pinned: always there while the room has its chrome (Jack: "the navigation
+// bar should stick"), and only Zen, which takes the chrome away, hides it. The reach is kept for
+// Zen-less cases that pass pinned={false}.
 
 const EDGE_PX = 48;        // how close to the edge counts as reaching; nothing lives there to open by accident
 const HOLD_MS = 220;       // how long the pointer must stay there
@@ -20,12 +23,12 @@ const RAIL_ITEMS = [
   { id: 'account', label: 'Settings' }
 ];
 
-export default function Rail({ open, held = false, active, onPick, onOpen }) {
+export default function Rail({ open, held = false, pinned = false, active, onPick, onOpen }) {
   const [reached, setReached] = useState(false);
   const holdTimer = useRef(null);
   const leaveTimer = useRef(null);
   const railRef = useRef(null);
-  const shown = open || held || reached;
+  const shown = pinned || open || held || reached;
 
   useEffect(() => {
     const clearHold = () => { clearTimeout(holdTimer.current); holdTimer.current = null; };

@@ -180,7 +180,7 @@ export default function Room({ children, header }) {
       </div>
 
       <Layer state={layer} onState={setLayer} header={header} head={{ back: backOverride ? { name: backOverride.name, go: goBackInRoom } : backFrame ? { name: nameOf(backFrame.frame), go: goBackInRoom } : null, here: OPEN_VIEWS.has(currentView) ? null : currentView === 'unadded' ? 'Unadded' : currentView === 'party' ? 'Party' : currentView === 'sevens' ? 'Sevens' : 'Library' }} pageKey={`${currentView}:${activePlaylistId || currentAlbumId || currentArtistId || ''}:${pageSuffix}`} tree={List ? <List onExpand={expand} onSlash={more} /> : null}>{roomPlaylist ? <Suspense fallback={null}><RoomPlaylist /></Suspense> : isSeven ? <Suspense fallback={null}><RoomSeven /></Suspense> : currentView === 'liked-songs' ? <Suspense fallback={null}><RoomLikedSongs /></Suspense> : currentView === 'library' ? <Suspense fallback={null}><RoomLibrary /></Suspense> : currentView === 'browse' ? <Suspense fallback={null}><RoomSearch /></Suspense> : currentView === 'sevens' ? <Suspense fallback={null}><RoomSevensPage /></Suspense> : currentView === 'unadded' ? <Suspense fallback={null}><RoomUnadded /></Suspense> : currentView === 'party' ? <Suspense fallback={null}><RoomParty /></Suspense> : children}</Layer>
-      <Rail open={layer !== 'closed'} active={active} onPick={pick} onOpen={open} />
+      <Rail open={layer !== 'closed'} pinned={!isZenMode} active={active} onPick={pick} onOpen={open} />
       {currentView === 'unadded' && <UnaddedEngine key={suggestionsAttempt} pileId={pileId} />}
     </div>
   );
