@@ -7,6 +7,7 @@ import { formatTime } from '../utils/formatTime';
 import { rowButtonProps } from '../utils/a11y';
 import { isSameTrack, isUnplayable, unplayableWhy, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import LikeButton from '../components/LikeButton';
+import Artists from './Artists';
 
 // A Seven on the room's language (DESIGN.md §7): two faces. Building, when it is your turn:
 // the batch on the left as rows on hairlines with "Send the batch · n of 7" as the one pill, the
@@ -194,7 +195,7 @@ export default function RoomSeven() {
         <span className="h-[32px] w-[32px] shrink-0 overflow-hidden rounded-[3px] bg-white/5">{track.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 32)} alt="" width="32" height="32" loading="lazy" decoding="async" draggable="false" className="h-full w-full object-cover" />}</span>
         <span className="min-w-0 flex-1">
           <span className={`block truncate font-medium ${current ? 'text-[var(--room-paper)]' : 'text-[var(--room-paper)]/90'}`}>{track.name}</span>
-          <span className="block truncate text-[11.5px] text-[var(--room-dim)]">{(track.artists || []).map((a) => a.name).join(', ')}</span>
+          <Artists artists={track.artists} inRow className="block truncate text-[11.5px] text-[var(--room-dim)]" />
         </span>
         {mark ? <Mono className="shrink-0 text-[var(--room-faint)]">{mark}</Mono> : <Mono className="shrink-0 text-[var(--room-faint)] opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100">Add</Mono>}
       </div>
@@ -234,7 +235,7 @@ export default function RoomSeven() {
           <span className="h-[32px] w-[32px] shrink-0 overflow-hidden rounded-[3px] bg-white/5">{track.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 32)} alt="" width="32" height="32" draggable="false" className="h-full w-full object-cover" />}</span>
           <span className="min-w-0 flex-1">
             <span className="block truncate font-medium text-[var(--room-paper)]">{track.name}</span>
-            <span className="block truncate text-[11.5px] text-[var(--room-dim)]">{(track.artists || []).map((a) => a.name).join(', ')}</span>
+            <Artists artists={track.artists} inRow className="block truncate text-[11.5px] text-[var(--room-dim)]" />
           </span>
           <button type="button" onClick={(e) => { e.stopPropagation(); removeAt(track); }} aria-label={`Remove ${track.name} from the batch`} className="grid h-6 w-6 place-items-center text-[var(--room-faint)] opacity-0 hover:text-[var(--room-paper)] group-hover:opacity-100 pointer-coarse:h-10 pointer-coarse:w-10 pointer-coarse:opacity-100"><X className="h-3.5 w-3.5" /></button>
         </>

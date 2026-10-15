@@ -7,6 +7,7 @@ import { artUrl } from '../utils/images';
 import { rowButtonProps } from '../utils/a11y';
 import { isSameTrack, isUnplayable, unplayableWhy, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import { TRACKS_DRAG_TYPE } from './LibraryTree';
+import Artists from './Artists';
 
 // Liked Songs on the room's language: the same head and rows as the open playlist
 // (RoomPlaylist.jsx), on the Liked Songs hook. The one list that is not a playlist.
@@ -80,7 +81,7 @@ export default function RoomLikedSongs() {
               <span className="h-[34px] w-[34px] overflow-hidden rounded-[3px] bg-white/5">{track.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 34)} alt="" width="34" height="34" loading="lazy" decoding="async" draggable="false" className="h-full w-full object-cover" />}</span>
               <span className="min-w-0 pr-3">
                 <span className={`block truncate ${current ? 'font-semibold text-[var(--room-paper)]' : 'font-medium text-[var(--room-paper)]/90'}`}>{track.name}</span>
-                <span className="block truncate text-[11.5px] text-[var(--room-dim)]">{track.artists.map((a) => a.name).join(', ')}</span>
+                <Artists artists={track.artists} inRow className="block truncate text-[11.5px] text-[var(--room-dim)]" />
               </span>
               <span className="min-w-0 truncate pr-3 text-[var(--room-dim)] @max-md:hidden">
                 {track.album?.id ? <button type="button" onClick={(e) => { e.stopPropagation(); navigateToAlbum(track.album.id); }} className="block w-full truncate text-left hover:text-[var(--room-paper)]">{track.album.name}</button> : track.album?.name}

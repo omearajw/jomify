@@ -10,6 +10,7 @@ import { artUrl } from '../utils/images';
 import { isSameTrack } from '../utils/spotifyUri';
 import { formatTime } from '../utils/formatTime';
 import { usePlayingFrom } from '../hooks/usePlayingFrom';
+import Artists from './Artists';
 
 // The room's right-hand column: Jomify's own queue (services/queueConductor.js), always on
 // screen on the Mac. Rows on hairlines, the one row design the whole room uses; a remove at the
@@ -80,7 +81,7 @@ export default function QueueColumn({ compact = false, maxRows = 3 }) {
           {t.album?.images?.[0] && <img src={artUrl(t.album.images, 34)} alt="" width="34" height="34" loading="lazy" decoding="async" className="h-[34px] w-[34px] flex-none rounded-[4px] object-cover" draggable="false" />}
           <div className="min-w-0 flex-1">
             <b className="block truncate font-semibold text-[var(--room-paper)]">{t.name}</b>
-            <i className="block truncate text-[11px] not-italic text-[var(--room-dim)]">{(t.artists || []).map((a) => a.name).join(', ')}</i>
+            <Artists artists={t.artists} inRow className="block truncate text-[11px] text-[var(--room-dim)]" />
           </div>
           {!compact && <span className="room-mono text-[var(--room-faint)]">{formatTime(t.duration_ms)}</span>}
           <button type="button" onClick={() => remove(t.key)} aria-label={`Remove ${t.name} from the queue`} className="grid h-6 w-6 place-items-center rounded-full text-[var(--room-faint)] opacity-0 transition-opacity hover:text-[var(--room-paper)] group-hover:opacity-100 pointer-coarse:opacity-100">
@@ -96,7 +97,7 @@ export default function QueueColumn({ compact = false, maxRows = 3 }) {
           {t.album?.images?.[0] && <img src={artUrl(t.album.images, 34)} alt="" width="34" height="34" loading="lazy" decoding="async" className="h-[34px] w-[34px] flex-none rounded-[4px] object-cover" draggable="false" />}
           <div className="min-w-0 flex-1">
             <b className="block truncate font-medium text-[var(--room-paper)]">{t.name}</b>
-            <i className="block truncate text-[11px] not-italic text-[var(--room-dim)]">{(t.artists || []).map((a) => a.name).join(', ')}</i>
+            <Artists artists={t.artists} inRow className="block truncate text-[11px] text-[var(--room-dim)]" />
           </div>
         </div>
       ))}

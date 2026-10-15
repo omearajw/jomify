@@ -6,6 +6,7 @@ import { isSameTrack, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import ConfirmDialog from '../components/ConfirmDialog';
 import CheckPlaylistsDialog from './CheckPlaylistsDialog';
 import { useUnaddedStore, cardOf, isDecided, waitingCount, playFrom, fileInto, findSongs, applyPlan, dismissPlan, retrySuggestions, blocked, blockedWhy } from './unadded';
+import Artists from './Artists';
 
 // The Unadded layer's list (DESIGN.md §8): the pile, in its own order, each song with the two
 // playlists the suggestions rank highest as words, for a quick filing without playing it. A row
@@ -52,7 +53,7 @@ export default function UnaddedColumn({ onExpand }) {
         <span className="h-[32px] w-[32px] shrink-0 overflow-hidden rounded-[3px] bg-white/5">{track.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 32)} alt="" width="32" height="32" loading="lazy" decoding="async" draggable="false" className="h-full w-full object-cover" />}</span>
         <span className="min-w-0 flex-1">
           <span className={`block truncate font-medium ${isCard ? 'text-[var(--room-paper)]' : 'text-[var(--room-paper)]/90'}`}>{track.name}</span>
-          <span className="block truncate text-[11.5px] text-[var(--room-dim)]">{(track.artists || []).map((a) => a.name).join(', ')}</span>
+          <Artists artists={track.artists} inRow className="block truncate text-[11.5px] text-[var(--room-dim)]" />
           {inLists.length > 0 && <Mono className="mt-1 block truncate text-[var(--room-faint)]">in {inLists.map(nameOf).join(', ')}</Mono>}
           {inLists.length === 0 && skipped.has(uri) && <Mono className="mt-1 block text-[var(--room-faint)]">skipped</Mono>}
           {cannot && <span className="mt-1 block text-[11.5px] text-[var(--room-faint)]">{blockedWhy(track)}</span>}

@@ -12,6 +12,7 @@ import { requestedBy } from '../party/view';
 import { artUrl } from '../utils/images';
 import { openProjectorWindow } from '../views/ZenMode/projectorBridge';
 import { toast } from '../store/toastStore';
+import Artists from './Artists';
 
 // The host's view on the room's language (DESIGN.md §9): the open thing at full while the
 // column holds the party's facts (code, QR, link, who is in). Here: the party's words (share,
@@ -194,7 +195,7 @@ export default function RoomParty() {
         <span className="h-[56px] w-[56px] shrink-0 overflow-hidden rounded-[4px] bg-white/5">{track?.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 56)} alt="" draggable="false" className="h-full w-full object-cover" />}</span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] font-semibold text-[var(--room-paper)]">{track?.name || 'Nothing yet'}</span>
-          <span className="block truncate text-[12px] text-[var(--room-dim)]">{(track?.artists || []).map((a) => a.name).join(', ')}{fromGuest ? ` · asked for by ${fromGuest}` : ''}</span>
+          <span className="block truncate text-[12px] text-[var(--room-dim)]"><Artists artists={track?.artists} />{fromGuest ? ` · asked for by ${fromGuest}` : ''}</span>
           {upNext && (!track || upNext.uri !== track.uri) && <Mono className="mt-1 truncate text-[var(--room-faint)]">Next · {upNext.name} · {upNext.guestName}</Mono>}
         </span>
         <span className="flex shrink-0 items-center gap-5 @max-md:mt-2 @max-md:w-full @max-md:flex-wrap @max-md:justify-center @max-md:gap-x-10 @max-md:gap-y-5" data-control>

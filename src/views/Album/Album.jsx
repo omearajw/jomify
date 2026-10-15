@@ -1,161 +1,18 @@
-import { useState, useEffect } from 'react';
-import { useUserStore } from '../../store/userStore';
-import { useSlice, usePlaybackSummary } from '../../store/selectors';
-import { playOn, setShuffle } from '../../services/spotify/playbackController';
-
-const randomIndex = (count) => Math.floor(Math.random() * count);
 import MoreButton from '../../components/MoreButton';
 import { SkeletonHeader, SkeletonRows } from '../../components/Skeleton';
-import { playContext, checkTracksLiked, fetchMoreTracks, spotifyFetch, saveAlbumToLibrary, unsaveAlbum } from '../../services/spotify/api';
-import { formatTime, formatDuration } from '../../utils/formatTime';
+import { formatTime } from '../../utils/formatTime';
 import { Plus, Check, Loader2, Disc3, Play, Shuffle } from 'lucide-react';
-
-const ALBUM_KIND = { album: 'Album', single: 'Single', compilation: 'Compilation' };
-
-// Spotify sends the date at the precision it has ("2015", "2015-07" or "2015-07-17")
-const formatReleaseDate = (date, precision) => {
-  if (!date) return '';
-  const [y, m, d] = date.split('-').map(Number);
-  const p = precision || (d ? 'day' : m ? 'month' : 'year');
-  if (p === 'year' || !m) return String(y);
-  const dt = new Date(Date.UTC(y, m - 1, d || 1));
-  return dt.toLocaleDateString(undefined, p === 'month' ? { year: 'numeric', month: 'long', timeZone: 'UTC' } : { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
-};
 import LikeButton from '../../components/LikeButton';
 import TrackArtists from '../../components/TrackArtists';
 import { rowButtonProps } from '../../utils/a11y';
 import { isSameTrack, isUnplayable, unplayableWhy } from '../../utils/spotifyUri';
-import { toast } from '../../store/toastStore';
+import { useAlbumView, ALBUM_KIND, formatReleaseDate } from './useAlbumView';
 
 export default function Album() {
-  const { token, setLikedTracks, currentAlbumId, setContextMenu, albums, setAlbums, removeAlbumFromLibrary } = useSlice(useUserStore, ['token', 'setLikedTracks', 'currentAlbumId', 'setContextMenu', 'albums', 'setAlbums', 'removeAlbumFromLibrary']);
-  const { currentPlayingTrack } = usePlaybackSummary();
-  const [album, setAlbum] = useState(null);
-  const [tracks, setTracks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  // A saved album's header is known before Spotify answers
-  const summary = albums.find((a) => a.id === currentAlbumId) || null;
-  const shown = album || (loading ? summary : null);
-  const [error, setError] = useState('');
-  // Set when a later page of tracks fails: what loaded stays up, with a way to fetch the rest
-  const [restError, setRestError] = useState('');
-
-
-  const [reloadNonce, setReloadNonce] = useState(0);
-  useEffect(() => {
-    if (!token || !currentAlbumId) return;
-    let cancelled = false;
-
-    const fetchAlbumData = async () => {
-      try {
-        setLoading(true);
-        setError('');
-
-        // An error payload is truthy, so without this check a 404 rendered a header full of
-        // `undefined` instead of "not found".
-        const albumRes = await spotifyFetch(`https://api.spotify.com/v1/albums/${currentAlbumId}?market=from_token`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (!albumRes.ok) {
-          throw new Error(albumRes.status === 404 ? 'Album not found' : `Spotify returned ${albumRes.status}`);
-        }
-        const albumData = await albumRes.json();
-        if (cancelled) return;
-        setAlbum(albumData);
-
-        // The album object carries the first 50 tracks; long compilations and deluxe editions
-        // have more, and used to be silently truncated. A later page failing used to replace the
-        // whole album, header included, with an error; now what arrived stays up.
-        const allTracks = [...(albumData.tracks?.items || [])];
-        setTracks(allTracks);
-        setRestError('');
-        let nextUrl = albumData.tracks?.next;
-        while (nextUrl) {
-          let page;
-          try { page = await fetchMoreTracks(token, nextUrl); }
-          catch (err) {
-            if (cancelled) return;
-            console.error('Album tracks stopped loading partway:', err);
-            setRestError(err?.message === 'RATE_LIMITED' ? 'Spotify rate-limited the rest of the tracks.' : "Couldn't load the rest of the tracks.");
-            break;
-          }
-          allTracks.push(...(page.items || []));
-          nextUrl = page.next;
-        }
-        if (cancelled) return;
-        setTracks([...allTracks]);
-
-        // Check liked status
-        const ids = allTracks.map(track => track.id).filter(Boolean);
-        if (ids.length > 0) {
-          checkTracksLiked(token, ids).then(setLikedTracks).catch(console.error);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        console.error('Failed to fetch album data:', err);
-        setAlbum(null);
-        setError(err.message || 'Failed to load album');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    fetchAlbumData();
-    return () => { cancelled = true; };
-  }, [token, currentAlbumId, setLikedTracks, reloadNonce]);
-
-  // Album context, offset at the clicked row: playback carries on through the album and Spotify
-  // shows "playing from <album>"
-  const country = useUserStore((s) => s.profile?.country);
-  // Only once every track is in, so a long compilation never shows half its length
-  const totalLength = !loading && !restError && tracks.length > 0 && tracks.length >= (album?.total_tracks || 0)
-    ? formatDuration(tracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0))
-    : '';
-  const discCount = tracks.reduce((max, t) => Math.max(max, t.disc_number || 1), 1);
-  const handleTrackPlay = (trackUri) => {
-    if (!token) return;
-    const index = Math.max(0, tracks.findIndex(t => t.uri === trackUri));
-    if (isUnplayable(tracks[index], country)) { toast(`${unplayableWhy(tracks[index], country)}.`); return; }
-    // The tapped song shows at once rather than after Spotify's next report
-    const track = tracks[index] ? { ...tracks[index], album: tracks[index].album || album } : null;
-    playOn((deviceId) => playContext(token, deviceId, `spotify:album:${currentAlbumId}`, index), { track });
-  };
-
-  // --- SAVE / UNSAVE ---
-  // The helper existed in api.js from the start but nothing ever called it; there was no way to
-  // save an album from its own page.
-  const [saving, setSaving] = useState(false);
-  // Judged from whatever is on screen, so a saved album reads as saved while its full record
-  // is still loading, and the button works in that time too
-  const isSaved = Boolean(shown) && (albums || []).some(a => a.id === shown.id);
-
-  const handleToggleSave = async () => {
-    if (!token || !shown || saving) return;
-    setSaving(true);
-    try {
-      if (isSaved) {
-        await unsaveAlbum(token, shown.id);
-        removeAlbumFromLibrary(shown.id);
-        toast(`Removed "${shown.name}" from your library`, { tone: 'info' });
-      } else {
-        await saveAlbumToLibrary(token, shown.id);
-        setAlbums([...(albums || []), {
-          id: shown.id,
-          name: shown.name,
-          images: shown.images,
-          artists: shown.artists,
-          type: 'album',
-          total_tracks: shown.total_tracks
-        }]);
-        toast(`Saved "${shown.name}" to your library`, { tone: 'success' });
-      }
-    } catch (err) {
-      console.error('Failed to update saved album:', err);
-      toast(isSaved ? "Couldn't remove it from your library" : "Couldn't save it to your library", { tone: 'error' });
-    } finally {
-      setSaving(false);
-    }
-  };
+  const {
+    currentAlbumId, setContextMenu, currentPlayingTrack, country, shown, tracks, loading, error, restError, retry,
+    totalLength, discCount, handleTrackPlay, playAlbum, shuffleAlbum, isSaved, saving, handleToggleSave
+  } = useAlbumView();
 
   if (loading && !shown) {
     return (
@@ -202,7 +59,7 @@ export default function Album() {
             <div className="mt-3 md:mt-4 flex flex-wrap items-center gap-2 md:gap-3">
             <button
               type="button"
-              onClick={() => playOn((deviceId) => playContext(token, deviceId, `spotify:album:${shown.id}`, 0))}
+              onClick={playAlbum}
               aria-label={`Play ${shown.name}`}
               className="w-11 h-11 md:w-12 md:h-12 bg-brand-gradient text-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-xl shrink-0"
             >
@@ -210,7 +67,7 @@ export default function Album() {
             </button>
             <button
               type="button"
-              onClick={() => playOn(async (deviceId) => { await setShuffle(true, deviceId); await playContext(token, deviceId, `spotify:album:${shown.id}`, randomIndex(Math.max(1, shown.total_tracks || tracks.length || 1))); })}
+              onClick={shuffleAlbum}
               aria-label="Shuffle play"
               title="Shuffle play"
               className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center text-neutral-300 hover:text-white hover:bg-white/10 transition-colors"
@@ -249,7 +106,7 @@ export default function Album() {
           {restError && (
             <p className="text-red-400 text-xs font-medium mb-3 flex items-center gap-3">
               {restError}
-              <button type="button" onClick={() => setReloadNonce((n) => n + 1)} className="underline hover:text-white transition-colors">Try again</button>
+              <button type="button" onClick={retry} className="underline hover:text-white transition-colors">Try again</button>
             </p>
           )}
           <div className="flex flex-col space-y-1">

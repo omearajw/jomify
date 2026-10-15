@@ -21,6 +21,7 @@ import { usePartyStore } from '../../store/partyStore';
 import { requestedBy } from '../../party/view';
 import { log } from '../../services/debugLog';
 import { initialLite, measureFrames, rememberLite, zenEffectsSetting, SLOW_FRAME_MS } from './zenEffects';
+import Artists from '../../room/Artists';
 
 // Zen mode: a calm, cinematic room for the song. A WebGL stage draws slow light in the cover's
 // colours and the lyrics as glass that bends it, one line at a time; this component is the
@@ -426,7 +427,7 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
               <motion.div layout="position" transition={ROOM_LAYOUT}>
               <motion.div key={trackId} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE }}>
                 <h1 className="m-0 font-semibold leading-none tracking-[-0.025em] [text-wrap:balance]" style={{ fontSize: roomLayout === 'full' ? 17 : roomLayout === 'half' ? 26 : 36, transition: 'font-size var(--room-slow) var(--room-ease)' }}>{currentTrack.name}</h1>
-                <p className={`room-mono text-[var(--room-dim)] ${roomLayout === 'full' ? 'mt-1.5' : 'mt-3'}`}>{artists}</p>
+                <Artists artists={currentTrack?.artists} className={`room-mono block text-[var(--room-dim)] ${roomLayout === 'full' ? 'mt-1.5' : 'mt-3'}`} />
                 {requestedByGuest && <p className="room-mono mt-2 text-[var(--room-faint)]">Requested by {requestedByGuest}</p>}
               </motion.div>
               </motion.div>

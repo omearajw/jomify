@@ -35,7 +35,9 @@ export function useRoomState() {
   const pileId = pileIdOf(playlists);
   const suggestionsAttempt = useUnaddedStore((s) => s.suggestionsAttempt);
   const roomPlaylist = currentView === 'playlist' && !isSeven;
-  const [layer, setLayer] = useState('closed');
+  // Opened at an open thing's own address (a shared link, or a reload on an album) the layer is
+  // already up on it; opened at / the room is at rest, as before
+  const [layer, setLayer] = useState(() => (typeof location !== 'undefined' && location.pathname !== '/' && OPEN_VIEWS.has(useUserStore.getState().currentView) ? 'full' : 'closed'));
   // the list the view belongs to, from the start too (a reload lands on the view's own list)
   const [list, setList] = useState(() => (isSeven ? 'sevens' : LIST_OF_VIEW[currentView] || 'library'));
   // Back (DESIGN.md §5, 14 Oct): the history of open things only, never of modes, the library

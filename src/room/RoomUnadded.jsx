@@ -1,11 +1,14 @@
 import { useState } from 'react';
+import { Play, Pause } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
-import { useSlice } from '../store/selectors';
+import { useSlice, usePlaybackSummary } from '../store/selectors';
+import { togglePlay } from '../services/spotify/playbackController';
 import { artUrl } from '../utils/images';
-import { TRACK_DRAG_TYPE } from '../utils/spotifyUri';
+import { TRACK_DRAG_TYPE, isSameTrack } from '../utils/spotifyUri';
 import { tagCache } from '../services/tags';
 import { MOOD_WORDS } from '../utils/playlistSuggestions';
-import { useUnaddedStore, cardOf, waitingCount, fileInto, takeOut, undo, skip, retrySuggestions, blocked, blockedWhy } from './unadded';
+import { useUnaddedStore, cardOf, waitingCount, fileInto, takeOut, undo, skip, retrySuggestions, blocked, blockedWhy, playFrom } from './unadded';
+import Artists from './Artists';
 
 // The Unadded mode's open thing (DESIGN.md §8): the targets. The playing song is the card, so
 // it is already in the room's column on the right; here is where it can go: the check playlists
@@ -27,6 +30,8 @@ export default function RoomUnadded() {
   const setSettings = useUserStore((s) => s.setSortModeSettings);
   const card = cardOf(st);
   const track = card?.track || null;
+  const { currentPlayingTrack, isCurrentTrackPaused } = usePlaybackSummary();
+  const cardPlaying = Boolean(track && isSameTrack(track, currentPlayingTrack));
   const waiting = waitingCount(st);
   const [over, setOver] = useState(null);
   void skips;
@@ -79,8 +84,22 @@ export default function RoomUnadded() {
       <Mono className="text-[var(--room-faint)]">Unadded · {st.loading && !st.pile.length ? 'loading the pile' : `${waiting} waiting`}{st.targets.length ? ` · ${st.targets.length} targets` : ''}</Mono>
       {track ? (
         <>
-          <h1 className="mt-2 truncate text-[30px] @max-md:text-[24px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">{track.name}</h1>
-          <Mono className="mt-2 text-[var(--room-dim)]">{(track.artists || []).map((a) => a.name).join(', ')}{track.album?.name ? ` · ${track.album.name}` : ''}</Mono>
+          {/* one column (the phone): the room with the card and its controls is under the sheet, so
+              the card's cover and a play button come up here; Play plays the card if something
+              else is on */}
+          <div className="mt-2 flex items-center gap-4">
+            <span className="hidden h-14 w-14 shrink-0 overflow-hidden rounded-[4px] bg-white/5 @max-md:block">{track.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 56)} alt="" draggable="false" className="h-full w-full object-cover" />}</span>
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-[30px] @max-md:text-[22px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">{track.name}</h1>
+              <Mono className="mt-2 truncate text-[var(--room-dim)]"><Artists artists={track.artists} />{track.album?.name ? ` · ${track.album.name}` : ''}</Mono>
+            </div>
+            {!blocked(track) && (
+              <button type="button" onClick={() => (cardPlaying ? togglePlay() : playFrom(track.uri))} aria-label={cardPlaying && !isCurrentTrackPaused ? 'Pause' : `Play ${track.name}`}
+                className="hidden h-12 w-12 shrink-0 place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] active:scale-95 @max-md:grid">
+                {cardPlaying && !isCurrentTrackPaused ? <Pause className="h-5 w-5 fill-current" /> : <Play className="ml-0.5 h-5 w-5 fill-current" />}
+              </button>
+            )}
+          </div>
           {blocked(track) && <p className="mt-2 text-[12.5px] text-[var(--room-dim)]">{blockedWhy(track)}, so it won't play. You can still file it.</p>}
           {songTags.length > 0 && <p className="mt-2 text-[12px] text-[var(--room-faint)]">{songTags.map((t, i) => <span key={t.name} className={MOOD_WORDS.has(t.name) ? 'text-[var(--room-dim)]' : ''}>{i ? ' · ' : ''}{t.name}</span>)}</p>}
         </>
@@ -114,7 +133,7 @@ export default function RoomUnadded() {
 
       {ghost && (
         <div
-          className="mt-10 flex items-center gap-3 border-t border-[var(--room-hair)] pt-4 text-[13px]"
+          className="mt-10 flex items-center gap-3 border-t border-[var(--room-hair)] pt-4 text-[13px] @max-md:flex-wrap"
           draggable
           onDragStart={(e) => { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData(TRACK_DRAG_TYPE, ghost.item.track.uri); e.dataTransfer.setData('text/plain', ghost.item.track.uri); }}
         >
@@ -124,7 +143,7 @@ export default function RoomUnadded() {
             <span className="block truncate font-medium text-[var(--room-paper)]/90">{ghost.item.track.name}</span>
             <span className="block truncate text-[11.5px] text-[var(--room-faint)]">{ghostIn.length ? `In ${ghostIn.map((id) => st.targets.find((t) => t.id === id)?.name || 'a playlist').join(', ')}` : 'Not filed'}. Drag it onto a target, or:</span>
           </span>
-          <span className="flex shrink-0 flex-wrap items-center gap-4" onClick={(e) => e.stopPropagation()}>
+          <span className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 @max-md:min-w-0 @max-md:basis-full @max-md:shrink [&>button]:max-w-full [&>button]:truncate" onClick={(e) => e.stopPropagation()}>
             {(st.suggestionsByTrack.get(ghost.item.track.id) || []).slice(0, 2).filter((s) => !ghostIn.includes(s.id)).map((s) => <Word key={s.id} disabled={st.busy} onClick={() => fileInto(ghost.item.track.uri, s.id)}>→ {s.name}</Word>)}
             <Mono className="text-[var(--room-faint)]">{ghost.left}s</Mono>
           </span>

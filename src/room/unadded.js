@@ -77,7 +77,7 @@ const playable = (uris, state = get()) => uris.filter((u) => { const it = state.
 
 // --- the pile ---
 let loadGeneration = 0;
-export async function loadPile(pileId) {
+export async function loadPile(pileId, { onFirstPage } = {}) {
   const mine = ++loadGeneration;
   const t = token();
   if (!t || !pileId) return;
@@ -88,6 +88,7 @@ export async function loadPile(pileId) {
     let items = (data.tracks?.items || []).filter((i) => i?.track?.uri);
     set({ pile: items, total: data.tracks?.total ?? items.length });
     confirmPage(t, items, mine);
+    onFirstPage?.();
     let next = data.tracks?.next;
     while (next) {
       const page = await fetchMoreTracks(t, next);
@@ -336,11 +337,16 @@ export function start(pileId) {
   if (get().pileId !== pileId || !get().pile.length) {
     const playing = nowPlaying();
     set({ cardUri: null, placed: {}, lastAction: null, ghost: null });
-    loadPile(pileId).then(() => {
-      // begins on whatever is playing, if that is in the pile and waiting
-      const hit = playing ? get().pile.find((i) => i?.track && isSameTrack(i.track, playing)) : null;
-      if (hit && !isDecided(hit.track.uri)) set({ cardUri: hit.track.uri });
-      scheduleAutoplay();
+    // The card is known from the first page, so playing waits for that and not the whole pile: a
+    // pile of hundreds is several pages, and on a phone under rate limits the card sat silent
+    // for as long as the rest took (15 Oct).
+    loadPile(pileId, {
+      onFirstPage: () => {
+        // begins on whatever is playing, if that is in the pile and waiting
+        const hit = playing ? get().pile.find((i) => i?.track && isSameTrack(i.track, playing)) : null;
+        if (hit && !isDecided(hit.track.uri)) set({ cardUri: hit.track.uri });
+        scheduleAutoplay();
+      }
     });
   } else scheduleAutoplay();
   hold = 0; heard = false;

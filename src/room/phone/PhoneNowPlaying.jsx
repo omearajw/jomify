@@ -13,6 +13,7 @@ import QueueColumn from '../QueueColumn';
 import { ZenFocusLyricsLite, ZenPlainLyrics } from '../../views/ZenMode/ZenLyricsDom';
 import { useNowLyrics } from './useNowLyrics';
 import JomifyMark from '../../components/JomifyMark';
+import Artists from '../Artists';
 
 // The room on a phone (DESIGN.md §5, 13 Oct): the cover, the song, the controls and up next, on
 // the cover's own light. The queue stays here because it is edited; the phone is the controller.
@@ -94,7 +95,7 @@ export default function PhoneNowPlaying({ bottomInset }) {
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
                 <h1 className={`m-0 truncate font-semibold leading-tight tracking-[-0.02em] ${lyricsOn ? 'text-[18px]' : 'text-[24px]'}`}>{track?.name || 'Nothing playing'}</h1>
-                <p className="room-mono mt-1.5 truncate text-[var(--room-dim)]">{(track?.artists || []).map((a) => a.name).join(', ')}</p>
+                <Artists artists={track?.artists} className="room-mono mt-1.5 block truncate text-[var(--room-dim)]" />
               </div>
               {track?.id && <span className="room-like -mr-2 flex h-11 w-11 shrink-0 items-center justify-center [&_svg]:h-5 [&_svg]:w-5"><LikeButton trackId={track.id} /></span>}
             </div>

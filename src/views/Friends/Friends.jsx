@@ -1,74 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
 import { UserPlus, X, Loader2, Users } from 'lucide-react';
-import { useUserStore } from '../../store/userStore';
-import { useSlice } from '../../store/selectors';
-import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
-import { fetchSpotifyUser } from '../../services/spotify/api';
-import { userIdFromInput } from '../../utils/spotifyUri';
-import { toast } from '../../store/toastStore';
-import { artUrl } from '../../utils/images';
 import { rowButtonProps } from '../../utils/a11y';
+import { useFriendsView } from './useFriendsView';
 
-// Spotify's API can't list who you follow or search for people, so friends are added by
-// pasting a profile link. People you already share playlists with are offered as shortcuts.
 export default function Friends() {
-  const { token, profile, friends, sevens, addFriend, removeFriend, navigateToUser } = useSlice(useUserStore, [
-    'token', 'profile', 'friends', 'sevens', 'addFriend', 'removeFriend', 'navigateToUser'
-  ]);
-  const profiles = useUserProfilesStore((s) => s.profiles);
-  const [input, setInput] = useState('');
-  const [adding, setAdding] = useState(false);
-
-  useEffect(() => {
-    ensureUserProfiles(token, friends.map(f => f.id));
-  }, [token, friends]);
-
-  const suggestions = useMemo(() => {
-    const friendIds = new Set(friends.map(f => f.id));
-    const seen = new Map();
-    sevens.forEach((seven) => {
-      if (seven.partnerId) seen.set(seven.partnerId, { id: seven.partnerId, name: seven.partnerName || seven.partnerId, why: 'Sevens partner' });
-    });
-    Object.values(profiles).forEach((p) => {
-      if (p?.id && !seen.has(p.id)) seen.set(p.id, { id: p.id, name: p.display_name || p.id, why: 'Playlist collaborator' });
-    });
-    return [...seen.values()].filter(s => s.id !== profile?.id && !friendIds.has(s.id));
-  }, [sevens, profiles, profile?.id, friends]);
-
-  const addById = async (id) => {
-    if (!token) return;
-    if (id === profile?.id) { toast("That's you", { tone: 'info' }); return; }
-    const already = friends.find((f) => f.id === id);
-    if (already) { toast(`${already.name || id} is already a friend`, { tone: 'info' }); setInput(''); return; }
-    setAdding(true);
-    try {
-      const user = await fetchSpotifyUser(token, id);
-      addFriend(user);
-      useUserProfilesStore.getState().setProfiles({ [user.id]: user });
-      setInput('');
-      toast(`Added ${user.display_name || user.id}`, { tone: 'success' });
-    } catch (err) {
-      toast(err?.message === 'RATE_LIMITED' ? 'Spotify is rate-limiting requests; try again in a moment' : "Couldn't find that Spotify user", { tone: 'error' });
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const removeWithUndo = (friend) => {
-    removeFriend(friend.id);
-    toast(`Removed ${friend.name || friend.id}`, { action: { label: 'Undo', onClick: () => addFriend(friend) } });
-  };
-
-  const submit = (e) => {
-    e.preventDefault();
-    const id = userIdFromInput(input);
-    if (id?.shortLink) {
-      toast('Short spotify.link links can\'t be read here. Open it in Spotify and copy the profile link from there.', { tone: 'error', duration: 7000 });
-      return;
-    }
-    if (!id) { toast("That doesn't look like a Spotify profile link", { tone: 'error' }); return; }
-    addById(id);
-  };
+  const { friends, input, setInput, adding, suggestions, addById, removeWithUndo, submit, faceOf, navigateToUser } = useFriendsView();
 
   return (
     <div className="flex flex-col pb-8 animate-fade-in">
@@ -129,9 +64,7 @@ export default function Friends() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {friends.map((friend) => {
-              const live = profiles[friend.id];
-              const name = live?.display_name || friend.name || friend.id;
-              const image = artUrl(live?.images, 160) || friend.image;
+              const { name, image, followers } = faceOf(friend);
               return (
                 <div
                   key={friend.id}
@@ -155,8 +88,8 @@ export default function Friends() {
                     </div>
                   )}
                   <p className="text-sm font-bold text-white truncate w-full">{name}</p>
-                  {live?.followers?.total != null && (
-                    <p className="text-xs text-neutral-400 mt-0.5">{live.followers.total.toLocaleString()} followers</p>
+                  {followers != null && (
+                    <p className="text-xs text-neutral-400 mt-0.5">{followers.toLocaleString()} followers</p>
                   )}
                 </div>
               );
