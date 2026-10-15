@@ -1,9 +1,9 @@
 import { usePartyStore } from '../store/partyStore';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
-import { hostApi, guestApi } from './client';
-import { addToQueue, playContext, fetchQueue, fetchDevices, transferPlayback, resumePlayback } from '../services/spotify/api';
-import { playOn, togglePlay, next as skipNext, setShuffle, requestFastPlaybackUpdates, PLAYER_NAME, onUserPause, userPausedAt } from '../services/spotify/playbackController';
+import { hostApi } from './client';
+import { addToQueue, playContext, fetchQueue, fetchDevices, transferPlayback } from '../services/spotify/api';
+import { playOn, next as skipNext, setShuffle, requestFastPlaybackUpdates, PLAYER_NAME, onUserPause } from '../services/spotify/playbackController';
 import { setSuspended as suspendQueue } from '../services/queueConductor';
 import { log } from '../services/debugLog';
 
@@ -18,7 +18,6 @@ const CHANGE_PUSH_DELAY_MS = 400;  // a track change reaches guests after this, 
 const TICK_MS = 1500;
 const FEED_AT_MS = 15000;        // hand over the next song with this much of the current one left
 const FED_TIMEOUT_MS = 90000;    // a fed song Spotify hasn't started by then goes back to the queue
-const PAUSE_TOLERANCE_MS = 8000; // paused this long without the host asking: resume
 const SILENCE_TOLERANCE_MS = 15000;
 const RESTART_COOLDOWN_MS = 60000;
 const SPEAKER_CHECK_MS = 20000;
@@ -32,9 +31,7 @@ let releaseFastUpdates = null;
 let speakerOk = null;
 let fellBack = false;
 let lastSpeakerCheckAt = 0;
-let pausedSince = 0;
 let silentSince = 0;
-let lastResumeAt = 0;
 let lastRestartAt = 0;
 let hostPaused = false;    // the host pressed pause in the party view; the watchdog stands down
 let wakeLock = null;
@@ -56,18 +53,7 @@ onUserPause(() => {
   if (code && token()) hostApi.op(code, { op: 'hostPause', deviceName: PLAYER_NAME }).catch(() => {});
 });
 
-// Before resuming a pause that looks unasked: was it the host, here or on another of their devices?
-async function pausedByHost(since) {
-  if (userPausedAt() >= since - 3000) return 'on this device';
-  const code = party().code;
-  if (!code) return null;
-  try {
-    const view = await guestApi.state(code);
-    if (view.hostPausedAt && view.hostPausedAt >= since - 5000) return view.hostPausedBy ? `on ${view.hostPausedBy}` : 'on another of your devices';
-  } catch { /* can't tell: resume, as before */ }
-  return null;
-}
-export function setHostPaused(value) { hostPaused = Boolean(value); if (!value) pausedSince = 0; }
+export function setHostPaused(value) { hostPaused = Boolean(value); }
 
 function livePosition(state, positionAt) {
   if (!state) return 0;
@@ -215,13 +201,6 @@ async function restartBacking(reason) {
 // Paused with nobody asking. With a party speaker, resume there and nowhere else: the general
 // resume moves music to this browser when a remote device is slow to start, and an Alexa group can
 // be slow enough to set that off.
-async function resumeParty() {
-  const t = token();
-  if (!speakerOf() || !t) { togglePlay(); return; }
-  const found = await checkSpeaker();
-  if (!found) { restartBacking('the speaker is missing'); return; }
-  await resumePlayback(t, found.id).catch(() => restartBacking(`${found.name} would not resume`));
-}
 
 async function tick() {
   const p = party();
@@ -261,23 +240,11 @@ async function tick() {
     return;
   }
   silentSince = 0;
-  if (state.paused) {
-    pausedSince = pausedSince || now;
-    if (!hostPaused && now - pausedSince > PAUSE_TOLERANCE_MS && now - lastResumeAt > PAUSE_TOLERANCE_MS * 2) {
-      const since = pausedSince;
-      const byHost = await pausedByHost(since);
-      if (byHost) {
-        hostPaused = true;
-        log('party', `paused by you ${byHost}; leaving it paused`);
-      } else if (party().conductor && player().playbackState?.paused && pausedSince === since) {
-        lastResumeAt = Date.now(); // only an actual resume holds off the next one
-        log('party', 'paused with nobody asking; resuming');
-        resumeParty();
-      }
-    }
-  } else {
-    pausedSince = 0;
-    hostPaused = false; // playing again: the next pause is judged afresh
+  // A pause is left to the pause referee (services/spotify/pauseReferee.js), the same rules as
+  // outside a party: only a network drop is undone. The 8-second "resume anything" that used to
+  // live here undid pauses from the phone and from headphones coming out.
+  if (!state.paused) {
+    hostPaused = false; // playing again: the next silence is judged afresh
   }
 
   // Hand over the next request as late as possible
@@ -328,7 +295,7 @@ const onVisible = () => { if (document.visibilityState === 'visible' && timers &
 
 export function startConductor() {
   if (timers) return;
-  fed = null; pausedSince = 0; silentSince = 0; hostPaused = false;
+  fed = null; silentSince = 0; hostPaused = false;
   suspendQueue(true);
   timers = { hb: setInterval(heartbeat, HEARTBEAT_MS), tick: setInterval(() => { tick().catch(() => {}); }, TICK_MS) };
   heartbeat();

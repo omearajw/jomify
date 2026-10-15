@@ -24,6 +24,7 @@ import { ensureFreshToken } from './session';
 import * as queueConductor from '../queueConductor';
 import { log } from '../debugLog';
 
+import * as referee from './pauseReferee';
 const SDK_SCRIPT_ID = 'spotify-player-script';
 const SDK_SCRIPT_SRC = 'https://sdk.scdn.co/spotify-player.js';
 const SDK_READY_TIMEOUT_MS = 15000;
@@ -62,8 +63,6 @@ const REMOTE_REFRESH_DELAY_MS = 350;
 const VOLUME_DEBOUNCE_MS = 250;
 
 const PLATFORM = describePlatform();
-// How long to give Spotify to start the next song itself before Jomify starts it
-const STALLED_START_GRACE_MS = 1500;
 // When someone last asked Jomify to play, pause or skip, from the app or the lock screen
 let lastIntentAt = 0;
 const INTENT_WINDOW_MS = 4000;
@@ -236,53 +235,6 @@ let reviveLocalPlayer = null;
 // it does not come back. Plays that find it missing from Spotify Connect call it.
 let reconnectLocalPlayer = null;
 
-// A pause nobody asked for while the app is in the background is one of two things: the phone has
-// cut the network (battery saver does that to apps in the background) and the player has run out
-// of audio it had already downloaded, or something else has taken the audio away. One request
-// settles which.
-function checkNetworkAfterPause() {
-  const t = token();
-  if (!t) return;
-  const started = Date.now();
-  const conn = navigator.connection;
-  const net = `${navigator.onLine ? 'online' : 'offline'}${conn ? `, ${conn.type || '?'} ${conn.effectiveType || '?'}` : ''}`;
-  fetchPlayerState(t)
-    .then(() => log('background', 'network check after the pause: reachable', `${Date.now() - started}ms, ${net}`))
-    .catch((err) => log('background', 'network check after the pause: failed', `${err?.name || err} after ${Date.now() - started}ms, ${net}`));
-}
-
-// A pause nobody in Jomify asked for, while the music was playing in this browser, is worth a
-// closer look: a moment later, ask Spotify which device it now considers active and what it
-// knows about every device. A pause Android forced on the browser leaves this browser active;
-// playback moved to another device (the Spotify app waking with "Spotify is trying to play")
-// shows up here as a different active device. Nothing is changed; the log is the point.
-const UNASKED_PAUSE_LOOK_MS = 2500;
-let unaskedPauseTimer = null;
-let lastUnaskedPauseAt = 0;
-function inspectUnaskedPause(pausedState) {
-  clearTimeout(unaskedPauseTimer);
-  lastUnaskedPauseAt = Date.now();
-  const song = pausedState.track_window?.current_track?.name || '?';
-  const at = `${Math.round((pausedState.position || 0) / 1000)}s`;
-  unaskedPauseTimer = setTimeout(async () => {
-    const t = token();
-    if (!t) return;
-    const s = player();
-    const conn = navigator.connection;
-    const net = `${navigator.onLine ? 'online' : 'offline'}${conn ? `, ${conn.type || '?'} ${conn.effectiveType || '?'}` : ''}`;
-    try {
-      const [remote, devices] = await Promise.all([fetchPlayerState(t), fetchDevices(t).catch(() => null)]);
-      const where = remote
-        ? `${remote.is_playing ? 'playing' : 'paused'} on ${remote.device?.name || '?'} (${remote.device?.type || '?'}, ${remote.device?.id === s.deviceId ? 'this browser' : 'another device'})${remote.item?.name ? `: ${remote.item.name}` : ''}`
-        : 'nothing is playing anywhere';
-      const list = devices ? devices.map((d) => `${d.name} (${d.type}${d.is_active ? ', active' : ''}${d.id === s.deviceId ? ', this browser' : ''})`).join('; ') : 'device list unavailable';
-      log('playback', `after the unasked pause of ${song} at ${at}, Spotify says`, `${where}. Devices: ${list}. ${net}${document.hidden ? ', in the background' : ''}`);
-    } catch (err) {
-      log('playback', `after the unasked pause of ${song} at ${at}, Spotify could not be asked`, `${err?.message || err}, ${net}`);
-    }
-  }, UNASKED_PAUSE_LOOK_MS);
-}
-
 // --- Sleep timer ------------------------------------------------------------------------------
 // { until } pauses when the clock runs out; { atSongEnd } pauses when the song changes.
 let sleepTimeout = null;
@@ -429,34 +381,6 @@ function initLocalPlayer() {
   let attempts = 0;
   let readyAt = 0;
   let readyCount = 0;
-  // When the connection last came up, and when it last came back after dropping. The player
-  // pauses when its connection drops and does not resume on reconnecting; a pause that landed
-  // between two connections, or in the seconds after one came back, was the drop's doing.
-  let lastReadyAt = 0;
-  let reconnectedAt = 0;
-  const RECONNECT_PAUSE_WINDOW_MS = 10000;
-  const RESUME_SETTLE_MS = 1500;
-  let resumeAfterDropTimer = null;
-  const resumeAfterDrop = (why) => {
-    clearTimeout(resumeAfterDropTimer);
-    resumeAfterDropTimer = setTimeout(async () => {
-      const s = player();
-      const st = s.playbackState;
-      if (!s.isLocalActive || !st?.paused) return;
-      if (Date.now() - lastIntentAt < INTENT_WINDOW_MS) return; // the user has spoken since
-      const song = st.track_window?.current_track?.name || '?';
-      log('sdk', 'the connection dropped and came back with the music paused; starting it again', `${song} at ${Math.round((st.position || 0) / 1000)}s, ${why}`);
-      try {
-        await sdkPlayer.resume();
-        setTimeout(() => {
-          const now = player().playbackState;
-          log('sdk', now?.paused ? 'still paused after the restart' : 'playing again', `${song} at ${Math.round((now?.position || 0) / 1000)}s`);
-        }, 2500);
-      } catch (err) {
-        log('sdk', 'could not restart the music after the reconnect', err?.message || err);
-      }
-    }, RESUME_SETTLE_MS);
-  };
   let lastAliveCheckAt = 0;
   // Nothing is worth retrying after these two: the browser cannot run the player at all, or the
   // account may not use it. Every other failure is the network having a moment.
@@ -553,9 +477,7 @@ function initLocalPlayer() {
       rebuildTimer = null;
       readyAt = Date.now();
       readyCount += 1;
-      const previousReadyAt = lastReadyAt;
-      lastReadyAt = readyAt;
-      if (readyCount > 1) reconnectedAt = readyAt;
+      referee.noteConnection(true);
       log('sdk', readyCount === 1 ? 'ready on Spotify Connect' : 'back on Spotify Connect', `device ${String(device_id).slice(0, 8)}${readyCount > 1 ? `, connection ${readyCount}` : ''}`);
       if (readyCount > 1) queueConductor.onDeviceReset("this browser's player came back");
       const s = player();
@@ -577,7 +499,12 @@ function initLocalPlayer() {
       let state;
       try { state = await fetchPlayerState(t); } catch (err) { log('sdk', 'ready, but could not read playback', err?.message || err); return; }
       if (state === null) {
-        if (readyCount === 1 && document.visibilityState === 'visible') {
+        // "Nothing playing" is answered by mistake now and then; taking the music on that word
+        // alone stopped it wherever it really was. The device list must agree.
+        const devices = readyCount === 1 && document.visibilityState === 'visible' ? await fetchDevices(t).catch(() => null) : null;
+        if (devices && devices.some((d) => d.is_active)) {
+          log('sdk', 'ready; Spotify said nothing was playing but lists an active device, so leaving it', devices.filter((d) => d.is_active).map((d) => d.name).join(', '));
+        } else if (readyCount === 1 && document.visibilityState === 'visible' && devices) {
           log('sdk', 'ready, nothing playing anywhere: made this the device, paused');
           transferPlayback(t, device_id, false).catch(() => {});
         } else {
@@ -595,10 +522,7 @@ function initLocalPlayer() {
           return;
         }
         applyRemoteState(state);
-        // Back from a drop with the music paused on this device by the drop itself
-        if (readyCount > 1 && ours && lastUnaskedPauseAt > previousReadyAt && (!state.is_playing || player().playbackState?.paused)) {
-          resumeAfterDrop('paused while the connection was down');
-        }
+        if (!ours) referee.noteElsewhere(`on ${state.device?.name || 'another device'}`);
       }
     });
 
@@ -611,6 +535,7 @@ function initLocalPlayer() {
         ? `while ${was.paused ? 'paused on' : 'playing'} ${song || '?'} at ${Math.round(interpolatedPosition() / 1000)}s${document.hidden ? ', in the background' : ''}`
         : `while not the device playing${document.hidden ? ', in the background' : ''}`);
       if (s.isLocalActive) refreshSoon();
+      referee.noteConnection(false);
       markGone();
       // Keep the lock screen, paused, so its play button still reaches Jomify once it reconnects
       if (presence?.getAttribute('src')) setPresence('paused');
@@ -634,37 +559,19 @@ function initLocalPlayer() {
           } else if (Date.now() - lastIntentAt < INTENT_WINDOW_MS) {
             s.setAutoplaySource(null);
           }
-          // A song that finished by itself should be followed by the next one playing, but Spotify
-          // sometimes loads the next one paused at the start and leaves it there: twice in one
-          // evening's log, with nobody touching anything. Start it, unless someone in Jomify asked
-          // for a pause or the music was already paused.
-          const stalledStart = state.paused && (state.position || 0) < 3000 && before && !before.paused
-            && Date.now() - lastIntentAt > INTENT_WINDOW_MS;
-          if (stalledStart) {
-            const uri = track?.uri;
-            setTimeout(() => {
-              const now = player().playbackState;
-              if (!now?.paused || now.track_window?.current_track?.uri !== uri) return;
-              log('playback', 'next song was left paused after the last one finished; starting it', track?.name || '?');
-              sdkPlayer.resume().catch((err) => log('playback', 'could not start the next song', err?.message || err));
-            }, STALLED_START_GRACE_MS);
-          }
+          // A new song that arrives paused right after the last one was playing: the referee
+          // decides whether that was Spotify's slip (it restarts it) or a real pause
+          if (state.paused && before && !before.paused) referee.notePaused({ song: track?.name, position: state.position, newSong: true, wasPlaying: true });
         } else if (Boolean(state.paused) !== Boolean(before?.paused)) {
           // Something outside Jomify (Android, another app taking the audio) pausing the music
           // looks exactly like any other pause unless it is marked
-          const unasked = Date.now() - lastIntentAt > INTENT_WINDOW_MS;
-          log('playback', state.paused ? 'paused' : 'resumed', `at ${Math.round((state.position || 0) / 1000)}s of ${Math.round((state.duration || 0) / 1000)}s${unasked ? ', nobody in Jomify asked for it' : ''}${document.hidden ? ', in the background' : ''}`);
-          if (unasked && state.paused && document.hidden) checkNetworkAfterPause();
-          if (unasked && state.paused) inspectUnaskedPause(state);
-          // A connection that has just come back and reports the song paused, with no word
-          // from the user, is the drop still being felt
-          if (unasked && state.paused && reconnectedAt && Date.now() - reconnectedAt < RECONNECT_PAUSE_WINDOW_MS) resumeAfterDrop('paused as the connection came back');
-          if (!state.paused) clearTimeout(resumeAfterDropTimer);
+          log('playback', state.paused ? 'paused' : 'resumed', `at ${Math.round((state.position || 0) / 1000)}s of ${Math.round((state.duration || 0) / 1000)}s${document.hidden ? ', in the background' : ''}`);
+          if (state.paused) referee.notePaused({ song: state.track_window?.current_track?.name, position: state.position, newSong: false, wasPlaying: Boolean(before && !before.paused) });
         }
       }
       if (!state) {
         // The SDK reports null when this device stops being the active one
-        if (s.isLocalActive) { s.setIsLocalActive(false); refreshSoon(); }
+        if (s.isLocalActive) { s.setIsLocalActive(false); refreshSoon(); referee.noteElsewhere('on another device'); }
         setPresence('off');
         return;
       }
@@ -673,6 +580,8 @@ function initLocalPlayer() {
         const ended = wasNearEnd; wasNearEnd = null;
         afterContextEnded(ended, state);
       }
+      referee.noteLoading(Boolean(state.loading));
+      if (!state.paused) referee.notePlaying();
       noteNearEnd(state);
       s.setPlaybackState(state);
       syncMediaSession(state);
@@ -807,6 +716,7 @@ function installMediaSession() {
     // A pause from here is the phone's doing (a headset unplugged, another app taking audio),
     // which is worth telling apart from the music simply stopping
     const logged = (details) => { lastIntentAt = Date.now(); log('media session', action); handler(details); };
+    // (play and pause reach the referee through togglePlay; a skip or seek from here through next/seek)
     try { ms.setActionHandler(action, logged); } catch { /* action not supported here */ }
   }
 }
@@ -892,6 +802,32 @@ function setPresence(mode) {
 // --- Lifecycle -----------------------------------------------------------------------------
 
 export function startPlaybackController() {
+  referee.installPauseReferee({
+    // paused, and not known to be playing on another device (a drop leaves it unknown)
+    isPausedHere: () => {
+      const s = player();
+      if (s.playbackState?.paused !== true) return false;
+      return s.isLocalActive || !s.activeDevice || Boolean(s.activeDevice.isLocal);
+    },
+    // where Spotify says the music is: { elsewhere, name }, or a throw when it can't be asked
+    whereIsMusic: async () => {
+      const t = token();
+      if (!t) throw new Error('signed out');
+      const state = await fetchPlayerState(t);
+      if (!state) return { elsewhere: false, nothing: true };
+      const ours = state.device?.id && state.device.id === player().deviceId;
+      return { elsewhere: !ours, name: state.device?.name || null };
+    },
+    resume: (why) => {
+      const s = player();
+      const t = token();
+      const sdk = localSdk();
+      log('pause', 'restarting', why);
+      if (sdk && s.isLocalActive) return sdk.resume().catch((err) => log('pause', 'could not restart', err?.message || err));
+      if (t && s.deviceId) return resumePlayback(t, s.deviceId).then(confirmPlayback).catch((err) => log('pause', 'could not restart', err?.message || err));
+      return undefined;
+    }
+  });
   initLocalPlayer();
   installActivation();
   installMediaSession();
@@ -1001,7 +937,7 @@ function parkPlay(play) {
 export async function playOn(play, { track, quiet = false } = {}) {
   activateLocalPlayer(); // synchronously, while still inside the tap
   if (!token()) return;
-  if (!quiet) { player().setAutoplaySource(null); lastIntentAt = Date.now(); localPlayedThisSession = true; }
+  if (!quiet) { player().setAutoplaySource(null); lastIntentAt = Date.now(); localPlayedThisSession = true; referee.noteCommand('play'); }
 
   // Name the song straight away. Finding a device can take a round trip, and a tap that shows
   // nothing for half a second reads as a button that did not work.
@@ -1136,6 +1072,7 @@ let localPlayedThisSession = false;
 
 export function togglePlay() {
   lastIntentAt = Date.now();
+  referee.noteCommand(player().playbackState?.paused === false ? 'pause' : 'play');
   activateLocalPlayer();
   const sdk = localSdk();
   const paused = player().playbackState?.paused ?? true;
@@ -1251,6 +1188,7 @@ function skipNow() {
 }
 export async function next() {
   lastIntentAt = Date.now();
+  referee.noteCommand('next');
   localPlayedThisSession = true;
   activateLocalPlayer();
   // The head of Jomify's queue goes to Spotify first, so the skip lands on it, not on the playlist
@@ -1263,6 +1201,7 @@ export async function next() {
 
 export function previous() {
   lastIntentAt = Date.now();
+  referee.noteCommand('previous');
   localPlayedThisSession = true;
   activateLocalPlayer();
   const sdk = localSdk();
@@ -1272,6 +1211,7 @@ export function previous() {
 }
 
 export function seek(positionMs) {
+  referee.noteCommand('seek');
   const sdk = localSdk();
   if (sdk) return sdk.seek(positionMs).catch(console.error);
   return remote((t, d) => seekPlayback(t, positionMs, d), () => patchState({ position: positionMs }));

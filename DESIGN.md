@@ -704,6 +704,30 @@ be the same thing with a different frame.
 with the room at rest in real colour and type, built outward from Zen's light; then the layers
 and modes inherit it; then a prototype of the room and the library layer to live with for a week.
 
+**2026-10-15 — One referee decides every pause.** Eleven pieces used to guess, five of them
+could press play, each on its own timer. Now one module (services/spotify/pauseReferee.js) gives
+every pause of this browser's player exactly one cause and one rule:
+
+| Cause | Read from | Rule |
+|---|---|---|
+| you | Jomify sent a pause (held until Spotify reports it, however slowly) | leave it |
+| headphones | the audio outputs changed within ~2.5 s of the pause | leave it; also ends any network retry |
+| elsewhere | Spotify says the music is on another device, or this player stopped being active | leave it |
+| network | offline, the player off Spotify Connect, loading when it stopped, Spotify unreachable, or a network sign in the last 15 s | restart when the connection is back, retrying every 5 s for 2 min |
+| stalled | the next song arrived paused right after the last was playing | start it after 1.5 s |
+| unknown | none of the above | leave it |
+
+Anything you do in Jomify ends a network retry, as does a change of audio outputs (the overlap
+rule: headphones out during a drop must not end with the music blasting) or the music moving
+elsewhere. Every decision is in the debug log as "<song> paused: <cause>". The party no longer
+resumes pauses on its own: the same rules apply there, and a party on the Spotify app rarely has
+a network pause at all. Opening the app no longer takes playback on Spotify's word alone that
+nothing is playing: the device list must agree. Spotify gives no reason for a pause, and its
+player buffers 12 s ahead, which Jomify cannot change (memory: jomify-sdk-internals). *Why:*
+Jack, 15 Oct: "strip all of that out and think about what each problem is actually trying to
+solve"; AirPods disconnecting pause the music on his Mac and must; "the headphone disconnect
+should override."
+
 ## 11. The look
 
 **What the first rounds taught (13 Oct 2026).** Five stills of the room were tried: the cover's
