@@ -196,7 +196,34 @@ async function fetchEach(token, path, ids, label) {
   });
   return results.filter(Boolean);
 }
-export const fetchAlbumsByIds = (token, ids) => fetchEach(token, 'albums', ids, 'albums');
+// Batches first, one at a time only if Spotify refuses the batch. Spotify lists the batch
+// lookups (/artists?ids=, /albums?ids=) as deprecated, and the 6 Oct migration moved to one
+// request per item; for the Unadded ranker that was a request per artist across every check
+// playlist, hundreds in a few seconds, and Jomify was rate limited. The batches still answer
+// (endpoint check, 5 Oct), so they come first: 50 artists or 20 albums a request. A refusal is
+// remembered for an hour, as the other fallbacks are.
+const BATCH_REFUSAL = new Set([400, 403, 404, 405, 410, 501]);
+const batchRefusedAt = new Map();
+async function fetchBatchFirst(token, path, ids, label, size) {
+  const unique = [...new Set((ids || []).filter(Boolean))];
+  if (!unique.length) return [];
+  const refused = Date.now() - (batchRefusedAt.get(path) || 0) < 60 * 60 * 1000;
+  if (!refused) {
+    const out = [];
+    for (let i = 0; i < unique.length; i += size) {
+      const chunk = unique.slice(i, i + size);
+      const response = await spotifyFetch(`${API}/${path}?ids=${chunk.map(encodeURIComponent).join(',')}`, { headers: auth(token) });
+      if (response.ok) { out.push(...((await response.json())?.[path] || []).filter(Boolean)); continue; }
+      if (!BATCH_REFUSAL.has(response.status)) throw new Error(`Failed to fetch ${label} (${response.status})`);
+      batchRefusedAt.set(path, Date.now());
+      log('api', `batch ${path} refused with ${response.status}; one at a time for an hour`);
+      return [...out, ...(await fetchEach(token, path, unique.slice(i), label))];
+    }
+    return out;
+  }
+  return fetchEach(token, path, unique, label);
+}
+export const fetchAlbumsByIds = (token, ids) => fetchBatchFirst(token, 'albums', ids, 'albums', 20);
 
 // Whether Spotify can play these songs in the listener's market, by id: the one request that is
 // sure to honour the market and answer is_playable (relinking a pressing that is not licensed
@@ -214,7 +241,7 @@ export async function fetchPlayability(token, ids) {
   }
   return out;
 }
-export const fetchArtistsByIds = (token, ids) => fetchEach(token, 'artists', ids, 'artists');
+export const fetchArtistsByIds = (token, ids) => fetchBatchFirst(token, 'artists', ids, 'artists', 50);
 
 // Name, art and owner only; enough for a card without paying for the whole track list
 export async function fetchPlaylistSummary(token, playlistId) {
