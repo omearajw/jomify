@@ -54,6 +54,13 @@ const SEVENS_RECHECK_MS = 5 * 60 * 1000;
 if (useUserStore.getState().token) hydrateLibraryFromCache();
 startLibraryCache();
 
+// The address the app was opened with, read once before anything can rewrite it. The history
+// mirror replaces the address with the page's own path as soon as there is a session, and on the
+// way back from the notification sign-in there already is one, so the code Spotify sent was gone
+// before the effect that hands it to the server could read it.
+const LAUNCH_PARAMS = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+let launchCodeUsed = false;
+
 // Where the app opens: a link to a page wins; otherwise the page you were on (persisted), or
 // Home / Library by preference
 {
@@ -212,13 +219,14 @@ function App() {
   useEffect(() => { if (signedIn && !isDemo()) resumePartyIfAny(); }, [signedIn]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = launchCodeUsed ? new URLSearchParams(window.location.search) : LAUNCH_PARAMS;
     const code = params.get("code");
 
     // Back from the second Spotify authorization that gives the notification server its own
     // grant. The session is untouched; only the server learns the new refresh token.
     if (code && token && params.get("state") === PUSH_STATE && !isAuthenticating.current) {
       isAuthenticating.current = true;
+      launchCodeUsed = true;
       window.history.replaceState({}, document.title, "/");
       completeEnableNotifications(code, token)
         .then(() => toast('Sevens notifications are on', { tone: 'success' }))
@@ -229,6 +237,7 @@ function App() {
 
     if (code && !token && !isAuthenticating.current) {
       isAuthenticating.current = true; 
+      launchCodeUsed = true;
       
       getAccessToken(code).then(({ access_token, expires_in }) => {
         setToken(access_token, expires_in);
