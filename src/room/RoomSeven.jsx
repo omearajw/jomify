@@ -129,6 +129,7 @@ export default function RoomSeven() {
   }, [holding]);
   const [overPool, setOverPool] = useState(null); // { uri, after }
   const dragPool = useRef(null);
+  const batchRef = useRef(null);
 
   if (loadError?.id === activePlaylistId && !playlist) return <p className="pt-6 text-[13px] text-[var(--room-dim)]">{loadError.message}</p>;
   if (!view) return <Mono className="pt-6 text-[var(--room-faint)]">Loading</Mono>;
@@ -186,7 +187,7 @@ export default function RoomSeven() {
         className={`group flex items-center gap-3 py-[8px] text-[13px] ${taken ? 'opacity-45' : 'cursor-pointer hover:bg-white/[0.03]'} ${isSel ? 'bg-white/[0.08]' : ''}`}
         style={{ borderTop: `1px solid ${overPool?.uri === track.uri && !overPool.after ? 'var(--room-paper)' : 'var(--room-hair)'}`, boxShadow: overPool?.uri === track.uri && overPool.after ? 'inset 0 -1px 0 var(--room-paper)' : undefined }}
       >
-        <button type="button" onClick={(e) => { e.stopPropagation(); playPoolTrack(track); }} aria-label={`Play ${track.name}`} className="grid h-6 w-5 shrink-0 place-items-center text-[var(--room-paper)]">
+        <button type="button" onClick={(e) => { e.stopPropagation(); playPoolTrack(track); }} aria-label={`Play ${track.name}`} className="grid h-6 w-5 shrink-0 place-items-center text-[var(--room-paper)] pointer-coarse:h-10 pointer-coarse:w-8">
           {current && !isCurrentTrackPaused ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--room-paper)]" aria-label="Playing" /> : <Play className="h-3 w-3 fill-current opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100" />}
         </button>
         <span className="h-[32px] w-[32px] shrink-0 overflow-hidden rounded-[3px] bg-white/5">{track.album?.images?.[0]?.url && <img src={artUrl(track.album.images, 32)} alt="" width="32" height="32" loading="lazy" decoding="async" draggable="false" className="h-full w-full object-cover" />}</span>
@@ -208,6 +209,9 @@ export default function RoomSeven() {
     if (tracks.length) placeFrom(tracks, k);
   };
   const batchOrder = slots.filter(Boolean).map((t) => t.uri);
+  // one column (the phone): a run of empty slots would push the pool a screen down, so past the
+  // last filled slot only the next empty one shows; the count in the head still says "n of 7"
+  const lastFilled = slots.reduce((at, t, k) => (t ? k : at), -1);
   const slotRow = (track, k) => {
     const isSel = track && sel.zone === 'batch' && selected.has(track.uri);
     return (
@@ -220,7 +224,7 @@ export default function RoomSeven() {
       onDrop={(e) => dropInto(e, k)}
       onClick={track ? (e) => pick('batch', batchOrder, track.uri, e) : () => letGo()}
       onContextMenu={track ? (e) => openTrackMenu(e, track) : undefined}
-      className={`group flex items-center gap-3 py-[8px] text-[13px] transition-colors ${overSlot === k ? 'bg-white/[0.06]' : isSel ? 'bg-white/[0.08]' : ''}`}
+      className={`group flex items-center gap-3 py-[8px] text-[13px] transition-colors ${overSlot === k ? 'bg-white/[0.06]' : isSel ? 'bg-white/[0.08]' : ''} ${!track && k > lastFilled + 1 ? '@max-md:hidden' : ''}`}
       style={{ borderTop: '1px solid var(--room-hair)', minHeight: 49, transitionDuration: 'var(--room-mid)' }}
     >
       <Mono className="w-4 text-center text-[var(--room-faint)]">{k + 1}</Mono>
@@ -231,7 +235,7 @@ export default function RoomSeven() {
             <span className="block truncate font-medium text-[var(--room-paper)]">{track.name}</span>
             <span className="block truncate text-[11.5px] text-[var(--room-dim)]">{(track.artists || []).map((a) => a.name).join(', ')}</span>
           </span>
-          <button type="button" onClick={(e) => { e.stopPropagation(); removeAt(track); }} aria-label={`Remove ${track.name} from the batch`} className="grid h-6 w-6 place-items-center text-[var(--room-faint)] opacity-0 hover:text-[var(--room-paper)] group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); removeAt(track); }} aria-label={`Remove ${track.name} from the batch`} className="grid h-6 w-6 place-items-center text-[var(--room-faint)] opacity-0 hover:text-[var(--room-paper)] group-hover:opacity-100 pointer-coarse:h-10 pointer-coarse:w-10 pointer-coarse:opacity-100"><X className="h-3.5 w-3.5" /></button>
         </>
       ) : (
         <span className="room-mono text-[var(--room-faint)] opacity-60">{overSlot === k ? 'Drop here' : 'Empty'}</span>
@@ -273,7 +277,7 @@ export default function RoomSeven() {
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
             <button type="button" onClick={() => (isShuffled ? shufflePlay() : playFromTop())} aria-label={`Play ${view.name}`} className="grid h-[40px] w-[40px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95"><Play className="ml-0.5 h-4 w-4 fill-current" /></button>
             <button type="button" onClick={shufflePlay} aria-label="Shuffle play" className={`transition-colors ${isShuffled ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-dim)]'}`}><Shuffle className="h-4 w-4" /></button>
-            <span className="ml-1 flex items-center gap-4">
+            <span className="ml-1 flex flex-wrap items-center gap-x-4 gap-y-2 @max-md:ml-0 @max-md:basis-full">
               <Word lit={building} tip="Choose your seven songs from the pool and send them" onClick={() => { setPlain(false); setIsWorkspaceOpen(true); }}>Build{staged.length ? ` · ${staged.length} of 7` : ''}</Word>
               <Word lit={!building && !plain} tip="Every batch sent so far, newest first, by who sent it" onClick={() => { setPlain(false); setIsWorkspaceOpen(false); }}>The Seven so far</Word>
               <Word lit={plain} tip="The whole playlist in order, newest song first" onClick={() => setPlain(true)}>The playlist</Word>
@@ -286,6 +290,7 @@ export default function RoomSeven() {
         <div className="mt-8 grid grid-cols-[minmax(0,5fr)_minmax(0,6fr)] gap-10 @max-md:grid-cols-1 @max-md:gap-8">
           {/* the batch: it holds its place at the top of the column while the pool scrolls past */}
           <section
+            ref={batchRef}
             className="sticky top-0 self-start @max-md:static"
             onDragOver={(e) => { if (Array.from(e.dataTransfer.types).includes(POOL_DRAG)) { e.preventDefault(); } }}
             onDrop={(e) => { if (e.defaultPrevented) return; const tracks = fromPool(e); if (tracks.length && staged.length < 7) { e.preventDefault(); placeFrom(tracks, slots.indexOf(null)); } }}
@@ -296,8 +301,18 @@ export default function RoomSeven() {
             </div>
             {publishError && <p className="pt-3 text-[13px] text-[rgb(240,160,160)]">{publishError}</p>}
             {slots.map(slotRow)}
-            {staged.length === 0 && <p className="pt-4 text-[13px] text-[var(--room-faint)]">Click or drag songs across from the pool; drop one on any slot. Drag a slot onto another to shift it there.</p>}
+            {staged.length === 0 && <p className="pt-4 text-[13px] text-[var(--room-faint)]"><span className="pointer-coarse:hidden">Click or drag songs across from the pool; drop one on any slot. Drag a slot onto another to shift it there.</span><span className="hidden pointer-coarse:inline">Tap a song in the pool to add it to the next empty slot.</span></p>}
           </section>
+
+          {/* one column (the phone): the batch is above and scrolls away while you pick from the
+              pool, so its count, newest song and Send stay pinned over the pool; a tap goes back up */}
+          <div className="sticky top-0 z-10 -mb-4 hidden items-center gap-3 border-b border-[var(--room-hair)] bg-[var(--room-solid)] py-2.5 @max-md:flex">
+            <button type="button" onClick={() => batchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="min-w-0 flex-1 text-left" aria-label="Back up to the batch">
+              <Mono className="block text-[var(--room-dim)]">↑ The batch · {staged.length} of 7</Mono>
+              {staged.length > 0 && <span className="block truncate text-[12px] text-[var(--room-faint)]">{slots.filter(Boolean).map((t) => t.name).join(' · ')}</span>}
+            </button>
+            {staged.length === 7 && <button type="button" onClick={handlePublishSeven} disabled={isPublishing} className="ui-pill shrink-0">{isPublishing ? 'Sending…' : 'Send'}</button>}
+          </div>
 
           {/* the pool */}
           <section>

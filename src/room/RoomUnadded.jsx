@@ -43,7 +43,7 @@ export default function RoomUnadded() {
     const uri = uriFrom(e);
     if (uri) fileInto(uri, playlistId);
   };
-  const tile = (t, size) => {
+  const tile = (t, size, narrow = '') => {
     const placed = placedHere.includes(t.id);
     const why = suggestions.find((s) => s.id === t.id)?.reason;
     return (
@@ -57,7 +57,7 @@ export default function RoomUnadded() {
         onDragLeave={() => setOver((o) => (o === t.id ? null : o))}
         onDrop={(e) => drop(e, t.id)}
         aria-pressed={placed || undefined}
-        className={`group flex flex-col items-start text-left transition-opacity disabled:opacity-40 ${over === t.id ? 'opacity-100' : ''}`}
+        className={`group flex flex-col items-start text-left transition-opacity disabled:opacity-40 ${narrow} ${over === t.id ? 'opacity-100' : ''}`}
         style={{ width: size }}
       >
         <span className={`block aspect-square w-full overflow-hidden rounded-[5px] bg-white/5 transition-[box-shadow,transform] ${over === t.id ? 'scale-[1.03] shadow-[0_0_0_2px_var(--room-paper)]' : placed ? 'shadow-[0_0_0_1px_var(--room-paper)]' : ''}`} style={{ transitionDuration: 'var(--room-mid)' }}>
@@ -65,7 +65,7 @@ export default function RoomUnadded() {
         </span>
         <span className={`mt-2 block w-full truncate text-[13px] font-medium ${placed ? 'text-[var(--room-paper)]' : 'text-[var(--room-paper)]/85'}`}>{t.name}</span>
         {placed
-          ? <span className="block text-[11.5px] leading-[1.3] text-[var(--room-dim)]"><span className="group-hover:hidden">Added</span><span className="hidden group-hover:inline">Take out</span></span>
+          ? <span className="block text-[11.5px] leading-[1.3] text-[var(--room-dim)]"><span className="group-hover:hidden pointer-coarse:hidden">Added</span><span className="hidden group-hover:inline pointer-coarse:hidden">Take out</span><span className="hidden pointer-coarse:inline">Added · tap to take out</span></span>
           : why ? <span className="line-clamp-2 block w-full text-[11.5px] leading-[1.3] text-[var(--room-faint)]">{why}</span> : null}
       </button>
     );
@@ -79,7 +79,7 @@ export default function RoomUnadded() {
       <Mono className="text-[var(--room-faint)]">Unadded · {st.loading && !st.pile.length ? 'loading the pile' : `${waiting} waiting`}{st.targets.length ? ` · ${st.targets.length} targets` : ''}</Mono>
       {track ? (
         <>
-          <h1 className="mt-2 truncate text-[30px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">{track.name}</h1>
+          <h1 className="mt-2 truncate text-[30px] @max-md:text-[24px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">{track.name}</h1>
           <Mono className="mt-2 text-[var(--room-dim)]">{(track.artists || []).map((a) => a.name).join(', ')}{track.album?.name ? ` · ${track.album.name}` : ''}</Mono>
           {blocked(track) && <p className="mt-2 text-[12.5px] text-[var(--room-dim)]">{blockedWhy(track)}, so it won't play. You can still file it.</p>}
           {songTags.length > 0 && <p className="mt-2 text-[12px] text-[var(--room-faint)]">{songTags.map((t, i) => <span key={t.name} className={MOOD_WORDS.has(t.name) ? 'text-[var(--room-dim)]' : ''}>{i ? ' · ' : ''}{t.name}</span>)}</p>}
@@ -102,13 +102,13 @@ export default function RoomUnadded() {
       {large.length > 0 && (
         <>
           <Mono className="mt-9 border-b border-[var(--room-hair)] pb-2 text-[var(--room-faint)]">Where it would suit</Mono>
-          <div className="mt-4 flex flex-wrap gap-6">{large.map((t) => tile(t, 168))}</div>
+          <div className="mt-4 flex flex-wrap gap-6">{large.map((t) => tile(t, 168, '@max-md:!w-[calc(50%-12px)]'))}</div>
         </>
       )}
       {small.length > 0 && (
         <>
           <Mono className="mt-9 border-b border-[var(--room-hair)] pb-2 text-[var(--room-faint)]">{large.length ? 'Or' : 'The targets'}</Mono>
-          <div className="mt-4 flex flex-wrap gap-5">{small.map((t) => tile(t, 104))}</div>
+          <div className="mt-4 flex flex-wrap gap-5">{small.map((t) => tile(t, 104, '@max-md:!w-[calc((100%-40px)/3)]'))}</div>
         </>
       )}
 

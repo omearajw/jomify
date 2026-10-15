@@ -197,11 +197,13 @@ export default function RoomParty() {
           <span className="block truncate text-[12px] text-[var(--room-dim)]">{(track?.artists || []).map((a) => a.name).join(', ')}{fromGuest ? ` · asked for by ${fromGuest}` : ''}</span>
           {upNext && (!track || upNext.uri !== track.uri) && <Mono className="mt-1 truncate text-[var(--room-faint)]">Next · {upNext.name} · {upNext.guestName}</Mono>}
         </span>
-        <span className="flex shrink-0 items-center gap-5 @max-md:w-full @max-md:justify-between" data-control>
-          <button type="button" onClick={() => { setHostPaused(!paused); togglePlay(); }} aria-label={paused ? 'Play' : 'Pause'} className="grid h-[40px] w-[40px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">{paused ? <Play className="ml-0.5 h-4 w-4 fill-current" /> : <Pause className="h-4 w-4 fill-current" />}</button>
-          <button type="button" onClick={() => { setHostPaused(false); skipWithParty(); }} aria-label="Skip" aria-busy={skipping || undefined} disabled={skipping} className="text-[var(--room-dim)] transition-colors hover:text-[var(--room-paper)] disabled:opacity-40"><SkipForward className="h-5 w-5" /></button>
-          <Volume2 className="h-4 w-4 text-[var(--room-faint)]" />
-          <input type="range" min="0" max="100" value={volume} onChange={(e) => setVolume(Number(e.target.value))} aria-label="Volume" className="zen-range w-24" style={{ '--v': `${volume}%` }} />
+        <span className="flex shrink-0 items-center gap-5 @max-md:mt-2 @max-md:w-full @max-md:flex-wrap @max-md:justify-center @max-md:gap-x-10 @max-md:gap-y-5" data-control>
+          <button type="button" onClick={() => { setHostPaused(!paused); togglePlay(); }} aria-label={paused ? 'Play' : 'Pause'} className="grid h-[40px] w-[40px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95 @max-md:h-[72px] @max-md:w-[72px] [&_svg]:@max-md:h-7 [&_svg]:@max-md:w-7">{paused ? <Play className="ml-0.5 h-4 w-4 fill-current" /> : <Pause className="h-4 w-4 fill-current" />}</button>
+          <button type="button" onClick={() => { setHostPaused(false); skipWithParty(); }} aria-label="Skip" aria-busy={skipping || undefined} disabled={skipping} className="text-[var(--room-dim)] transition-colors hover:text-[var(--room-paper)] disabled:opacity-40 @max-md:grid @max-md:h-14 @max-md:w-14 @max-md:place-items-center [&_svg]:@max-md:h-8 [&_svg]:@max-md:w-8"><SkipForward className="h-5 w-5" /></button>
+          <span className="flex items-center gap-5 @max-md:basis-full @max-md:gap-4">
+            <Volume2 className="h-4 w-4 shrink-0 text-[var(--room-faint)] @max-md:h-5 @max-md:w-5" />
+            <input type="range" min="0" max="100" value={volume} onChange={(e) => setVolume(Number(e.target.value))} aria-label="Volume" className="zen-range reach-in-narrow w-24 @max-md:w-auto @max-md:flex-1" style={{ '--v': `${volume}%` }} />
+          </span>
         </span>
       </div>
 
@@ -245,7 +247,7 @@ export default function RoomParty() {
                 }}
               >{blockArmed === i.guestId ? `Block ${i.guestName}?` : 'Block'}</Word>
             )}
-            <button type="button" onClick={() => op({ op: 'remove', id: i.id })} aria-label={`Remove ${i.name}`} className="grid h-6 w-6 place-items-center text-[var(--room-faint)] opacity-0 hover:text-[var(--room-paper)] group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
+            <button type="button" onClick={() => op({ op: 'remove', id: i.id })} aria-label={`Remove ${i.name}`} className="grid h-6 w-6 place-items-center text-[var(--room-faint)] opacity-0 hover:text-[var(--room-paper)] group-hover:opacity-100 pointer-coarse:h-10 pointer-coarse:w-10 pointer-coarse:opacity-100"><X className="h-3.5 w-3.5" /></button>
           </span>
         </div>
       ))}

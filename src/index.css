@@ -273,6 +273,15 @@
 .zen-range::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px var(--zen-glow); }
 .zen-range::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 50%; background: #fff; }
 .zen-range:disabled { opacity: 0.4; cursor: default; }
+/* A finger needs more than a 2px line: in a narrow column (the phone's sheet) .reach-in-narrow
+   makes the slider 44px tall and draws the line in its middle; on touch the thumb is larger */
+@container (width < 28rem) {
+  .zen-range.reach-in-narrow { height: 44px; background-size: 100% 2px; background-repeat: no-repeat; background-position: center; }
+}
+@media (pointer: coarse) {
+  .zen-range::-webkit-slider-thumb { width: 20px; height: 20px; }
+  .zen-range::-moz-range-thumb { width: 20px; height: 20px; }
+}
 /* sized by the lyric box, not the window: the room's full-state column is a quarter of the width */
 .zen-lite-line { font-size: clamp(0.9rem, 3.2cqw, 1.6rem); transition: font-size 0.8s cubic-bezier(0.16, 1, 0.3, 1), text-shadow 0.8s ease; }
 .zen-lite-line.is-current { font-size: clamp(1.5rem, 8.5cqw, 4.6rem); text-shadow: 0 0 2px #fff, 0 0 18px rgba(255, 255, 255, 0.45), 0 0 40px var(--zen-glow); }
