@@ -18,6 +18,7 @@ import { useSlice } from '../store/selectors';
 // Desktop-only and heavy; loaded the first time it is opened
 const ZenMode = lazy(() => import('../views/ZenMode/ZenMode'));
 const Room = lazy(() => import('../room/Room'));
+const PhoneRoom = lazy(() => import('../room/phone/PhoneRoom'));
 import { shouldRegisterServiceWorker } from '../pwa/env';
 import BottomTabBar from './BottomTabBar';
 import MiniPlayer from './MiniPlayer';
@@ -169,7 +170,22 @@ export default function MainLayout({ children }) {
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
   }, [contrast]);
-  const newLayout = !isMobile && playbackSettings?.newLayout === 'on';
+  // The room: on the Mac a panel beside the rail, on the phone a sheet from the bottom (DESIGN.md §5).
+  // Behind the Layout setting on both until it is the default.
+  const newLayout = playbackSettings?.newLayout === 'on';
+  if (newLayout && isMobile) {
+    return (
+      <div className="relative h-dvh overflow-hidden">
+        <Suspense fallback={null}><PhoneRoom>{children}</PhoneRoom></Suspense>
+        <DevicePicker />
+        <AccountSheet />
+        <ContextMenu />
+        <ToastHost />
+        <SyncConflictDialog />
+        {registerServiceWorker && <UpdatePrompt />}
+      </div>
+    );
+  }
   if (newLayout) {
     return (
       <div className="relative h-dvh overflow-hidden pt-[env(safe-area-inset-top)]">

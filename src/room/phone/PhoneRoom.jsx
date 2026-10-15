@@ -1,0 +1,45 @@
+import { useCallback, useState } from 'react';
+import { useRoomState, LISTS, OPEN_VIEWS, PAGE_VIEWS, MODE_VIEWS } from '../useRoomState';
+import OpenThing from '../OpenThing';
+import UnaddedEngine from '../UnaddedEngine';
+import PhoneNowPlaying from './PhoneNowPlaying';
+import PhoneSheet from './PhoneSheet';
+
+// The room on a phone (DESIGN.md §5): the playing room underneath, the sheet over it. The state is
+// the Mac room's own (useRoomState): the same lists, stops, Back and launcher picks. One column:
+// at half the sheet is the list; an open thing takes it to full and stands over the list, with Back
+// in its head (the system's back gesture walks the same history).
+
+export default function PhoneRoom({ children }) {
+  const {
+    currentView, setAccountOpen, isSeven, pileId, suggestionsAttempt, roomPlaylist, layer, setLayer, list,
+    backFrame, nameOf, backOverride, goBackInRoom, expand, less, lit, pick
+  } = useRoomState();
+  const [closedH, setClosedH] = useState(76);
+  const onHeadHeight = useCallback((h) => setClosedH(h), []);
+  const List = LISTS[list];
+
+  // what the sheet shows at full: the open thing (a playlist, search, a mode, a list's own page),
+  // else the list
+  const opensThing = isSeven || OPEN_VIEWS.has(currentView) || MODE_VIEWS.has(currentView) || PAGE_VIEWS.has(currentView);
+  const showThing = layer === 'full' && opensThing;
+  const back = backOverride ? { name: backOverride.name, go: goBackInRoom } : backFrame ? { name: nameOf(backFrame.frame), go: goBackInRoom } : null;
+  const listName = { library: 'Library', sevens: 'Sevens', party: 'Party', unadded: 'Unadded' }[list] || 'Library';
+  const head = showThing ? (
+    <div className="flex shrink-0 items-center justify-between border-b border-[var(--room-hair)] px-5 pb-1">
+      <button type="button" onClick={back ? back.go : less} className="ui-word inline-flex min-h-[44px] max-w-[70%] items-center truncate">← {back ? back.name : listName}</button>
+    </div>
+  ) : null;
+
+  return (
+    <div className="fixed inset-0 overflow-hidden" style={{ background: 'var(--room-ink)' }}>
+      <PhoneNowPlaying bottomInset={closedH + 12} />
+      <PhoneSheet state={layer} onState={setLayer} lit={lit} onPick={pick} onSettings={() => setAccountOpen(true)} head={head} onHeadHeight={onHeadHeight}>
+        {showThing
+          ? <OpenThing currentView={currentView} isSeven={isSeven} roomPlaylist={roomPlaylist}>{children}</OpenThing>
+          : List ? <List onExpand={expand} /> : null}
+      </PhoneSheet>
+      {currentView === 'unadded' && <UnaddedEngine key={suggestionsAttempt} pileId={pileId} />}
+    </div>
+  );
+}
