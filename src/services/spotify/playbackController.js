@@ -284,6 +284,10 @@ async function afterContextEnded(ended, newState) {
   const stillSame = newTrack?.uri === ended?.trackUri && newState?.paused;
   log('playback', 'the playlist ran out', `${stillSame ? 'nothing followed' : `Spotify went on to ${newTrack?.name || '?'}`}; setting: ${setting}`);
   if (!t || setting === 'spotify') return;
+  // At a party the party decides what plays next: carrying on into Liked Songs, or stopping,
+  // would play over the guests' requests (and a request starting can look like the playlist
+  // having ended)
+  if (usePartyStore.getState().code) { log('playback', 'a party is on, so the setting is not applied'); return; }
   const s = player();
   if (setting === 'stop') {
     if (!stillSame) { setTimeout(() => { if (!player().playbackState?.paused) togglePlay(); }, 300); }
@@ -1186,7 +1190,23 @@ function skipNow() {
   if (sdk) return sdk.nextTrack().catch(console.error);
   return remote(skipToNext);
 }
+// While a party runs, every Next (the room, the keyboard, the lock screen) goes through the party,
+// so the next guest request is handed to Spotify first and the skip lands on it. Without this
+// only the party view's Skip did that, and skipping from anywhere else ran through the playlist
+// while the requests waited.
+let skipHook = null;
+export function setSkipHook(fn) { skipHook = fn; }
+// A plain skip, for the party's own Skip (which must not come back through the hook)
+export function skipRaw() {
+  lastIntentAt = Date.now();
+  referee.noteCommand('next');
+  localPlayedThisSession = true;
+  activateLocalPlayer();
+  return skipNow();
+}
+
 export async function next() {
+  if (skipHook) { activateLocalPlayer(); return skipHook(); }
   lastIntentAt = Date.now();
   referee.noteCommand('next');
   localPlayedThisSession = true;

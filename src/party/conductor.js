@@ -3,7 +3,7 @@ import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { hostApi } from './client';
 import { addToQueue, playContext, fetchQueue, fetchDevices, transferPlayback } from '../services/spotify/api';
-import { playOn, next as skipNext, setShuffle, requestFastPlaybackUpdates, PLAYER_NAME, onUserPause } from '../services/spotify/playbackController';
+import { playOn, skipRaw as skipNext, setSkipHook, setShuffle, requestFastPlaybackUpdates, PLAYER_NAME, onUserPause } from '../services/spotify/playbackController';
 import { setSuspended as suspendQueue } from '../services/queueConductor';
 import { log } from '../services/debugLog';
 
@@ -297,6 +297,7 @@ export function startConductor() {
   if (timers) return;
   fed = null; silentSince = 0; hostPaused = false;
   suspendQueue(true);
+  setSkipHook(skipWithParty);
   timers = { hb: setInterval(heartbeat, HEARTBEAT_MS), tick: setInterval(() => { tick().catch(() => {}); }, TICK_MS) };
   heartbeat();
   // Song changes reach the projector and the guests within a couple of seconds, not five
@@ -320,6 +321,7 @@ export function stopConductor() {
   if (!timers) return;
   clearInterval(timers.hb); clearInterval(timers.tick); timers = null;
   suspendQueue(false);
+  setSkipHook(null);
   unsubscribeChanges?.(); unsubscribeChanges = null; clearTimeout(changeTimer);
   releaseFastUpdates?.(); releaseFastUpdates = null;
   speakerOk = null; fellBack = false;
