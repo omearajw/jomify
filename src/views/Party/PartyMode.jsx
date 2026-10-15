@@ -4,7 +4,7 @@ import { Play, Pause, SkipForward, Volume2, Search, Plus, X, Pin, Link2, Check, 
 
 
 
-import { partyLink, partyScreenLink } from '../../party/client';
+import { partyLink, openPartyScreen } from '../../party/client';
 import { skipWithParty, setHostPaused, rejoinParty, endParty } from '../../party/conductor';
 import { togglePlay, setVolume } from '../../services/spotify/playbackController';
 
@@ -76,7 +76,7 @@ export default function PartyMode() {
           <p className="text-sm text-neutral-400 truncate">{partyLink(code).replace(/^https?:\/\//, '')}</p>
         </div>
         <button type="button" onClick={copyLink} className="rounded-full border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white flex items-center gap-2 hover:bg-white/15">{copied ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />} {copied ? 'Copied' : 'Share link'}</button>
-        <a href={partyScreenLink(code)} target="_blank" rel="noreferrer" title="Open this on a TV or a spare screen: QR, now playing and what's next" className="rounded-full border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white flex items-center gap-2 hover:bg-white/15"><Monitor className="w-4 h-4" /> Wall screen</a>
+        <button type="button" onClick={() => openPartyScreen(code)} title="Open this on a TV or a spare screen: QR, now playing and what's next" className="rounded-full border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white flex items-center gap-2 hover:bg-white/15"><Monitor className="w-4 h-4" /> Wall screen</button>
         <button type="button" onClick={() => setShowQr((v) => !v)} aria-pressed={showQr} className="rounded-full border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white flex items-center gap-2 hover:bg-white/15"><QrCode className="w-4 h-4" /> QR</button>
         <button type="button" onClick={end} className={`rounded-full px-4 py-3 text-sm font-bold flex items-center gap-2 ${endArmed ? 'bg-red-500 text-white' : 'border border-white/15 text-neutral-300 hover:bg-white/10'}`}>{endArmed ? 'Tap again to end' : 'End party'}</button>
       </header>

@@ -51,6 +51,20 @@ export default function PartyScreen({ code }) {
     return () => { document.removeEventListener('fullscreenchange', onChange); clearTimeout(idle.current); };
   }, []);
   const stir = () => { setStirred(true); clearTimeout(idle.current); idle.current = setTimeout(() => setStirred(false), IDLE_MS); };
+  // The way out. Opened as its own window: close it. Opened in Jomify's own window (the installed
+  // app has no back button or address bar, so this page used to be a dead end): go back to the
+  // party in Jomify.
+  const leave = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    if (window.opener) { window.close(); return; }
+    window.location.assign('/party');
+  };
+  // Escape leaves full screen first (the browser does that), then the screen itself
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && !document.fullscreenElement) leave(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   const toggleFull = () => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     else document.documentElement.requestFullscreen?.().catch(() => {});
@@ -128,14 +142,13 @@ export default function PartyScreen({ code }) {
           {state?.hostAway && <p className="text-[var(--room-dim)]" style={{ fontSize: '2vmin' }}>The host's Jomify is away for the moment; requests still land.</p>}
         </section>
       </div>
-      <button
-        type="button"
-        onClick={toggleFull}
-        className="ui-word absolute bottom-[2.4vmin] right-[3vmin] transition-opacity"
+      <div
+        className="absolute bottom-[2.4vmin] right-[3vmin] flex items-center gap-6 transition-opacity"
         style={{ opacity: stirred ? 1 : 0, pointerEvents: stirred ? 'auto' : 'none', transitionDuration: 'var(--room-mid)' }}
       >
-        {isFull ? 'Leave full screen · Esc' : 'Full screen'}
-      </button>
+        <button type="button" onClick={toggleFull} className="ui-word">{isFull ? 'Leave full screen · Esc' : 'Full screen'}</button>
+        <button type="button" onClick={leave} className="ui-word">{window.opener ? 'Close · Esc' : 'Back to Jomify · Esc'}</button>
+      </div>
     </div>
   );
 }

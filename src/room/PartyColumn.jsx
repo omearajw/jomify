@@ -2,7 +2,7 @@ import { Monitor } from 'lucide-react';
 import { usePartyStore } from '../store/partyStore';
 import { useUserStore } from '../store/userStore';
 import { useSlice } from '../store/selectors';
-import { partyLink, partyScreenLink } from '../party/client';
+import { partyLink, openPartyScreen } from '../party/client';
 import { qrSvg } from '../party/view';
 
 // The Party layer's left column (DESIGN.md §9): the party's facts, the ones you show people:
@@ -39,7 +39,7 @@ export default function PartyColumn({ onExpand }) {
             <div className="aspect-square w-full [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: qrSvg(partyLink(code)) }} />
           </div>
           <p className="room-mono mt-5 flex justify-between text-[var(--room-dim)]"><span>In the party</span><span>{guestCount}</span></p>
-          <a href={partyScreenLink(code)} target="_blank" rel="noreferrer" className="room-mono mt-3 flex items-center gap-2 text-[var(--room-faint)] transition-colors hover:text-[var(--room-paper)]"><Monitor className="h-3.5 w-3.5" /> Wall screen</a>
+          <button type="button" onClick={() => openPartyScreen(code)} className="room-mono mt-3 flex items-center gap-2 text-[var(--room-faint)] transition-colors hover:text-[var(--room-paper)]"><Monitor className="h-3.5 w-3.5" /> Wall screen</button>
           <p className="room-mono mt-7 flex justify-between border-b border-[var(--room-hair)] pb-2 text-[var(--room-faint)]"><span>Coming up</span><span>{coming.length || ''}</span></p>
           {coming.length === 0 && <p className="pt-3 text-[12.5px] text-[var(--room-faint)]">Nothing asked for yet.</p>}
           {coming.slice(0, 8).map((i, n) => (

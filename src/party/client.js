@@ -47,3 +47,12 @@ export const partyLink = (code) => {
 
 // The display for a screen on the wall: QR, now playing, what's next
 export const partyScreenLink = (code) => `${partyLink(code)}/screen`;
+
+// The wall screen in a window of its own, so Jomify stays where it was underneath (the installed
+// app has no back button; opened in Jomify's own window it was a dead end). A blocked pop-up
+// falls back to the same window, where the screen offers "Back to Jomify".
+export function openPartyScreen(code) {
+  const w = window.open(partyScreenLink(code), 'jomify-wall', 'popup,width=1280,height=720');
+  if (w) { w.focus?.(); return; }
+  window.location.assign(partyScreenLink(code));
+}

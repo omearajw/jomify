@@ -4,7 +4,7 @@ import { useUserStore } from '../store/userStore';
 import { usePartyStore } from '../store/partyStore';
 import { usePartyHost } from '../views/Party/usePartyHost';
 import { ROLES, runChecks } from '../views/Party/partyChecks';
-import { partyLink, partyScreenLink } from '../party/client';
+import { partyLink, openPartyScreen } from '../party/client';
 import { heartbeat, skipWithParty, setHostPaused, rejoinParty, endParty } from '../party/conductor';
 import { togglePlay, setVolume } from '../services/spotify/playbackController';
 import { fetchDevices, transferPlayback } from '../services/spotify/api';
@@ -179,7 +179,7 @@ export default function RoomParty() {
       <p className="mt-2 text-[13px] text-[var(--room-dim)]">{partyLink(code).replace(/^https?:\/\//, '')}</p>
       <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
         <Word onClick={copyLink}>{copied ? 'Copied' : 'Share the link'}</Word>
-        <a href={partyScreenLink(code)} target="_blank" rel="noreferrer" className="ui-word" title="Open this on a TV or a spare screen: QR, now playing and what's next">The wall screen</a>
+        <button type="button" onClick={() => openPartyScreen(code)} className="ui-word" title="Open this on a TV or a spare screen: QR, now playing and what's next">The wall screen</button>
         <Word onClick={() => op({ op: 'settings', paused: !party?.paused })} lit={Boolean(party?.paused)} tip="Guests can still see what is playing but cannot ask for songs">{party?.paused ? 'Requests paused' : 'Pause requests'}</Word>
         <Word onClick={end} danger>{endArmed ? 'Click again to end' : 'End the party'}</Word>
       </div>
