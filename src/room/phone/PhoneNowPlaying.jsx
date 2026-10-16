@@ -22,7 +22,7 @@ import Artists from '../Artists';
 
 const MOVE = { layout: { duration: 0.55, ease: [0.2, 0.75, 0.2, 1] } };
 
-function Progress() {
+export function Progress() {
   const { position, duration, track } = useProgress();
   const [scrub, setScrub] = useState(null);
   const shown = scrub ?? position;

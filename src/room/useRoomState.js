@@ -26,7 +26,11 @@ export const PAGE_VIEWS = new Set(['sevens', 'party']);
 export const MODE_VIEWS = new Set(['unadded']);
 export const LISTS = { library: LibraryTree, sevens: SevensColumn, party: PartyColumn, unadded: UnaddedColumn };
 
-export function useRoomState() {
+// a mode that takes the layer full; on the phone Unadded is a screen of its own instead
+const takesLayerOn = (phone, v) => MODE_VIEWS.has(v) && !(phone && v === 'unadded');
+
+export function useRoomState({ phone = false } = {}) {
+  const takesLayer = (v) => takesLayerOn(phone, v);
   const { currentView, setCurrentView, isZenMode, setAccountOpen, activePlaylistId, currentAlbumId, currentArtistId, sevens, viewHistory, playlists, albums, followedArtists } = useSlice(useUserStore, ['currentView', 'setCurrentView', 'isZenMode', 'setAccountOpen', 'activePlaylistId', 'currentAlbumId', 'currentArtistId', 'sevens', 'viewHistory', 'playlists', 'albums', 'followedArtists']);
   // the open playlist gets the room's own surface; a Seven keeps its workspace, and everything
   // else is the app's page as it is
@@ -76,7 +80,7 @@ export function useRoomState() {
   // half, half → closed; the room click closes in one.
   const more = useCallback(() => setLayer((l) => (l === 'closed' ? 'half' : 'full')), []);
   const less = useCallback(() => setLayer((l) => { if (l === 'full') return 'half'; if (l === 'half') lastOpen.current = 'half'; return 'closed'; }), []);
-  const open = useCallback(() => { setLayer((l) => (l === 'closed' ? (MODE_VIEWS.has(useUserStore.getState().currentView) ? 'full' : lastOpen.current) : l)); }, []);
+  const open = useCallback(() => { setLayer((l) => (l === 'closed' ? (takesLayerOn(phone, useUserStore.getState().currentView) ? 'full' : lastOpen.current) : l)); }, [phone]);
 
   // a change of view: an open thing takes the layer to full, a list's own view opens it at half
   // if it is closed, and a view that belongs to a list switches the left column to that list (a
@@ -90,7 +94,8 @@ export function useRoomState() {
     setSeenView(viewKey);
     if (isSeven) setList('sevens');
     else if (LIST_OF_VIEW[currentView]) setList(LIST_OF_VIEW[currentView]);
-    if (MODE_VIEWS.has(currentView) || OPEN_VIEWS.has(currentView)) setLayer('full');
+    if (phone && currentView === 'unadded') setLayer('closed');
+    else if (takesLayer(currentView) || OPEN_VIEWS.has(currentView)) setLayer('full');
     else if (LIST_OF_VIEW[currentView] && layer === 'closed') setLayer('half');
   }
 
@@ -119,8 +124,8 @@ export function useRoomState() {
       return;
     }
     if (currentView !== id) setCurrentView(id);
-    else setLayer(MODE_VIEWS.has(id) ? 'full' : 'half');
-  }, [currentView, layer, list, lit, setCurrentView, setAccountOpen, close, pileId]);
+    else setLayer(takesLayerOn(phone, id) ? 'full' : phone && id === 'unadded' ? 'closed' : 'half');
+  }, [currentView, layer, list, lit, setCurrentView, setAccountOpen, close, pileId, phone]);
 
   return {
     currentView, setCurrentView, isZenMode, setAccountOpen, activePlaylistId, currentAlbumId, currentArtistId,

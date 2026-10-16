@@ -52,7 +52,7 @@ function useSafeInsets() {
   return insets;
 }
 
-export default function PhoneSheet({ state, onState, lit, onPick, onSettings, head, children, onHeadHeight }) {
+export default function PhoneSheet({ state, onState, lit, litAtRest = null, onPick, onSettings, head, children, onHeadHeight }) {
   const vh = useViewportHeight();
   const safe = useSafeInsets();
   const headRef = useRef(null);
@@ -140,8 +140,8 @@ export default function PhoneSheet({ state, onState, lit, onPick, onSettings, he
         </button>
         <nav aria-label="Jomify" className="flex items-center justify-between">
           {LAUNCHER.map((it) => (
-            <button key={it.id} type="button" onClick={() => onPick(it.id)} aria-current={lit === it.id && state !== 'closed' ? 'page' : undefined}
-              className={`room-mono min-h-[44px] px-1 transition-colors ${lit === it.id && state !== 'closed' ? 'text-[var(--room-paper)]' : 'text-[var(--room-dim)]'}`}>
+            <button key={it.id} type="button" onClick={() => onPick(it.id)} aria-current={(lit === it.id && state !== 'closed') || litAtRest === it.id ? 'page' : undefined}
+              className={`room-mono min-h-[44px] px-1 transition-colors ${(lit === it.id && state !== 'closed') || litAtRest === it.id ? 'text-[var(--room-paper)]' : 'text-[var(--room-dim)]'}`}>
               {it.label}
             </button>
           ))}

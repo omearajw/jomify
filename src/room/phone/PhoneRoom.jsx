@@ -5,6 +5,7 @@ import { useRoomState, LISTS, OPEN_VIEWS, PAGE_VIEWS, MODE_VIEWS } from '../useR
 import OpenThing from '../OpenThing';
 import UnaddedEngine from '../UnaddedEngine';
 import PhoneNowPlaying from './PhoneNowPlaying';
+import PhoneUnadded from './PhoneUnadded';
 import PhoneSheet from './PhoneSheet';
 
 // The room on a phone (DESIGN.md §5): the playing room underneath, the sheet over it. The state is
@@ -16,14 +17,16 @@ export default function PhoneRoom({ children }) {
   const {
     currentView, setAccountOpen, isSeven, pileId, suggestionsAttempt, roomPlaylist, layer, setLayer, list,
     backFrame, nameOf, backOverride, goBackInRoom, expand, less, lit, pick
-  } = useRoomState();
+  } = useRoomState({ phone: true });
   const [closedH, setClosedH] = useState(76);
   const onHeadHeight = useCallback((h) => setClosedH(h), []);
   const List = LISTS[list];
 
   // what the sheet shows at full: the open thing (a playlist, search, a mode, a list's own page),
   // else the list
-  const opensThing = isSeven || OPEN_VIEWS.has(currentView) || MODE_VIEWS.has(currentView) || PAGE_VIEWS.has(currentView);
+  // Unadded is a screen of its own under the sheet (PhoneUnadded); raised, the sheet shows its pile
+  const unadded = currentView === 'unadded';
+  const opensThing = isSeven || OPEN_VIEWS.has(currentView) || (MODE_VIEWS.has(currentView) && !unadded) || PAGE_VIEWS.has(currentView);
   const showThing = layer === 'full' && opensThing;
   const back = backOverride ? { name: backOverride.name, go: goBackInRoom } : backFrame ? { name: nameOf(backFrame.frame), go: goBackInRoom } : null;
   const listName = { library: 'Library', sevens: 'Sevens', party: 'Party', unadded: 'Unadded' }[list] || 'Library';
@@ -47,11 +50,11 @@ export default function PhoneRoom({ children }) {
 
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: 'var(--room-ink)' }}>
-      <PhoneNowPlaying bottomInset={closedH + 12} />
-      <PhoneSheet state={layer} onState={setLayer} lit={lit} onPick={pick} onSettings={() => setAccountOpen(true)} head={head} onHeadHeight={onHeadHeight}>
+      {unadded ? <PhoneUnadded bottomInset={closedH} /> : <PhoneNowPlaying bottomInset={closedH + 12} />}
+      <PhoneSheet state={layer} onState={setLayer} lit={lit} litAtRest={unadded ? 'unadded' : null} onPick={pick} onSettings={() => setAccountOpen(true)} head={head} onHeadHeight={onHeadHeight}>
         {showThing
           ? <OpenThing currentView={currentView} isSeven={isSeven} roomPlaylist={roomPlaylist}>{children}</OpenThing>
-          : List ? <List onExpand={expand} /> : null}
+          : List ? <List onExpand={unadded ? () => setLayer('closed') : expand} /> : null}
       </PhoneSheet>
       {currentView === 'unadded' && <UnaddedEngine key={suggestionsAttempt} pileId={pileId} />}
     </div>
