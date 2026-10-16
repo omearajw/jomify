@@ -1240,12 +1240,22 @@ export async function next() {
   return done;
 }
 
+// Previous restarts the song once it is a few seconds in, and only then goes back a song, as
+// Spotify's own apps do. Neither the in-browser player nor the Web API does that by itself: both
+// go straight to the previous song (Jack, 16 Oct), so the rule lives here, for every Previous
+// (the room, the phone, the lock screen, the keyboard).
+const RESTART_AFTER_MS = 3000;
 export function previous() {
   lastIntentAt = Date.now();
-  referee.noteCommand('previous');
   localPlayedThisSession = true;
   activateLocalPlayer();
   const sdk = localSdk();
+  const st = player().playbackState;
+  if (st?.track_window?.current_track && interpolatedPosition() > RESTART_AFTER_MS) {
+    log('transport', 'previous: back to the start of the song', sdk ? 'this browser' : 'remote device');
+    return seek(0);
+  }
+  referee.noteCommand('previous');
   log('transport', 'previous', sdk ? 'this browser' : 'remote device');
   if (sdk) return sdk.previousTrack().catch(console.error);
   return remote(skipToPrevious);
