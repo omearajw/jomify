@@ -3,9 +3,9 @@ import { usePlayerStore } from '../../store/playerStore';
 import { startProjectorDisplay } from './projectorBridge';
 import Projection from './Projection';
 
-// The projector's own window (/projector). Drag it onto the projector's screen and click once for
-// full screen; walls and assets are edited here, on the surface they are aimed at, while the
-// laptop keeps Jomify. It shows what the main window is playing; with no main window open it
+// The projector's own window (/projector). Drag it onto the projector's screen and press F (or
+// double-click) for full screen. It only shows: walls and assets are edited in the projector
+// editor in the main window, and every change arrives here live. With no main window open it
 // says so instead of a black screen.
 
 export default function ProjectorWindow() {

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Pause, SkipBack, SkipForward, Mic2, Speaker } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Mic2, Speaker, Volume1, Volume2 } from 'lucide-react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { useProgress } from '../../hooks/useProgress';
 import { usePlayingFrom, playingFromLabel } from '../../hooks/usePlayingFrom';
-import { togglePlay, next, previous, seek } from '../../services/spotify/playbackController';
+import { togglePlay, next, previous, seek, setVolume } from '../../services/spotify/playbackController';
 import { getBlurredBackdrop } from '../../utils/blurBackdrop';
 import { formatTime } from '../../utils/formatTime';
 import LikeButton from '../../components/LikeButton';
@@ -41,6 +41,30 @@ function Progress() {
           aria-label="Seek" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
       </div>
       <span className="w-9">{formatTime(duration)}</span>
+    </div>
+  );
+}
+
+// A speaker's volume, when the music is on one: the phone's own buttons only ever reach the
+// phone (a web page can't catch them), so this is the only way to turn an Alexa down from here.
+// setVolume debounces, so dragging sends a handful of requests rather than one per pixel.
+function RemoteVolume() {
+  const activeDevice = usePlayerStore((s) => s.activeDevice);
+  const isLocalActive = usePlayerStore((s) => s.isLocalActive);
+  const remoteVolume = usePlayerStore((s) => s.remoteVolume);
+  const [draft, setDraft] = useState(null);
+  if (!activeDevice || isLocalActive || activeDevice.isLocal) return null;
+  if (activeDevice.supportsVolume === false) return <p className="room-mono mt-2 text-center text-[var(--room-faint)]">{activeDevice.name} won't take volume from apps</p>;
+  const shown = draft ?? remoteVolume ?? 50;
+  const settle = () => setDraft(null);
+  return (
+    <div className="mt-1 flex items-center gap-3 text-[var(--room-faint)]">
+      <Volume1 className="h-4 w-4 shrink-0" />
+      <input type="range" min="0" max="100" value={shown} aria-label={`Volume on ${activeDevice.name}`}
+        onChange={(e) => { const v = parseInt(e.target.value, 10); setDraft(v); setVolume(v); }}
+        onPointerUp={settle} onTouchEnd={settle} onKeyUp={settle}
+        className="zen-range reach-in-narrow h-11 min-w-0 flex-1" style={{ '--v': `${shown}%`, backgroundSize: '100% 2px', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' }} />
+      <Volume2 className="h-4 w-4 shrink-0" />
     </div>
   );
 }
@@ -123,6 +147,7 @@ export default function PhoneNowPlaying({ bottomInset }) {
             </div>
             <span className="h-11 w-11" aria-hidden="true" />
           </div>
+          <RemoteVolume />
         </motion.div>
 
         {/* up next: scrolls in place, never opens the sheet; steps aside while the lyrics are on */}

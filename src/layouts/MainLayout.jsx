@@ -17,6 +17,7 @@ import { useSlice } from '../store/selectors';
 
 // Desktop-only and heavy; loaded the first time it is opened
 const ZenMode = lazy(() => import('../views/ZenMode/ZenMode'));
+import ProjectorStudioHost from '../views/ZenMode/ProjectorStudioHost';
 const Room = lazy(() => import('../room/Room'));
 const PhoneRoom = lazy(() => import('../room/phone/PhoneRoom'));
 import { shouldRegisterServiceWorker } from '../pwa/env';
@@ -189,6 +190,7 @@ export default function MainLayout({ children }) {
         <AccountSheet />
         <ContextMenu />
         <ToastHost />
+        <ProjectorStudioHost />
         <SyncConflictDialog />
         {registerServiceWorker && <UpdatePrompt />}
       </div>
@@ -203,6 +205,7 @@ export default function MainLayout({ children }) {
         <AccountSheet />
         <ContextMenu />
         <ToastHost />
+        <ProjectorStudioHost />
         <Tooltips />
         <SyncConflictDialog />
         <ShortcutsHelp />
@@ -252,6 +255,7 @@ export default function MainLayout({ children }) {
       <AccountSheet />
       <ContextMenu />
       <ToastHost />
+      <ProjectorStudioHost />
         <Tooltips />
       <SyncConflictDialog />
       <ShortcutsHelp />

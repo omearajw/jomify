@@ -2,6 +2,7 @@ import { usePlayerStore } from '../../store/playerStore';
 import { usePartyStore } from '../../store/partyStore';
 import { useUserStore } from '../../store/userStore';
 import { fetchQueue } from '../../services/spotify/api';
+import { useProjectorStore, persistProjectorLayouts } from './projectorStore';
 
 // The projector in its own window (/projector), for a second screen: the laptop keeps Jomify
 // with its controls, the projector shows the projection. The window is a display only. It never
@@ -29,9 +30,14 @@ export function startProjectorFeed() {
   const ch = new BroadcastChannel(CHANNEL);
   const sendPlayer = () => ch.postMessage({ type: 'player', state: plain(usePlayerStore.getState()) });
   const sendParty = () => ch.postMessage({ type: 'party', state: plain(usePartyStore.getState()) });
+  // the layouts and the guides, edited here and drawn there
+  const sendLayout = () => { const p = useProjectorStore.getState(); ch.postMessage({ type: 'layout', layouts: p.layouts, guides: p.guides }); };
+  persistProjectorLayouts();
   ch.onmessage = async (e) => {
     const m = e.data || {};
-    if (m.type === 'hello') { sendPlayer(); sendParty(); }
+    if (m.type === 'hello') { sendPlayer(); sendParty(); sendLayout(); }
+    if (m.type === 'frame' && m.w > 0 && m.h > 0) useProjectorStore.getState().setFrame(m.w, m.h);
+    if (m.type === 'bye') useProjectorStore.getState().setGuides({ on: false });
     if (m.type === 'queue?') {
       const token = useUserStore.getState().token;
       if (!token) return;
@@ -43,7 +49,8 @@ export function startProjectorFeed() {
   };
   const offPlayer = usePlayerStore.subscribe(sendPlayer);
   const offParty = usePartyStore.subscribe(sendParty);
-  feed = () => { offPlayer(); offParty(); ch.close(); feed = null; };
+  const offLayout = useProjectorStore.subscribe((s, prev) => { if (s.layouts !== prev.layouts || s.guides !== prev.guides) sendLayout(); });
+  feed = () => { offPlayer(); offParty(); offLayout(); ch.close(); feed = null; };
   return feed;
 }
 
@@ -64,11 +71,17 @@ export function startProjectorDisplay() {
     if (m.type === 'player') usePlayerStore.setState(m.state);
     if (m.type === 'party') usePartyStore.setState(m.state);
     if (m.type === 'queue') { waiting.get(m.id)?.(m.queue); waiting.delete(m.id); }
+    if (m.type === 'layout') useProjectorStore.setState({ layouts: m.layouts, guides: m.guides });
   };
+  // the screen it is on, so the editor's stage has the projector's shape
+  const sendFrame = () => display?.postMessage({ type: 'frame', w: window.innerWidth, h: window.innerHeight });
+  window.addEventListener('resize', sendFrame);
+  window.addEventListener('pagehide', () => display?.postMessage({ type: 'bye' }));
   display.postMessage({ type: 'hello' });
+  sendFrame();
   // a main window opened after this one says hello by sending its first change; asking again
   // now and then covers one that was reloaded
-  setInterval(() => display.postMessage({ type: 'hello' }), 15000);
+  setInterval(() => { display.postMessage({ type: 'hello' }); sendFrame(); }, 15000);
 }
 
 // The up-next list, from the main window (null when there is no main window to ask)

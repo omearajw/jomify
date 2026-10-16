@@ -11,6 +11,7 @@ import { fetchDevices, transferPlayback } from '../services/spotify/api';
 import { requestedBy } from '../party/view';
 import { artUrl } from '../utils/images';
 import { openProjectorWindow } from '../views/ZenMode/projectorBridge';
+import { useProjectorStore } from '../views/ZenMode/projectorStore';
 import { toast } from '../store/toastStore';
 import Artists from './Artists';
 
@@ -269,8 +270,8 @@ export default function RoomParty() {
         <Speaker party={party} op={op} />
         <div className="py-3" style={{ borderTop: '1px solid var(--room-hair)' }}>
           <div className="flex items-center justify-between gap-6">
-            <span className="min-w-0 text-[13px] text-[var(--room-dim)]">Projector <span className="text-[var(--room-faint)]">· its own window, to drag onto the projector's screen; this one keeps the controls</span></span>
-            <Word onClick={() => { if (!openProjectorWindow()) toast('The browser blocked the window. Allow pop-ups for Jomify and try again.', { tone: 'error' }); }} tip="Opens the projection in a separate window for a second screen">Open</Word>
+            <span className="min-w-0 text-[13px] text-[var(--room-dim)]">Projector <span className="text-[var(--room-faint)]">· its own window for the projector's screen, edited from here</span></span>
+            <Word onClick={() => { if (!openProjectorWindow()) toast('The browser blocked the window. Allow pop-ups for Jomify and try again.', { tone: 'error' }); useProjectorStore.getState().setStudioOpen(true); }} tip="Opens the projection in a separate window to drag onto the projector's screen, and the editor here">Open</Word>
           </div>
         </div>
         <ThisDevice />

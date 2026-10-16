@@ -11,21 +11,32 @@ const STORAGE_KEY = 'jomify_projector';
 export const LAYOUT_FORMAT = 2;
 
 // What an asset can be. `aspect` is the shape the content is designed for; it is letterboxed
-// inside its box rather than stretched.
+// inside its box rather than stretched. `options` are the asset's settings and their defaults.
+// The waveform and the colour wash were dropped on 15 Oct (Jack: neither really worked); saved
+// layouts lose them on load rather than failing to load.
 export const WIDGETS = {
   art: { label: 'Album art', aspect: 1 },
-  title: { label: 'Title and artist', aspect: 2 },
-  progress: { label: 'Progress bar', aspect: 6 },
+  title: { label: 'Title and artist', aspect: 2.4, options: { align: 'left' } },
+  // stretches to its box: a bar is as long as you make it
+  progress: { label: 'Progress bar', aspect: null, dropAspect: 9, options: { numbers: true } },
   lyrics: { label: 'Lyrics', aspect: 2 },
   clock: { label: 'Clock', aspect: 3 },
-  waveform: { label: 'Waveform', aspect: 3 },
-  next: { label: 'Up next', aspect: 3 },
-  wash: { label: 'Colour wash', aspect: null },
+  next: { label: 'Up next', aspect: 2.2 },
   // During a party: the join code, who asked for this song, and the requests coming up
-  partyqr: { label: 'Party QR', aspect: 0.78 },
+  partyqr: { label: 'Party code', aspect: 0.78, options: { show: 'both' } },
   requestedby: { label: 'Requested by', aspect: 5 },
-  partyqueue: { label: 'Party queue', aspect: 1.8 }
+  partyqueue: { label: 'Party queue', aspect: 1.6 }
 };
+export const DROPPED_WIDGETS = new Set(['waveform', 'wash']);
+
+// The shape an asset's content takes, which some options change (a QR alone is square)
+export function aspectOf(item) {
+  if (item.widget === 'partyqr') {
+    const show = item.options?.show || 'both';
+    return show === 'qr' ? 1 : show === 'code' ? 3.2 : 0.78;
+  }
+  return WIDGETS[item.widget]?.aspect ?? null;
+}
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -36,13 +47,13 @@ export function newWall(corners, name = 'Wall') {
 
 // An asset on a wall. `rect` is in fractions of the wall: x, y of the top-left, w, h of the box.
 export function newItem(wallId, widget, rect) {
-  return { id: uid(), wallId, widget, rect: { ...rect }, options: widget === 'title' ? { align: 'left' } : {} };
+  return { id: uid(), wallId, widget, rect: { ...rect }, options: { ...(WIDGETS[widget]?.options || {}) } };
 }
 
 // Where a dropped asset lands: a box of a sensible size centred on the drop point, kept inside
 // the wall. Sizes are fractions of the wall, so they follow the wall's shape.
 export function dropRect(widget, x, y, wallAspect = 1.6) {
-  const aspect = WIDGETS[widget]?.aspect;
+  const aspect = WIDGETS[widget]?.aspect ?? WIDGETS[widget]?.dropAspect;
   let w = 0.5;
   let h = aspect ? clamp((w * wallAspect) / aspect, 0.08, 0.9) : 0.5;
   if (h > 0.9) { h = 0.9; w = aspect ? (h * aspect) / wallAspect : 0.5; }
@@ -129,7 +140,16 @@ export function migrateLayout(legacy) {
   return { id: typeof legacy.id === 'string' ? legacy.id : uid(), name: legacy.name, walls, items };
 }
 
-const normalizeLayout = (l) => (isValidLayout(l) ? l : isLegacyLayout(l) ? migrateLayout(l) : null);
+const withoutDropped = (l) => (l && Array.isArray(l.items) ? { ...l, items: l.items.filter((i) => !DROPPED_WIDGETS.has(i?.widget)) } : l);
+const normalizeLayout = (raw) => {
+  const l = withoutDropped(raw);
+  if (isValidLayout(l)) return l;
+  if (raw && Array.isArray(raw.surfaces)) {
+    const legacy = { ...raw, surfaces: raw.surfaces.filter((s) => !DROPPED_WIDGETS.has(s?.widget)) };
+    if (isLegacyLayout(legacy)) return migrateLayout(legacy);
+  }
+  return null;
+};
 
 export function loadProjectorState() {
   try {
