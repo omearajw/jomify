@@ -25,6 +25,7 @@ import * as queueConductor from '../queueConductor';
 import { log } from '../debugLog';
 
 import * as referee from './pauseReferee';
+import * as errorSkip from './errorSkip';
 const SDK_SCRIPT_ID = 'spotify-player-script';
 const SDK_SCRIPT_SRC = 'https://sdk.scdn.co/spotify-player.js';
 const SDK_READY_TIMEOUT_MS = 15000;
@@ -555,6 +556,7 @@ function initLocalPlayer() {
         const track = state.track_window?.current_track;
         if (track?.uri !== before?.track_window?.current_track?.uri) {
           log('playback', 'now playing', `${track?.name || '?'} by ${track?.artists?.map((a) => a.name).join(', ') || '?'}${state.paused ? ', arrived paused' : ''}`);
+          errorSkip.noteTrackChange(track?.uri);
           sleepAtSongChange();
           // The last song of a context was almost over and now something else is on: it ran out
           if (wasNearEnd && (state.context?.uri !== wasNearEnd.contextUri || !state.context?.uri || Date.now() - lastIntentAt > INTENT_WINDOW_MS)) {
@@ -621,7 +623,12 @@ function initLocalPlayer() {
           reconnect(delay);
         });
     });
-    sdkPlayer.addListener('playback_error', ({ message }) => console.warn('[playback] SDK playback error:', message));
+    sdkPlayer.addListener('playback_error', ({ message }) => {
+      console.warn('[playback] SDK playback error:', message);
+      const st = player().playbackState;
+      const track = st?.track_window?.current_track;
+      errorSkip.noteError({ uri: track?.uri, contextUri: st?.context?.uri, song: track?.name, positionMs: interpolatedPosition(), playing: st?.paused === false });
+    });
     // The browser refused to start audio (a play command from Spotify's servers counts as
     // autoplay on iOS). The element was activated in the tap that asked for the song, so one
     // resume usually goes through; only if it doesn't is the user asked to tap play.
@@ -830,6 +837,20 @@ export function startPlaybackController() {
       if (sdk && s.isLocalActive) return sdk.resume().catch((err) => log('pause', 'could not restart', err?.message || err));
       if (t && s.deviceId) return resumePlayback(t, s.deviceId).then(confirmPlayback).catch((err) => log('pause', 'could not restart', err?.message || err));
       return undefined;
+    }
+  });
+  // a song the player skipped because the connection went: put back once it returns (errorSkip.js)
+  errorSkip.installErrorSkip({
+    lastIntentAt: () => lastIntentAt,
+    // a pause since the song was lost that must be kept: headphones out, or you
+    stoppedOnPurposeSince: (at) => { const c = referee.lastPauseCause(); return c && c.at >= at && (c.cause === 'headphones' || c.cause === 'you') ? `paused since: ${c.cause}` : null; },
+    isHere: () => { const s = player(); return Boolean(s.deviceId) && (s.isLocalActive || !s.activeDevice || Boolean(s.activeDevice.isLocal)); },
+    restore: async (lost) => {
+      const t = token();
+      const deviceId = player().deviceId;
+      if (!t || !deviceId) throw new Error('not ready');
+      await startPlaybackAt(t, deviceId, { contextUri: lost.contextUri, trackUri: lost.uri, positionMs: lost.positionMs });
+      confirmPlayback();
     }
   });
   initLocalPlayer();
