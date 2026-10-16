@@ -19,7 +19,7 @@ import { pileIdOf, useUnaddedStore } from './unadded';
 export const LIST_OF_VIEW = { home: 'library', library: 'library', browse: 'library', album: 'library', artist: 'library', 'liked-songs': 'library', friends: 'library', user: 'library', lyrics: 'library', sevens: 'sevens', party: 'party', unadded: 'unadded' };
 export const OPEN_VIEWS = new Set(['playlist', 'browse', 'album', 'artist', 'liked-songs', 'friends', 'user', 'lyrics']);
 // what Back steps through: the open things, and the library page itself
-export const BACK_VIEWS = new Set([...OPEN_VIEWS, 'library', 'sevens']);
+export const BACK_VIEWS = new Set([...OPEN_VIEWS, 'library', 'sevens', 'unadded']);
 // a list's own page (set-up, the host view): the column opens at half, the page is there at full
 export const PAGE_VIEWS = new Set(['sevens', 'party']);
 // Unadded has no column yet, so it still takes the layer full as a mode
@@ -56,7 +56,7 @@ export function useRoomState({ phone = false } = {}) {
     if (f.view === 'playlist') return playlists.find((p) => p.id === f.playlistId)?.name || 'Playlist';
     if (f.view === 'album') return (albums || []).find((a) => a.id === f.albumId)?.name || 'Album';
     if (f.view === 'artist') return (followedArtists || []).find((a) => a.id === f.artistId)?.name || 'Artist';
-    return { browse: 'Search', 'liked-songs': 'Liked Songs', friends: 'Friends', user: 'Profile', lyrics: 'Lyrics', library: 'Library', sevens: 'Sevens' }[f.view] || 'Back';
+    return { browse: 'Search', 'liked-songs': 'Liked Songs', friends: 'Friends', user: 'Profile', lyrics: 'Lyrics', library: 'Library', sevens: 'Sevens', unadded: 'Unadded' }[f.view] || 'Back';
   };
   const backOverride = useRoomStore((s) => s.back);
   const pageSuffix = useRoomStore((s) => s.pageSuffix);
@@ -69,8 +69,9 @@ export function useRoomState({ phone = false } = {}) {
     if (at === -1) return;
     const prev = h[at];
     useUserStore.setState({ viewHistory: h.slice(0, at), currentView: prev.view, activePlaylistId: prev.playlistId, currentArtistId: prev.artistId, currentAlbumId: prev.albumId, activeFolderId: prev.folderId, currentUserId: prev.userId ?? null });
-    setLayer('full');
-  }, []);
+    // on the phone Unadded is its own screen under the sheet, so Back to it puts the sheet down
+    setLayer(phone && prev.view === 'unadded' ? 'closed' : 'full');
+  }, [phone]);
   // where the layer was when it was last put away, so the edge brings it back there
   const lastOpen = useRef('half');
   const close = useCallback(() => { setLayer((l) => { if (l !== 'closed') lastOpen.current = l; return 'closed'; }); }, []);

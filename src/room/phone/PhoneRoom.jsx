@@ -46,6 +46,11 @@ export default function PhoneRoom({ children }) {
         </label>
       )}
     </div>
+  ) : back && layer !== 'closed' ? (
+    // over a list too, when there is somewhere to go back to (the Mac's layer has it on every page)
+    <div className="flex shrink-0 items-center border-b border-[var(--room-hair)] px-5 pb-1">
+      <button type="button" onClick={back.go} className="ui-word inline-flex min-h-[44px] max-w-[70%] shrink-0 items-center truncate">← {back.name}</button>
+    </div>
   ) : null;
 
   return (
