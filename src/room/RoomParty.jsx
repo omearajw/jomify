@@ -10,6 +10,7 @@ import { togglePlay, setVolume } from '../services/spotify/playbackController';
 import { fetchDevices, transferPlayback } from '../services/spotify/api';
 import { requestedBy } from '../party/view';
 import { artUrl } from '../utils/images';
+import { childrenOf, getUnfolderedItems } from '../utils/library';
 import { openProjectorWindow } from '../views/ZenMode/projectorBridge';
 import { useProjectorStore } from '../views/ZenMode/projectorStore';
 import { toast } from '../store/toastStore';
@@ -38,6 +39,59 @@ function Cover({ playlist, size, lit, onClick }) {
   );
 }
 
+// The playlists to fall back on, as the library has them: folders first (each a mosaic of what is
+// in it, opened in place with a way back), then the playlists in no folder. Only folders holding
+// something that can be picked are shown.
+function PlaylistPicker({ choices, size, selectedId, onPick }) {
+  const folders = useUserStore((s) => s.customFolders) || [];
+  const [openId, setOpenId] = useState(null);
+  const byId = new Map(choices.map((p) => [p.id, p]));
+  const inside = (folderId) => {
+    const out = [];
+    const walk = (id) => {
+      const f = folders.find((x) => x.id === id);
+      (f?.playlistIds || []).forEach((pid) => { if (byId.has(pid)) out.push(byId.get(pid)); });
+      childrenOf(folders, id).forEach((c) => walk(c.id));
+    };
+    walk(folderId);
+    return out;
+  };
+  const open = folders.find((f) => f.id === openId) || null;
+  const subfolders = childrenOf(folders, open ? open.id : null).filter((f) => inside(f.id).length > 0);
+  const loose = open
+    ? (open.playlistIds || []).map((pid) => byId.get(pid)).filter(Boolean)
+    : getUnfolderedItems(choices, [], folders).playlists;
+  const parent = open ? folders.find((f) => f.id === (open.parentId ?? null)) || null : null;
+  const holdsPick = (f) => inside(f.id).some((p) => p.id === selectedId);
+  return (
+    <>
+      {open && (
+        <p className="mt-3 flex min-w-0 items-center gap-3">
+          <button type="button" onClick={() => setOpenId(parent?.id || null)} className="ui-word shrink-0">← {parent?.name || 'All playlists'}</button>
+          <span className="room-mono min-w-0 truncate text-[var(--room-faint)]">{open.name}</span>
+        </p>
+      )}
+      <div className="mt-4 flex flex-wrap gap-5">
+        {subfolders.map((f) => {
+          const covers = inside(f.id).filter((p) => p.images?.[0]?.url).slice(0, 4);
+          const lit = holdsPick(f);
+          return (
+            <button key={f.id} type="button" onClick={() => setOpenId(f.id)} className="flex flex-col items-start text-left" style={{ width: size }} aria-label={`Open the folder ${f.name}`}>
+              {/* four covers as a mosaic; fewer would leave holes, so then the first fills it */}
+              <span className={`grid aspect-square w-full gap-[2px] overflow-hidden rounded-[5px] bg-white/5 ${covers.length >= 4 ? 'grid-cols-2 grid-rows-2' : ''} ${lit ? 'shadow-[0_0_0_1px_var(--room-paper)]' : ''}`}>
+                {(covers.length >= 4 ? covers : covers.slice(0, 1)).map((p) => <img key={p.id} src={artUrl(p.images, covers.length >= 4 ? size / 2 : size)} alt="" draggable="false" className="h-full w-full object-cover" />)}
+              </span>
+              <span className={`mt-2 block w-full truncate text-[12.5px] font-medium ${lit ? 'text-[var(--room-paper)]' : 'text-[var(--room-paper)]/80'}`}>{f.name}</span>
+              <span className="room-mono block text-[var(--room-faint)]">Folder · {inside(f.id).length}</span>
+            </button>
+          );
+        })}
+        {loose.map((p) => <Cover key={p.id} playlist={p} size={size} lit={p.id === selectedId} onClick={() => onPick(p)} />)}
+      </div>
+    </>
+  );
+}
+
 function Setup({ choices, profile, onStart, busy }) {
   const [backingId, setBackingId] = useState(choices[0]?.id || null);
   const backing = choices.find((p) => p.id === backingId);
@@ -47,7 +101,7 @@ function Setup({ choices, profile, onStart, busy }) {
       <h1 className="mt-2 text-[30px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">Start a party</h1>
       <p className="mt-3 max-w-xl text-[13px] text-[var(--room-dim)]">A code for the room: anyone can ask for songs from their phone, no Spotify account needed. Requests take turns, so nobody can hog it, and this playlist carries on when nothing is asked for.</p>
       <Head>Playlist to fall back on</Head>
-      <div className="mt-4 flex flex-wrap gap-5">{choices.map((p) => <Cover key={p.id} playlist={p} size={104} lit={p.id === backingId} onClick={() => setBackingId(p.id)} />)}</div>
+      <PlaylistPicker choices={choices} size={104} selectedId={backingId} onPick={(p) => setBackingId(p.id)} />
       <p className="mt-8"><button type="button" disabled={!backing || busy} onClick={() => onStart(backing)} className="ui-pill">{busy ? 'Starting…' : `Start the party${profile?.display_name ? ` as ${profile.display_name}` : ''}`}</button></p>
     </>
   );
@@ -265,7 +319,7 @@ export default function RoomParty() {
             <span className="min-w-0 truncate text-[13px]"><span className="text-[var(--room-dim)]">Fallback playlist</span> <span className="text-[var(--room-paper)]">{party?.backing?.name || 'none'}</span></span>
             <Word onClick={() => setShowPlaylists((v) => !v)} lit={showPlaylists}>{showPlaylists ? 'Done' : 'Change'}</Word>
           </div>
-          {showPlaylists && <div className="mt-3 flex flex-wrap gap-5">{choices.map((p) => <Cover key={p.id} playlist={p} size={92} lit={p.id === backingId} onClick={() => changeBacking(p)} />)}</div>}
+          {showPlaylists && <PlaylistPicker choices={choices} size={92} selectedId={backingId} onPick={changeBacking} />}
         </div>
         <Speaker party={party} op={op} />
         <div className="py-3" style={{ borderTop: '1px solid var(--room-hair)' }}>
