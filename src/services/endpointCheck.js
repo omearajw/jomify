@@ -48,9 +48,14 @@ async function get(path, token) {
 // Ids to try with come from the account itself: the first liked song gives a track, its artist
 // and its album; the first owned playlist gives a playlist. Nothing is written anywhere.
 async function sampleIds(token) {
-  const ids = { user: useUserStore.getState().profile?.id || null, playlist: null, track: null, artist: null, album: null };
+  const ids = { user: useUserStore.getState().profile?.id || null, playlist: null, track: null, artist: null, album: null, blend: null, spotifyOwned: null };
   const playlists = useUserStore.getState().playlists || [];
   ids.playlist = (playlists.find((p) => p.owner?.id === ids.user) || playlists[0])?.id || null;
+  // A Blend belongs to Spotify and is named for its members ("Jack + Alex"); any other playlist
+  // Spotify owns (Top Songs, Daily Mix) is tried too
+  const spotifys = playlists.filter((p) => p.owner?.id === 'spotify');
+  ids.blend = (spotifys.find((p) => /\+/.test(p.name || '')) || null)?.id || null;
+  ids.spotifyOwned = (spotifys.find((p) => p.id !== ids.blend) || null)?.id || null;
   try {
     const response = await spotifyFetch(`${BASE}/me/tracks?limit=1`, { headers: { Authorization: `Bearer ${token}` } });
     if (response.ok) {
@@ -95,13 +100,37 @@ export async function checkSpotifyEndpoints() {
     ids.user && ['GET /users/{id} (deprecated)', `/users/${u(ids.user)}`],
     ids.user && ['GET /users/{id}/playlists (deprecated)', `/users/${u(ids.user)}/playlists?limit=1`],
     ids.user && ['GET /me/following/contains (deprecated)', `/me/following/contains?type=user&ids=${u(ids.user)}`],
-    ids.user && ['GET /me/library/contains for a user (new)', `/me/library/contains?uris=${u(`spotify:user:${ids.user}`)}`]
+    ids.user && ['GET /me/library/contains for a user (new)', `/me/library/contains?uris=${u(`spotify:user:${ids.user}`)}`],
+    // Discovery (19 Oct): what Spotify still lets Jomify use for a Discover page. Several of these
+    // were withdrawn from development-mode apps in Nov 2024; this says which, for this account.
+    ['DISCOVER /me/top/artists long term', '/me/top/artists?limit=1&time_range=long_term'],
+    ['DISCOVER /me/top/tracks medium term', '/me/top/tracks?limit=1&time_range=medium_term'],
+    ['DISCOVER /browse/new-releases', '/browse/new-releases?limit=1'],
+    ['DISCOVER /browse/featured-playlists', '/browse/featured-playlists?limit=1'],
+    ['DISCOVER /browse/categories', '/browse/categories?limit=1'],
+    ['DISCOVER /browse/categories/{id}/playlists', '/browse/categories/toplists/playlists?limit=1'],
+    ids.artist && ['DISCOVER /recommendations', `/recommendations?seed_artists=${ids.artist}&limit=1`],
+    ids.artist && ['DISCOVER /artists/{id}/related-artists', `/artists/${ids.artist}/related-artists`],
+    ids.track && ['DISCOVER /audio-features/{id}', `/audio-features/${ids.track}`],
+    ['DISCOVER /me/following?type=artist', '/me/following?type=artist&limit=1'],
+    // Who is in a Blend: its songs' added_by, if Spotify lets Jomify open it at all
+    ids.blend ? ['BLEND /playlists/{id}', `/playlists/${ids.blend}?fields=id,name,owner(id),collaborative`] : ['BLEND none found', null],
+    ids.blend && ['BLEND /playlists/{id}/items (who added)', `/playlists/${ids.blend}/items?limit=5&fields=items(added_by(id))`],
+    ids.spotifyOwned && ['SPOTIFY-OWNED /playlists/{id}', `/playlists/${ids.spotifyOwned}?fields=id,name`]
   ].filter(Boolean);
 
   log('api check', 'starting', `${checks.length} endpoints, ids from the account: ${Object.entries(ids).map(([k, v]) => `${k}=${v ? 'yes' : 'none'}`).join(' ')}`);
   for (const [label, path] of checks) {
+    if (!path) { log('api check', label, 'nothing to try: no such playlist in the library'); continue; }
     const r = await get(path, token);
     log('api check', label, `${r.status || 'no response'} in ${r.ms}ms${r.note ? `, ${r.note}` : ''}`);
+    if (label.startsWith('BLEND /playlists/{id}/items') && r.status === 200) {
+      try {
+        const res = await spotifyFetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+        const who = [...new Set(((await res.json())?.items || []).map((i) => i?.added_by?.id).filter(Boolean))];
+        log('api check', 'BLEND members seen', who.length ? `${who.length}: ${who.map((id) => (id === ids.user ? 'you' : 'someone else')).join(', ')}` : 'none named');
+      } catch { /* the line above already says what happened */ }
+    }
     // Spread out so the check itself cannot trip Spotify's rate limit
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
