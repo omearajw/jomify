@@ -25,7 +25,7 @@ export default function JomifyMark({ word = false, size = 20, className = '', ti
 // turned 90° clockwise at the same scale (measured 15 Oct: with the icon turned about its
 // centre, the wordmark's corner sits 72 px right of and 202 px below the icon's box), so the
 // turned icon lies exactly on the wordmark's J and only the letters fade in. Change either PNG and these numbers move.
-const H = 30;                  // the wordmark's height when open, px
+const H = 24;                  // the wordmark's height when open, px: 44 wide, inside the 58 px rail
 const S = H / 475;             // px per image pixel
 const BOX = 1000 * S;          // the icon's box
 const WORD_X = 72 * S;         // the wordmark within the icon's box

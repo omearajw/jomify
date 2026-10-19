@@ -7,6 +7,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import CheckPlaylistsDialog from './CheckPlaylistsDialog';
 import { useUnaddedStore, cardOf, isDecided, waitingCount, playFrom, fileInto, findSongs, applyPlan, dismissPlan, retrySuggestions, blocked, blockedWhy } from './unadded';
 import Artists from './Artists';
+import { SUGGESTED } from './unadded';
 
 // The Unadded layer's list (DESIGN.md §8): the pile, in its own order, each song with the two
 // playlists the suggestions rank highest as words, for a quick filing without playing it. A row
@@ -35,7 +36,7 @@ export default function UnaddedColumn({ onExpand }) {
     const playing = isSameTrack(track, currentPlayingTrack) && !isCurrentTrackPaused;
     const inLists = st.placed[uri] || [];
     const decided = isDecided(uri, st, skipped);
-    const picks = decided ? [] : (st.suggestionsByTrack.get(track.id) || []).slice(0, 2);
+    const picks = decided ? [] : (st.suggestionsByTrack.get(track.id) || []).slice(0, SUGGESTED);
     const cannot = blocked(track);
     return (
       <div

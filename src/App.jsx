@@ -42,6 +42,7 @@ import { rowButtonProps } from './utils/a11y';
 import { motion, AnimatePresence } from 'framer-motion';
 import { isDemo, enterDemo } from './demo/boot';
 import DemoBadge from './demo/DemoBadge';
+import JomifyMark from './components/JomifyMark';
 
 // The Sevens these used to be hardcoded as. They are migrated into the configurable
 // `sevens` store on first run and are never read again afterwards.
@@ -461,26 +462,24 @@ function App() {
   
   if (!token) {
     return (
-      <div className="relative flex items-center justify-center h-dvh bg-black text-white overflow-hidden">
-        <div className="fixed inset-0 z-[1] bg-aurora opacity-20"></div>
-        <div className="fixed inset-0 z-[2] bg-noise opacity-[0.03] pointer-events-none"></div>
-        
-        <div className="text-center z-10 relative">
-          <h1 className="text-6xl font-extrabold mb-8 text-brand-gradient tracking-tighter pb-3 pt-1">Jomify</h1>
-          <button 
+      <div className="relative flex h-dvh items-center justify-center overflow-hidden px-6" style={{ background: 'var(--room-ink)', color: 'var(--room-paper)', fontFamily: 'var(--font-room)' }}>
+        <div className="relative z-10 flex flex-col items-center text-center">
+          <h1><JomifyMark word size={64} title="Jomify" /></h1>
+          <button
+            type="button"
             onClick={redirectToAuthCodeFlow}
-            className="px-8 py-3 bg-brand-gradient text-white font-bold rounded-full shadow-brand-glow hover:scale-105 transition-all"
+            className="ui-pill mt-12 min-h-[44px] px-7 text-[14px]"
           >
             Connect to Spotify
           </button>
           <button
             type="button"
             onClick={enterDemo}
-            className="block mx-auto mt-5 text-sm font-semibold text-neutral-400 hover:text-white underline-offset-4 hover:underline transition-colors"
+            className="ui-word mt-7 inline-flex min-h-[44px] items-center"
           >
             Look around without an account
           </button>
-          {loginError && <p className="mt-4 text-sm text-red-400">{loginError}</p>}
+          {loginError && <p className="mt-4 text-[13px] text-[rgb(240,160,160)]">{loginError}</p>}
         </div>
       </div>
     );
@@ -787,21 +786,24 @@ function App() {
             </Suspense>
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full relative z-10 gap-4">
+          <div className="relative z-10 flex h-full flex-col items-center justify-center gap-3 text-center" style={{ fontFamily: 'var(--font-room)', color: 'var(--room-paper)' }}>
             {profileError ? (
               <>
-                <p className="text-white font-bold text-lg">{profileError}</p>
-                <p className="text-neutral-400 text-sm">Retrying automatically…</p>
+                <p className="text-[18px] font-semibold tracking-[-0.01em]">{profileError}</p>
+                <p className="room-mono text-[var(--room-faint)]">Retrying automatically…</p>
                 <button
                   type="button"
                   onClick={() => setProfileAttempt(n => n + 1)}
-                  className="mt-2 px-5 py-2 rounded-full bg-white/10 border border-white/10 text-white text-sm font-bold hover:bg-white/20 transition-colors"
+                  className="ui-word mt-3 inline-flex min-h-[44px] items-center"
                 >
                   Try again now
                 </button>
               </>
             ) : (
-              <p className="text-neutral-400 animate-pulse text-lg">Loading Jomify core...</p>
+              <>
+                <JomifyMark word size={36} className="motion-safe:animate-[room-breathe_4s_ease-in-out_infinite]" />
+                <p className="room-mono mt-4 text-[var(--room-faint)]">Loading Jomify core…</p>
+              </>
             )}
           </div>
         )}

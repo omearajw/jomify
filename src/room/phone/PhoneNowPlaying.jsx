@@ -129,7 +129,7 @@ export default function PhoneNowPlaying({ bottomInset }) {
         {lyricsOn && (
           <div className="relative mt-4 min-h-0 flex-1" aria-label="Lyrics">
             {lyrics.loading && <p className="room-mono absolute inset-x-0 top-1/2 -translate-y-1/2 text-[var(--room-faint)]">Finding the words</p>}
-            {!lyrics.loading && !hasLyrics && <p className="room-mono absolute inset-x-0 top-1/2 -translate-y-1/2 text-[var(--room-faint)]">No lyrics for this one</p>}
+            {lyrics.answered && !hasLyrics && <p className="room-mono absolute inset-x-0 top-1/2 -translate-y-1/2 text-[var(--room-faint)]">No lyrics for this one</p>}
             {lyrics.synced?.length ? <ZenFocusLyricsLite lines={lyrics.synced} /> : lyrics.plain?.length ? <ZenPlainLyrics lines={lyrics.plain} /> : null}
           </div>
         )}

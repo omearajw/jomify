@@ -4,7 +4,6 @@ import { getBlurredBackdrop } from '../utils/blurBackdrop';
 import { useRoomStore } from './roomStore';
 import { usePlaylistView, UNDO_MS } from '../views/Library/usePlaylistView';
 import { useUserStore } from '../store/userStore';
-import SortMode from '../views/Library/SortMode';
 import SortIntoChips from '../components/SortIntoChips';
 import PlaylistFormDialog from '../components/PlaylistFormDialog';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -65,7 +64,7 @@ export default function RoomPlaylist() {
     activePlaylistId, playlists, playlist, view, loadError, retryLoad, isCollaborative, collaboratorIds, collaborators, totalLength,
     isUnaddedSongsPlaylist, configModalOpen, setConfigModalOpen, isSyncing, syncStatusText, selectedCheckPlaylistIds, runUnaddedSongsSync,
     ownsPlaylist, editDialogOpen, setEditDialogOpen, toggleSaved, savingPlaylist, inLibrary,
-    sortQueue, setSortQueue, nextPageUrl, fetchingMore, suggestionsByTrack, suggestionStatus, sortModeTargets, removeRow, restoreRow,
+    nextPageUrl, suggestionsByTrack,
     pickerQuery, setPickerQuery, pickerError, userPlaylists, pickerList, togglePlaylistSelection,
     isShuffled, handleShufflePlay, handleTrackSelect, sortBy, sortOrder, updateSortSettings, sortedTracks,
     find, setFind, needle, rows, totalRows, visibleCount, sentinelRef,
@@ -157,10 +156,6 @@ export default function RoomPlaylist() {
           )}
         </span>
       </div>
-
-      {sortQueue && (
-        <SortMode items={sortQueue} total={view.tracks.total} loadingMore={Boolean(nextPageUrl) && fetchingMore} suggestionsByTrack={suggestionsByTrack} suggestionsReady={suggestionStatus === 'ready' || suggestionStatus === 'error'} targets={sortModeTargets} sourcePlaylistId={activePlaylistId} onRemovedFromSource={removeRow} onRestoredToSource={restoreRow} onClose={() => setSortQueue(null)} />
-      )}
 
       {configModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setConfigModalOpen(false)}>

@@ -1,67 +1,17 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { usePlayerStore } from '../../store/playerStore';
-import { useUserStore } from '../../store/userStore';
+import { useState, useEffect } from 'react';
 import { Mic2, Sparkles, X, Maximize2, Minimize2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import TrackArtists from '../../components/TrackArtists';
-import { findLyrics } from '../../lib/lrc';
 import CinematicLyrics from '../../components/lyrics/CinematicLyrics';
 import AmbientWave from '../../components/lyrics/AmbientWave';
-import { seek } from '../../services/spotify/playbackController';
-import { useSlice } from '../../store/selectors';
 import { getBlurredBackdrop } from '../../utils/blurBackdrop';
+import { useLyricsView } from './useLyricsView';
 
 export default function LyricsView() {
-  const { playbackState } = useSlice(usePlayerStore, ['playbackState']);
-  const goBack = useUserStore((s) => s.goBack);
-  const currentTrack = playbackState?.track_window?.current_track;
-
-  // Full screen on this page alone, without Zen mode; Escape leaves full screen as usual
-  const containerRef = useRef(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  useEffect(() => {
-    const onChange = () => setIsFullscreen(document.fullscreenElement === containerRef.current && Boolean(containerRef.current));
-    document.addEventListener('fullscreenchange', onChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', onChange);
-      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-    };
-  }, []);
-  // The page fits the visible area, so its lyrics scroll inside it and the header stays: sized by
-  // its content instead, the whole page scrolled to centre a line and took the header with it
-  const [fitHeight, setFitHeight] = useState(null);
-  useLayoutEffect(() => {
-    const root = containerRef.current;
-    if (!root) return undefined;
-    let box = root.parentElement;
-    while (box && !/(auto|scroll)/.test(getComputedStyle(box).overflowY)) box = box.parentElement;
-    if (!box) return undefined;
-    const measure = () => {
-      const top = root.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
-      setFitHeight(Math.max(320, Math.floor(box.clientHeight - top - 16)));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(box);
-    return () => ro.disconnect();
-  }, []);
-
-  const toggleFullscreen = () => {
-    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-    else containerRef.current?.requestFullscreen?.().catch(() => {});
-  };
-  const close = () => {
-    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-    goBack();
-  };
-
-  const [plainLyrics, setPlainLyrics] = useState([]);
-  const [syncedLyrics, setSyncedLyrics] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  
-
-  const albumArt = currentTrack?.album?.images?.[0]?.url || '';
+  const {
+    currentTrack, albumArt, containerRef, fitHeight, isFullscreen, toggleFullscreen, close,
+    plainLyrics, syncedLyrics, loading, error, handleSeek
+  } = useLyricsView();
 
   // The same pre-blurred wash as Zen mode: a 120px CSS blur over the whole page is the most
   // expensive thing to paint here, and WebKit sometimes painted it black
@@ -72,46 +22,6 @@ export default function LyricsView() {
     return () => { cancelled = true; };
   }, [albumArt]);
   const backdropFor = backdrop?.art === albumArt ? backdrop : null;
-
-  // --- 2. PUBLIC FREE API FETCHING (LrcLib) ---
-  // Cancellation matters here: skip tracks quickly and a slow response for track A used to
-  // land after track B's and paint B with A's lyrics. Every state write is guarded.
-  useEffect(() => {
-    if (!currentTrack) return;
-    let cancelled = false;
-    const stop = new AbortController();
-    // Used to pick the right VERSION -- the first search hit is often a live cut or a remix
-    const trackDurationSec = playbackState?.duration ? playbackState.duration / 1000 : null;
-
-    const fetchLyrics = async () => {
-      setLoading(true);
-      setError('');
-      setPlainLyrics([]);
-      setSyncedLyrics(null);
-
-      try {
-        const found = await findLyrics(currentTrack, trackDurationSec, { signal: stop.signal });
-        if (cancelled) return;
-        if (found.synced) setSyncedLyrics(found.synced);
-        else setPlainLyrics(found.plain);
-      } catch (err) {
-        if (cancelled) return;
-        console.error("Lyrics Engine Error:", err);
-        setError(err.message || "Failed to load lyrics.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    fetchLyrics();
-    return () => { cancelled = true; stop.abort(); };
-  // Deliberately keyed on the track id, not the track object or playbackState.duration: those
-  // change on every position tick and would refetch lyrics several times a second
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTrack?.id]);
-
-  // --- 4. CLICK TO SEEK ---
-  const handleSeek = (timeMs) => { seek(timeMs); };
 
   if (!currentTrack) {
     return (

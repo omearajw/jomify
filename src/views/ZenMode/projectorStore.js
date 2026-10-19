@@ -14,10 +14,13 @@ export const useProjectorStore = create((set) => ({
   // the projector's screen as its window last reported it; 16:9 until one does
   frame: { w: 1920, h: 1080, reported: false },
   studioOpen: false,
+  // a selection made by dragging on the projector itself, for the editor to follow
+  picked: null,
   setLayouts: (fn) => set((s) => ({ layouts: typeof fn === 'function' ? fn(s.layouts) : fn })),
   setGuides: (patch) => set((s) => ({ guides: { ...s.guides, ...patch } })),
   setFrame: (w, h) => set((s) => (s.frame.w === w && s.frame.h === h && s.frame.reported ? s : { frame: { w, h, reported: true } })),
-  setStudioOpen: (open) => set({ studioOpen: Boolean(open) })
+  setStudioOpen: (open) => set({ studioOpen: Boolean(open) }),
+  setPicked: (picked) => set({ picked: { ...picked, at: Date.now() } })
 }));
 
 export const activeLayout = (layouts) => layouts.layouts.find((l) => l.id === layouts.activeId) || layouts.layouts[0];

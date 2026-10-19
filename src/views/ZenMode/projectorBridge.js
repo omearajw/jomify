@@ -38,6 +38,10 @@ export function startProjectorFeed() {
     if (m.type === 'hello') { sendPlayer(); sendParty(); sendLayout(); }
     if (m.type === 'frame' && m.w > 0 && m.h > 0) useProjectorStore.getState().setFrame(m.w, m.h);
     if (m.type === 'bye') useProjectorStore.getState().setGuides({ on: false });
+    // edits made by dragging on the projector itself: this window owns the layouts, saves them and
+    // sends them back out like any other change
+    if (m.type === 'edit' && m.layouts) useProjectorStore.getState().setLayouts(m.layouts);
+    if (m.type === 'pick' && m.picked) useProjectorStore.getState().setPicked(m.picked);
     if (m.type === 'queue?') {
       const token = useUserStore.getState().token;
       if (!token) return;
@@ -71,7 +75,12 @@ export function startProjectorDisplay() {
     if (m.type === 'player') usePlayerStore.setState(m.state);
     if (m.type === 'party') usePartyStore.setState(m.state);
     if (m.type === 'queue') { waiting.get(m.id)?.(m.queue); waiting.delete(m.id); }
-    if (m.type === 'layout') useProjectorStore.setState({ layouts: m.layouts, guides: m.guides });
+    if (m.type === 'layout') {
+      // while a drag here is under way the main window's echo of an earlier step would pull the
+      // shape back for a moment; the drag's own state wins until it settles
+      if (Date.now() < holdUntil) useProjectorStore.setState({ guides: m.guides });
+      else useProjectorStore.setState({ layouts: m.layouts, guides: m.guides });
+    }
   };
   // the screen it is on, so the editor's stage has the projector's shape
   const sendFrame = () => display?.postMessage({ type: 'frame', w: window.innerWidth, h: window.innerHeight });
@@ -82,6 +91,16 @@ export function startProjectorDisplay() {
   // a main window opened after this one says hello by sending its first change; asking again
   // now and then covers one that was reloaded
   setInterval(() => { display.postMessage({ type: 'hello' }); sendFrame(); }, 15000);
+}
+
+// Edits made on the projector itself, sent to the main window, which owns the layouts
+let holdUntil = 0;
+export function sendEdit(layouts) {
+  holdUntil = Date.now() + 500;
+  display?.postMessage({ type: 'edit', layouts });
+}
+export function sendPick(picked) {
+  display?.postMessage({ type: 'pick', picked });
 }
 
 // The up-next list, from the main window (null when there is no main window to ask)

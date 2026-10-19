@@ -11,7 +11,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import CheckPlaylistsDialog from '../CheckPlaylistsDialog';
 import Artists from '../Artists';
 import { Progress } from './PhoneNowPlaying';
-import { useUnaddedStore, cardOf, isDecided, waitingCount, fileInto, takeOut, undo, skip, playFrom, findSongs, applyPlan, dismissPlan, retrySuggestions, blocked, blockedWhy } from '../unadded';
+import { useUnaddedStore, cardOf, isDecided, waitingCount, fileInto, takeOut, undo, skip, playFrom, findSongs, applyPlan, dismissPlan, retrySuggestions, blocked, blockedWhy, SUGGESTED } from '../unadded';
 
 // Unadded on the phone (Jack, 16 Oct): one screen built round the song being sorted, instead of
 // the sheet, where the pile was at half, the playlists at full and the controls behind both.
@@ -39,7 +39,7 @@ export default function PhoneUnadded({ bottomInset }) {
   const skipped = new Set(skips[st.pileId] || []);
 
   const suggestions = track ? (st.suggestionsByTrack.get(track.id) || []) : [];
-  const suggestedIds = suggestions.slice(0, 2).map((s) => s.id);
+  const suggestedIds = suggestions.slice(0, SUGGESTED).map((s) => s.id);
   const large = suggestedIds.map((id) => st.targets.find((t) => t.id === id)).filter(Boolean);
   const small = st.targets.filter((t) => !suggestedIds.includes(t.id));
   const placedHere = track ? (st.placed[track.uri] || []) : [];
@@ -77,7 +77,7 @@ export default function PhoneUnadded({ bottomInset }) {
         <span className={`block aspect-square w-full overflow-hidden rounded-[5px] bg-white/5 transition-shadow ${placed ? 'shadow-[0_0_0_2px_var(--room-paper)]' : ''}`}>
           {t.images?.[0]?.url && <img src={artUrl(t.images, big ? 200 : 120)} alt="" draggable="false" className="h-full w-full object-cover" />}
         </span>
-        <span className={`mt-1.5 block w-full truncate font-medium ${big ? 'text-[14px]' : 'text-[12px]'} ${placed ? 'text-[var(--room-paper)]' : 'text-[var(--room-paper)]/85'}`}>{t.name}</span>
+        <span className={`mt-1.5 block w-full truncate font-medium ${big ? 'text-[13px]' : 'text-[11.5px]'} ${placed ? 'text-[var(--room-paper)]' : 'text-[var(--room-paper)]/85'}`}>{t.name}</span>
         {placed
           ? <span className="block text-[11.5px] text-[var(--room-dim)]">Added · tap to take out</span>
           : big && why ? <span className="line-clamp-2 block w-full text-[11.5px] leading-[1.3] text-[var(--room-faint)]">{why}</span> : null}
@@ -132,13 +132,13 @@ export default function PhoneUnadded({ bottomInset }) {
         {large.length > 0 && (
           <>
             <Mono className="text-[var(--room-faint)]">Where it would suit</Mono>
-            <div className="mt-3 grid grid-cols-2 gap-4">{large.map((t) => tile(t, true))}</div>
+            <div className="mt-3 grid grid-cols-3 gap-3">{large.map((t) => tile(t, true))}</div>
           </>
         )}
         {small.length > 0 && (
           <>
             <Mono className="mt-6 text-[var(--room-faint)]">{large.length ? 'Or' : 'Where it can go'}</Mono>
-            <div className="mt-3 grid grid-cols-3 gap-3">{small.map((t) => tile(t, false))}</div>
+            <div className="mt-3 grid grid-cols-4 gap-2.5">{small.map((t) => tile(t, false))}</div>
           </>
         )}
 
@@ -157,7 +157,7 @@ export default function PhoneUnadded({ bottomInset }) {
             <p className="mt-1 truncate text-[14px] font-medium">{ghost.item.track.name}</p>
             <p className="text-[12px] text-[var(--room-faint)]">{ghostIn.length ? `In ${ghostIn.map((id) => st.targets.find((t) => t.id === id)?.name || 'a playlist').join(', ')}` : 'Not filed'}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 [&>button]:max-w-full [&>button]:truncate">
-              {(st.suggestionsByTrack.get(ghost.item.track.id) || []).slice(0, 2).filter((s) => !ghostIn.includes(s.id)).map((s) => <button key={s.id} type="button" disabled={st.busy} onClick={() => fileInto(ghost.item.track.uri, s.id)} className="ui-word">→ {s.name}</button>)}
+              {(st.suggestionsByTrack.get(ghost.item.track.id) || []).slice(0, SUGGESTED).filter((s) => !ghostIn.includes(s.id)).map((s) => <button key={s.id} type="button" disabled={st.busy} onClick={() => fileInto(ghost.item.track.uri, s.id)} className="ui-word">→ {s.name}</button>)}
             </div>
           </div>
         )}

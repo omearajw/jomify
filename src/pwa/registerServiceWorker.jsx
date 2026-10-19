@@ -1,5 +1,4 @@
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import { RefreshCw } from 'lucide-react';
 
 // Registers the worker and offers the reload when a new build is waiting. Reloading is the
 // user's call because it stops in-browser playback.
@@ -15,10 +14,11 @@ export default function UpdatePrompt() {
       <button
         type="button"
         onClick={() => updateServiceWorker(true)}
-        className="flex items-center gap-2 rounded-full bg-neutral-900/95 border border-white/10 px-4 py-2 text-sm font-semibold text-white shadow-2xl backdrop-blur-md hover:bg-neutral-800 transition-colors"
+        aria-label="Update ready · Reload"
+        className="ui-plane group flex min-h-[44px] items-center gap-5 px-5 py-2.5 text-[13px]"
       >
-        <RefreshCw className="w-4 h-4 text-[var(--brand-mid)]" />
-        Update ready · Reload
+        Update ready
+        <span className="ui-word group-hover:text-[var(--room-paper)] group-hover:decoration-[var(--room-paper)]">Reload</span>
       </button>
     </div>
   );

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Play, Shuffle, X } from 'lucide-react';
 import { useSevenView, formatBatchDate } from '../views/Library/useSevenView';
-import { searchSpotify } from '../services/spotify/api';
+import { searchSpotify, checkTracksLiked } from '../services/spotify/api';
+import { useUserStore } from '../store/userStore';
 import { artUrl } from '../utils/images';
 import { formatTime } from '../utils/formatTime';
 import { rowButtonProps } from '../utils/a11y';
@@ -33,6 +34,16 @@ export default function RoomSeven() {
     isWorkspaceOpen, setIsWorkspaceOpen, handleTrackSelect, playFromTop, shufflePlay, isShuffled, openTrackMenu,
     currentPlayingTrack, isCurrentTrackPaused, navigateToArtist, navigateToAlbum
   } = useSevenView();
+
+  // The hearts on the Seven's rows, asked about all at once (checkTracksLiked sends 50 a request)
+  // rather than left unknown until each is tapped; songs already known are not asked again
+  const itemsKey = (playlist?.tracks?.items || []).map((i) => i.track?.id).filter(Boolean).join(',');
+  useEffect(() => {
+    if (!token || !itemsKey) return;
+    const known = useUserStore.getState().likedTracks;
+    const ask = itemsKey.split(',').filter((id) => known[id] === undefined);
+    if (ask.length) checkTracksLiked(token, ask).then(useUserStore.getState().setLikedTracks).catch(() => {});
+  }, [token, itemsKey]);
 
   // the face the turn calls for, once; after that the word decides
   const yourTurn = playlist ? (() => { const last = playlist.tracks.items[playlist.tracks.items.length - 1]; return !last || last.added_by?.id !== profile?.id; })() : false;

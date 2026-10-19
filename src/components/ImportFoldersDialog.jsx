@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Upload, Terminal, ChevronDown, ChevronRight, FolderInput, FolderSearch, Loader2 } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { toast } from '../store/toastStore';
 import { parseSpotifyFolders, planImport, ImportFormatError } from '../import/spotifyFolders';
@@ -147,92 +146,86 @@ function ImportFoldersDialogBody({ onClose }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center px-4 py-6 bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 px-4 py-6"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div role="dialog" aria-modal="true" aria-labelledby="import-dialog-title" className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl bg-neutral-950 border border-white/10 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-white/10 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-brand-gradient flex items-center justify-center shrink-0 shadow-brand-glow">
-              <FolderInput className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h2 id="import-dialog-title" className="text-xl font-bold text-white">Import Spotify folders</h2>
-              <p className="text-sm text-neutral-400">Recreate your Spotify folder tree here, nesting included.</p>
-            </div>
+      <div role="dialog" aria-modal="true" aria-labelledby="import-dialog-title" className="ui-plane flex max-h-[90vh] w-full max-w-2xl flex-col">
+        <div className="flex shrink-0 items-start justify-between gap-6 px-7 pb-5 pt-7">
+          <div>
+            <h2 id="import-dialog-title" className="text-[18px] font-semibold leading-tight tracking-[-0.01em]">Import Spotify folders</h2>
+            <p className="mt-2 text-[13px] text-[var(--room-dim)]">Recreate your Spotify folder tree here, nesting included.</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="text-neutral-400 hover:text-white transition-colors p-2">
-            <X className="w-5 h-5" />
-          </button>
+          <button type="button" onClick={onClose} className="ui-word shrink-0">Close</button>
         </div>
 
-        <div className="p-6 space-y-5 overflow-y-auto">
+        <div className="custom-scrollbar space-y-6 overflow-y-auto border-t border-[var(--room-hair)] px-7 pb-7 pt-5">
           {step === 'input' ? (
             <>
-              <div className="rounded-2xl border border-[var(--brand-mid)]/40 bg-[var(--brand-mid)]/5 p-4 space-y-3">
-                <p className="text-sm text-white font-semibold">Read them from the Spotify app on this computer</p>
-                <ol className="text-sm text-neutral-300 list-decimal pl-5 space-y-1">
+              <div className="space-y-3">
+                <p className="text-[14px] font-semibold">Read them from the Spotify app on this computer</p>
+                <ol className="list-decimal space-y-1 pl-5 text-[13px] text-[var(--room-dim)]">
                   <li>Quit Spotify completely (on Windows, also from the tray icon by the clock).</li>
-                  <li>Click the button below and pick Spotify's <span className="text-white font-semibold">data folder</span>. The whole thing is fine; Jomify finds your account inside it:</li>
+                  <li>Click the button below and pick Spotify's <span className="text-[var(--room-paper)]">data folder</span>. The whole thing is fine; Jomify finds your account inside it:</li>
                 </ol>
-                <ul className="text-xs text-neutral-400 space-y-2 pl-5">
+                <ul className="space-y-3 pl-5 text-[12.5px] text-[var(--room-dim)]">
                   {CACHE_LOCATIONS.map(loc => (
                     <li key={loc.os}>
-                      <span className="text-neutral-300 font-semibold">{loc.os}:</span>{' '}
-                      <code className="text-white bg-black/40 rounded px-1.5 py-0.5 font-mono select-all">{loc.path}</code>
-                      <span className="block mt-0.5">{loc.hint}</span>
+                      <span className="text-[var(--room-paper)]">{loc.os}:</span>{' '}
+                      <code className="select-all rounded-[3px] px-1.5 py-0.5 text-[var(--room-paper)] [font-family:var(--font-mono)]" style={{ background: 'rgba(241,239,233,0.06)' }}>{loc.path}</code>
+                      <span className="mt-0.5 block">{loc.hint}</span>
                     </li>
                   ))}
                 </ul>
-                <p className="text-xs text-neutral-500">Your browser will ask something like "Upload 2,000 files?". Choose Upload. Only Spotify's small index files are read, in your browser; nothing is sent anywhere.</p>
-                <button
-                  type="button"
-                  disabled={reading}
-                  onClick={() => dirInputRef.current?.click()}
-                  className="flex items-center gap-2 rounded-full bg-brand-gradient text-white px-5 py-2 text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {reading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderSearch className="w-4 h-4" />}
-                  {reading ? 'Reading…' : 'Choose Spotify folder'}
-                </button>
+                <p className="text-[12.5px] text-[var(--room-dim)]">Your browser will ask something like "Upload 2,000 files?". Choose Upload. Only Spotify's small index files are read, in your browser; nothing is sent anywhere.</p>
+                <p className="pt-1">
+                  <button
+                    type="button"
+                    disabled={reading}
+                    onClick={() => dirInputRef.current?.click()}
+                    className="ui-pill disabled:cursor-not-allowed"
+                  >
+                    {reading ? 'Reading…' : 'Choose Spotify folder'}
+                  </button>
+                </p>
                 <input ref={dirInputRef} type="file" webkitdirectory="" directory="" multiple onChange={onDirectoryChosen} className="hidden" />
               </div>
 
-              {error && <p className="text-sm text-red-400 font-medium">{error}</p>}
+              {error && <p className="text-[13px] text-[rgb(240,160,160)]">{error}</p>}
 
-              <button type="button" onClick={() => setShowCli(v => !v)} className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-2 hover:text-white transition-colors">
-                {showCli ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                <Terminal className="w-3.5 h-3.5" /> Or use the command-line tool and paste its output
-              </button>
+              <div className="border-t border-[var(--room-hair)] pt-5">
+                <button type="button" onClick={() => setShowCli(v => !v)} aria-expanded={showCli} className="ui-word whitespace-normal text-left">
+                  Or use the command-line tool and paste its output
+                </button>
+              </div>
 
               {showCli && (
-                <div className="rounded-2xl border border-white/10 bg-neutral-900/60 p-4">
-                  <pre className="text-xs text-neutral-300 whitespace-pre-wrap leading-relaxed font-mono">{CLI_STEPS}</pre>
-                </div>
+                <pre className="whitespace-pre-wrap border-l border-[var(--room-hair)] pl-4 text-[12px] leading-relaxed text-[var(--room-dim)] [font-family:var(--font-mono)]">{CLI_STEPS}</pre>
               )}
 
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder='Paste the JSON here…  { "type": "folder", "children": [ … ] }'
+                aria-label="Folder tree as JSON"
                 rows={8}
                 spellCheck={false}
-                className="w-full rounded-2xl bg-neutral-900 border border-white/10 px-4 py-3 text-xs text-white font-mono placeholder:text-neutral-600 focus:border-[#f91362] outline-none focus:ring-2 focus:ring-[#f91362]/20"
+                className="ui-field resize-y text-[12px] [font-family:var(--font-mono)]"
               />
 
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-6">
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-sm font-semibold text-neutral-300 hover:bg-white/5 transition-colors"
+                  className="ui-word"
                 >
-                  <Upload className="w-4 h-4" /> Upload .json
+                  Upload .json
                 </button>
                 <input ref={fileInputRef} type="file" accept="application/json,.json" onChange={onFileChosen} className="hidden" />
                 <button
                   type="button"
                   disabled={!text.trim()}
                   onClick={preview}
-                  className="rounded-full bg-brand-gradient text-white px-5 py-2 text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="ui-pill disabled:cursor-not-allowed"
                 >
                   Preview
                 </button>
@@ -240,64 +233,64 @@ function ImportFoldersDialogBody({ onClose }) {
             </>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              <div role="radiogroup" aria-label="How to import" className="grid grid-cols-2 gap-6">
                 {[
                   { id: 'replace', label: 'Replace everything', hint: "Wipe Jomify's folders and rebuild from Spotify." },
                   { id: 'merge', label: 'Merge', hint: 'Update imported folders in place; keep Jomify-only folders.' }
                 ].map(option => (
-                  <label key={option.id} className={`rounded-2xl border p-4 cursor-pointer transition-colors ${mode === option.id ? 'border-[var(--brand-mid)] bg-[var(--brand-mid)]/10' : 'border-white/10 hover:border-white/20'}`}>
+                  // the radio itself is hidden, so its keyboard focus shows on the whole choice
+                  <label key={option.id} className="block cursor-pointer border-t border-[var(--room-hair)] pt-3 outline-offset-4 has-[:focus-visible]:outline has-[:focus-visible]:outline-1 has-[:focus-visible]:outline-[var(--room-dim)]">
                     <input type="radio" name="import-mode" value={option.id} checked={mode === option.id} onChange={() => setMode(option.id)} className="sr-only" />
-                    <p className="text-white font-bold text-sm">{option.label}</p>
-                    <p className="text-xs text-neutral-400 mt-1">{option.hint}</p>
+                    <p className={`ui-headword inline text-[14px] font-medium ${mode === option.id ? 'text-[var(--room-paper)] decoration-[var(--room-paper)]' : 'text-[var(--room-dim)]'}`}>{option.label}</p>
+                    <p className="mt-1.5 text-[12.5px] text-[var(--room-faint)]">{option.hint}</p>
                   </label>
                 ))}
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-neutral-900/60 p-4 space-y-2 text-sm">
-                <p className="text-white font-semibold">
+              <div className="space-y-2 border-t border-[var(--room-hair)] pt-4 text-[13px]">
+                <p className="font-medium">
                   {plan.stats.folders} folder{plan.stats.folders === 1 ? '' : 's'} · {plan.stats.playlists} playlist{plan.stats.playlists === 1 ? '' : 's'}
-                  <span className="text-neutral-500 font-normal"> — {plan.stats.created} new, {plan.stats.updated} updated in place</span>
+                  <span className="font-normal text-[var(--room-dim)]"> — {plan.stats.created} new, {plan.stats.updated} updated in place</span>
                 </p>
 
                 {plan.stats.skipped > 0 && (
                   <div>
-                    <button type="button" onClick={() => setShowSkipped(v => !v)} className="text-amber-300 flex items-center gap-1 hover:underline">
-                      {showSkipped ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    <button type="button" onClick={() => setShowSkipped(v => !v)} aria-expanded={showSkipped} className="ui-headword text-left text-[var(--room-paper)]">
                       {plan.stats.skipped} playlist{plan.stats.skipped === 1 ? '' : 's'} skipped — not in your library (you don't follow {plan.stats.skipped === 1 ? 'it' : 'them'})
                     </button>
                     {showSkipped && (
-                      <ul className="mt-2 max-h-32 overflow-y-auto text-xs text-neutral-500 font-mono space-y-0.5 pl-5">
+                      <ul className="custom-scrollbar mt-2 max-h-32 space-y-0.5 overflow-y-auto pl-5 text-[11.5px] text-[var(--room-faint)] [font-family:var(--font-mono)]">
                         {plan.stats.skippedUris.map(uri => <li key={uri}>{uri}</li>)}
                       </ul>
                     )}
                   </div>
                 )}
                 {plan.stats.noUri > 0 && (
-                  <p className="text-neutral-400">{plan.stats.noUri} folder{plan.stats.noUri === 1 ? ' had' : 's had'} no Spotify id; re-importing won't recognise {plan.stats.noUri === 1 ? 'it' : 'them'} as the same folder.</p>
+                  <p className="text-[var(--room-dim)]">{plan.stats.noUri} folder{plan.stats.noUri === 1 ? ' had' : 's had'} no Spotify id; re-importing won't recognise {plan.stats.noUri === 1 ? 'it' : 'them'} as the same folder.</p>
                 )}
 
                 {mode === 'replace' && plan.stats.removed > 0 && (
-                  <p className="text-red-300">
+                  <p className="text-[rgb(240,160,160)]">
                     Removes {plan.stats.removed} existing Jomify folder{plan.stats.removed === 1 ? '' : 's'}{plan.stats.removedPinned ? ` (${plan.stats.removedPinned} pinned)` : ''}.
                     Playlists and albums are never deleted. Sync your other devices first — an edit there after the replace brings a folder back.
                   </p>
                 )}
 
-                <p className={overCap ? 'text-red-400 font-semibold' : 'text-neutral-500'}>
+                <p className={overCap ? 'font-semibold text-[rgb(240,160,160)]' : 'text-[var(--room-faint)]'}>
                   Synced data will be ~{kb(docChars)} of {kb(MAX_DOC_CHARS)}
                   {overCap ? ' — over the sync limit. Reduce the number of folders or playlists and try again.' : ''}
                 </p>
               </div>
 
-              <div className="flex items-center justify-between gap-3">
-                <button type="button" onClick={() => setStep('input')} className="rounded-full border border-white/10 px-4 py-2 text-sm font-semibold text-neutral-300 hover:bg-white/5 transition-colors">
+              <div className="flex items-center justify-between gap-6">
+                <button type="button" onClick={() => setStep('input')} className="ui-word">
                   Back
                 </button>
                 <button
                   type="button"
                   disabled={overCap || plan.stats.folders === 0}
                   onClick={requestApply}
-                  className="rounded-full bg-brand-gradient text-white px-5 py-2 text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="ui-pill disabled:cursor-not-allowed"
                 >
                   {mode === 'replace' ? 'Replace folders' : 'Merge folders'}
                 </button>

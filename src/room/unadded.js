@@ -26,6 +26,9 @@ const HOLD_FOLLOW_MS = 8000;  // after we move the card, how long Spotify may go
 const GHOST_MS = 10000;       // how long the song that just left stays under the tiles
 const FINISHED_MS = 3000;     // leaving a song this close to its end is the song ending, not a skip
 
+// how many playlists are suggested for a song: shown large, and as the quick-file words on a row
+export const SUGGESTED = 3;
+
 export const useUnaddedStore = create(() => ({
   pileId: null, pile: [], total: 0, loading: false, loadError: '',
   cardUri: null,

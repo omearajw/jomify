@@ -9,6 +9,7 @@ import { tagCache } from '../services/tags';
 import { MOOD_WORDS } from '../utils/playlistSuggestions';
 import { useUnaddedStore, cardOf, waitingCount, fileInto, takeOut, undo, skip, retrySuggestions, blocked, blockedWhy, playFrom } from './unadded';
 import Artists from './Artists';
+import { SUGGESTED } from './unadded';
 
 // The Unadded mode's open thing (DESIGN.md §8): the targets. The playing song is the card, so
 // it is already in the room's column on the right; here is where it can go: the check playlists
@@ -37,7 +38,7 @@ export default function RoomUnadded() {
   void skips;
 
   const suggestions = track ? (st.suggestionsByTrack.get(track.id) || []) : [];
-  const suggestedIds = suggestions.slice(0, 2).map((s) => s.id);
+  const suggestedIds = suggestions.slice(0, SUGGESTED).map((s) => s.id);
   const large = suggestedIds.map((id) => st.targets.find((t) => t.id === id)).filter(Boolean);
   const small = st.targets.filter((t) => !suggestedIds.includes(t.id));
   const placedHere = track ? (st.placed[track.uri] || []) : [];
@@ -121,13 +122,13 @@ export default function RoomUnadded() {
       {large.length > 0 && (
         <>
           <Mono className="mt-9 border-b border-[var(--room-hair)] pb-2 text-[var(--room-faint)]">Where it would suit</Mono>
-          <div className="mt-4 flex flex-wrap gap-6">{large.map((t) => tile(t, 168, '@max-md:!w-[calc(50%-12px)]'))}</div>
+          <div className="mt-4 flex flex-wrap gap-6">{large.map((t) => tile(t, 168, '@max-md:!w-[calc((100%-48px)/3)]'))}</div>
         </>
       )}
       {small.length > 0 && (
         <>
           <Mono className="mt-9 border-b border-[var(--room-hair)] pb-2 text-[var(--room-faint)]">{large.length ? 'Or' : 'The targets'}</Mono>
-          <div className="mt-4 flex flex-wrap gap-5">{small.map((t) => tile(t, 104, '@max-md:!w-[calc((100%-40px)/3)]'))}</div>
+          <div className="mt-4 flex flex-wrap gap-5">{small.map((t) => tile(t, 104, '@max-md:!w-[calc((100%-60px)/4)]'))}</div>
         </>
       )}
 
@@ -144,7 +145,7 @@ export default function RoomUnadded() {
             <span className="block truncate text-[11.5px] text-[var(--room-faint)]">{ghostIn.length ? `In ${ghostIn.map((id) => st.targets.find((t) => t.id === id)?.name || 'a playlist').join(', ')}` : 'Not filed'}. Drag it onto a target, or:</span>
           </span>
           <span className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 @max-md:min-w-0 @max-md:basis-full @max-md:shrink [&>button]:max-w-full [&>button]:truncate" onClick={(e) => e.stopPropagation()}>
-            {(st.suggestionsByTrack.get(ghost.item.track.id) || []).slice(0, 2).filter((s) => !ghostIn.includes(s.id)).map((s) => <Word key={s.id} disabled={st.busy} onClick={() => fileInto(ghost.item.track.uri, s.id)}>→ {s.name}</Word>)}
+            {(st.suggestionsByTrack.get(ghost.item.track.id) || []).slice(0, SUGGESTED).filter((s) => !ghostIn.includes(s.id)).map((s) => <Word key={s.id} disabled={st.busy} onClick={() => fileInto(ghost.item.track.uri, s.id)}>→ {s.name}</Word>)}
             <Mono className="text-[var(--room-faint)]">{ghost.left}s</Mono>
           </span>
         </div>

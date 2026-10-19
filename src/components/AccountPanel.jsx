@@ -27,7 +27,7 @@ const STARTS = [
 ];
 const LAYOUTS = [
   { id: 'on', label: 'The room', hint: 'The now-playing room is the app, and the library slides over it' },
-  { id: 'off', label: 'The old layout', hint: 'The sidebar and pages Jomify had before the room' }
+  { id: 'off', label: 'The old layout (legacy)', hint: 'The sidebar and pages Jomify had before the room. Kept as it is: new features and fixes go to the room only' }
 ];
 const HEARTS = [
   { id: 'always', label: 'Always' },

@@ -16,20 +16,19 @@ export default function DemoBadge() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex items-center gap-2 rounded-full bg-black/70 backdrop-blur-md border border-white/15 px-3.5 py-1.5 text-xs font-semibold text-white shadow-lg hover:bg-black/85 transition-colors"
+        className="ui-plane group inline-flex min-h-[44px] items-center px-4 md:min-h-[34px]"
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-[var(--brand-mid)]" aria-hidden="true" />
-        Demo
+        <span className="ui-word group-hover:text-[var(--room-paper)] group-hover:decoration-[var(--room-paper)]">Demo</span>
       </button>
       {open && (
-        <div role="dialog" aria-label="About the demo" className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-32px)] rounded-2xl bg-neutral-950/95 backdrop-blur-md border border-white/10 p-4 text-sm text-neutral-300 shadow-2xl">
-          <p className="font-semibold text-white">You're looking around Jomify</p>
+        <div role="dialog" aria-label="About the demo" className="ui-plane absolute right-0 mt-1 w-72 max-w-[calc(100vw-32px)] p-5 text-[13px] text-[var(--room-dim)]">
+          <p className="text-[15px] font-semibold text-[var(--room-paper)]">You're looking around Jomify</p>
           <p className="mt-2">Everything works on a made-up library of real albums. Playback is silent: Spotify only plays music to a signed-in Premium account. Lyrics, Zen and the rest are real.</p>
           <p className="mt-2">Nothing you change is saved; it all resets when you close the tab.</p>
           <button
             type="button"
             onClick={exitDemo}
-            className="mt-4 w-full rounded-full bg-brand-gradient py-2 font-bold text-white"
+            className="ui-pill mt-5 min-h-[40px] w-full"
           >
             Sign in with Spotify
           </button>

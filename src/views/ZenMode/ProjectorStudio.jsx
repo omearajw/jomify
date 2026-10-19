@@ -83,7 +83,16 @@ export default function ProjectorStudio({ inWindow = false }) {
   const item = layout.items.find((i) => i.id === itemId) || null;
 
   // what the wall shows while this is open
-  useEffect(() => { setGuides({ on: outlines, wallId: wall?.id || null, corner: mode === 'walls' ? corner : null, itemId: mode === 'assets' ? itemId : null, grid }); }, [outlines, wall?.id, corner, itemId, grid, mode, setGuides]);
+  useEffect(() => { setGuides({ on: outlines, mode, wallId: wall?.id || null, corner: mode === 'walls' ? corner : null, itemId: mode === 'assets' ? itemId : null, grid }); }, [outlines, wall?.id, corner, itemId, grid, mode, setGuides]);
+  // a selection made on the projector itself comes back through the guides: follow it here
+  useEffect(() => useProjectorStore.subscribe((st, prev) => {
+    const picked = st.picked;
+    if (!picked || picked === prev.picked) return;
+    if (picked.mode) setMode(picked.mode);
+    if (picked.wallId !== undefined) setWallId(picked.wallId);
+    if (picked.corner !== undefined) setCorner(picked.corner);
+    if (picked.itemId !== undefined) setItemId(picked.itemId);
+  }), []);
   useEffect(() => () => setGuides({ on: false }), [setGuides]);
 
   // --- changes, with an undo
@@ -294,7 +303,8 @@ export default function ProjectorStudio({ inWindow = false }) {
   return (
     <div className="fixed inset-0 z-[9700] flex text-[var(--room-paper)]" style={{ background: 'var(--room-ink)', fontFamily: 'var(--font-room)' }} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
       {/* the column: layouts, the step, walls or assets, and what is selected */}
-      <aside className="flex w-[300px] shrink-0 flex-col gap-7 overflow-y-auto border-r border-[var(--room-hair)] px-6 py-6" style={{ background: 'var(--room-solid)' }}>
+      <aside className="flex w-[300px] shrink-0 flex-col border-r border-[var(--room-hair)]" style={{ background: 'var(--room-solid)' }}>
+        <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-6 py-6">
         <div>
           <Mono className="text-[var(--room-faint)]">Projector{frame.reported ? ` · ${frame.w} × ${frame.h}` : ''}</Mono>
           {renaming === 'layout' ? (
@@ -401,7 +411,9 @@ export default function ProjectorStudio({ inWindow = false }) {
           </div>
         )}
 
-        <div className="mt-auto space-y-3 border-t border-[var(--room-hair)] pt-4">
+        </div>
+        {/* pinned under the scrolling column: Done is never a scroll away */}
+        <div className="shrink-0 space-y-3 border-t border-[var(--room-hair)] px-6 py-4">
           <div className="flex flex-wrap gap-x-4 gap-y-2">
             <Word lit={outlines} onClick={() => setOutlines((v) => !v)} tip="Outlines and corners on the wall while you edit">Outlines on the wall</Word>
             <Word lit={grid} onClick={() => setGrid((v) => !v)} tip="A grid across the selected wall (G)">Grid</Word>

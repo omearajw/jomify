@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Copy, Share2, Trash2, Check, Radar } from 'lucide-react';
 import { getEntries, subscribe, clearLog, formatEntry, formatLog } from '../services/debugLog';
 import { checkSpotifyEndpoints } from '../services/endpointCheck';
 
 const PAGE = 300;
 
 const toneFor = (category) => {
-  if (category === 'error' || category === 'console.error') return 'text-red-400';
-  if (category === 'console.warn') return 'text-amber-300';
-  if (category === 'sdk' || category === 'playback') return 'text-sky-300';
-  return 'text-neutral-300';
+  if (category === 'error' || category === 'console.error') return 'text-[rgb(240,160,160)]';
+  if (category === 'console.warn') return 'text-[rgb(230,200,140)]';
+  if (category === 'sdk' || category === 'playback') return 'text-[var(--room-paper)]';
+  return 'text-[var(--room-dim)]';
 };
 
 async function copyText(text) {
@@ -76,57 +75,58 @@ export default function DebugLogPanel({ onClose }) {
     setConfirmClear(false);
   };
 
-  const button = 'inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 h-9 text-xs font-semibold text-white hover:bg-white/10';
+  const button = 'ui-word inline-flex min-h-[36px] items-center';
 
   return createPortal(
-    <div className="fixed inset-0 z-[10000] flex flex-col bg-neutral-950 text-white pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
+    <div className="fixed inset-0 z-[10000] flex flex-col pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]" style={{ background: 'var(--room-ink)', color: 'var(--room-paper)', fontFamily: 'var(--font-room)' }}>
+      <div className="flex items-center gap-4 border-b border-[var(--room-hair)] px-5 py-3">
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-bold">Debug log</h2>
-          <p className="text-xs text-neutral-500">{getEntries().length} entries, kept on this device</p>
+          <h2 className="room-mono text-[var(--room-dim)]">Debug log</h2>
+          <p className="mt-1 text-[12px] text-[var(--room-faint)]">{getEntries().length} entries, kept on this device</p>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close debug log" className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10">
-          <X className="w-5 h-5" />
-        </button>
+        <button type="button" onClick={onClose} aria-label="Close debug log" className={button}>Close</button>
       </div>
-      <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-white/10">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-[var(--room-hair)] px-5 py-2">
         <button type="button" onClick={handleCopy} className={button}>
-          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} {copied ? 'Copied' : needle ? `Copy ${matching.length} shown` : 'Copy all'}
+          {copied ? 'Copied' : needle ? `Copy ${matching.length} shown` : 'Copy all'}
         </button>
         {typeof navigator !== 'undefined' && navigator.share && (
           <button type="button" onClick={() => shareText(textToSend()).catch((err) => console.warn('[debug log] share failed:', err?.message || err))} className={button}>
-            <Share2 className="w-4 h-4" /> Share
+            Share
           </button>
         )}
         <button
           type="button"
           disabled={checking}
           onClick={() => { setChecking(true); setFilter('api check'); checkSpotifyEndpoints().finally(() => setChecking(false)); }}
-          className={`${button} disabled:opacity-60`}
+          className={button}
           title="Asks Spotify, read-only, whether each endpoint Jomify uses still answers"
         >
-          <Radar className={`w-4 h-4 ${checking ? 'animate-pulse' : ''}`} /> {checking ? 'Checking…' : 'Check Spotify'}
+          {checking ? 'Checking…' : 'Check Spotify'}
         </button>
-        <button type="button" onClick={handleClear} className={`${button} ${confirmClear ? 'border-red-400 text-red-300' : ''}`}>
-          <Trash2 className="w-4 h-4" /> {confirmClear ? 'Tap again to clear' : 'Clear'}
+        <button type="button" onClick={handleClear} className={`${button} ${confirmClear ? 'text-[rgb(240,160,160)]' : ''}`}>
+          {confirmClear ? 'Tap again to clear' : 'Clear'}
         </button>
         <input
           type="search"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter, e.g. 2026-10-04"
-          className="flex-1 min-w-[8rem] h-9 rounded-full bg-white/5 border border-white/10 px-4 text-sm text-white placeholder:text-neutral-500 outline-none focus:border-white/30"
+          aria-label="Filter the log"
+          className="ui-field min-w-[8rem] flex-1 text-[13px]"
         />
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-2 font-mono text-[11px] leading-relaxed">
-        {visible.length === 0 && <p className="text-neutral-500 py-6 text-center">Nothing logged{needle ? ' matching that' : ''}.</p>}
+      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-2 text-[11px] leading-relaxed [font-family:var(--font-mono)]">
+        {visible.length === 0 && <p className="py-6 text-center text-[var(--room-faint)]">Nothing logged{needle ? ' matching that' : ''}.</p>}
         {visible.map((e, i) => (
-          <p key={`${e.t}-${i}`} className={`break-words py-0.5 border-b border-white/[0.03] ${toneFor(e.c)}`}>{formatEntry(e)}</p>
+          <p key={`${e.t}-${i}`} className={`break-words border-b border-[var(--room-hair)] py-0.5 ${toneFor(e.c)}`}>{formatEntry(e)}</p>
         ))}
         {matching.length > shown && (
-          <button type="button" onClick={() => setShown((n) => n + PAGE)} className={`${button} my-4 mx-auto flex`}>
-            Show older ({matching.length - shown} more)
-          </button>
+          <p className="my-4 text-center">
+            <button type="button" onClick={() => setShown((n) => n + PAGE)} className={button}>
+              Show older ({matching.length - shown} more)
+            </button>
+          </p>
         )}
       </div>
     </div>,

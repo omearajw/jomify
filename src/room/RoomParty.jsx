@@ -97,8 +97,7 @@ function Setup({ choices, profile, onStart, busy }) {
   const backing = choices.find((p) => p.id === backingId);
   return (
     <>
-      <Mono className="text-[var(--room-faint)]">Party</Mono>
-      <h1 className="mt-2 text-[30px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">Start a party</h1>
+      <h1 className="text-[30px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">Start a party</h1>
       <p className="mt-3 max-w-xl text-[13px] text-[var(--room-dim)]">A code for the room: anyone can ask for songs from their phone, no Spotify account needed. Requests take turns, so nobody can hog it, and this playlist carries on when nothing is asked for.</p>
       <Head>Playlist to fall back on</Head>
       <PlaylistPicker choices={choices} size={104} selectedId={backingId} onPick={(p) => setBackingId(p.id)} />

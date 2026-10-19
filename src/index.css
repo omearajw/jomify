@@ -388,3 +388,15 @@ input, textarea, [contenteditable="true"], [contenteditable=""] { -webkit-user-s
 .touch-drag-ghost { position: fixed; z-index: 10050; pointer-events: none; margin: 0; background: var(--room-solid, #0d0d12); border-radius: 6px;
   box-shadow: 0 0 0 1px rgba(241, 239, 233, 0.18), 0 18px 40px -8px rgba(0, 0, 0, 0.75); opacity: 0.96; transition: opacity 120ms ease-out; }
 .touch-drag-ghost.is-refused { opacity: 0.7; }
+
+/* The lite scene's light (the cover, pre-blurred once): a slow drift, so the room is never a still
+   photograph on Safari. Transform only, on one layer, so WebKit composites it without repainting
+   the blur; the -30% inset gives it room to wander without showing an edge. */
+@keyframes zen-lite-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  33%  { transform: translate3d(4%, -3%, 0) scale(1.06) rotate(2deg); }
+  66%  { transform: translate3d(-3%, 3%, 0) scale(1.03) rotate(-1.5deg); }
+  100% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+}
+.zen-lite-drift { animation: zen-lite-drift 70s ease-in-out infinite; will-change: transform; }
+@media (prefers-reduced-motion: reduce) { .zen-lite-drift { animation: none; } }

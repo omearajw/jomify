@@ -4,8 +4,8 @@ import { artUrl } from '../utils/images';
 
 const SIZES = {
   sm: { avatar: 'w-6 h-6 text-[10px]', name: 'text-xs', gap: 'space-x-2' },
-  md: { avatar: 'w-10 h-10 text-sm', name: 'text-lg font-bold tracking-tight', gap: 'gap-4' },
-  lg: { avatar: 'w-16 h-16 text-xl', name: 'text-xl font-bold', gap: 'gap-4' }
+  md: { avatar: 'w-10 h-10 text-sm', name: 'text-lg font-semibold tracking-[-0.01em]', gap: 'gap-4' },
+  lg: { avatar: 'w-16 h-16 text-xl', name: 'text-xl font-semibold tracking-[-0.01em]', gap: 'gap-4' }
 };
 
 // Avatar (or initial) plus display name for another Spotify user, resolved from the shared
@@ -33,11 +33,11 @@ export default function UserChip({ userId, fallbackName, size = 'sm', showName =
       {image ? (
         <img src={image} alt="" loading="lazy" decoding="async" className={`${s.avatar} rounded-full object-cover shrink-0`} />
       ) : (
-        <div className={`${s.avatar} rounded-full bg-neutral-700 flex items-center justify-center font-bold text-white shrink-0`}>
+        <div className={`${s.avatar} rounded-full bg-[rgba(241,239,233,0.1)] flex items-center justify-center font-semibold text-[var(--room-paper)] shrink-0`}>
           {String(name).charAt(0).toUpperCase()}
         </div>
       )}
-      {showName && <span className={`${s.name} text-neutral-300 truncate`}>{name}</span>}
+      {showName && <span className={`${s.name} text-[var(--room-dim)] truncate`}>{name}</span>}
     </button>
   );
 }

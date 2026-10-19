@@ -8,6 +8,7 @@ import { startConductor, stopConductor, heartbeat, isConducting } from '../../pa
 import { playOn, setShuffle } from '../../services/spotify/playbackController';
 import { searchSpotify, playContext } from '../../services/spotify/api';
 import { artUrl } from '../../utils/images';
+import { isPile } from '../../utils/unaddedSync';
 import { toast } from '../../store/toastStore';
 
 
@@ -35,8 +36,10 @@ export function usePartyHost() {
   const rejoinChecked = usePartyStore((s) => s.rejoinChecked);
   const searchTimer = useRef(null);
 
-  const own = playlists.filter((p) => p.owner?.id === profile?.id || p.collaborative);
-  const choices = own.length ? own : playlists;
+  // the Unadded pile is Jomify's working list, shown nowhere but Unadded (DESIGN.md §8)
+  const pickable = playlists.filter((p) => !isPile(p));
+  const own = pickable.filter((p) => p.owner?.id === profile?.id || p.collaborative);
+  const choices = own.length ? own : pickable;
 
   // The conductor runs whether or not this page is open; opening it just makes sure
   useEffect(() => {

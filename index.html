@@ -14,13 +14,13 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
-    <link rel="icon" type="image/png" href="/Jomify-Icon.png" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- Black from the first paint: if the app's stylesheet never arrives the page must not be a
          blank white sheet with nothing to say -->
     <!-- Black on html only: the app paints its aurora glow and grain behind everything (negative
          z-index), and a background on body is painted over that, which left the app flat black -->
-    <style>html { background: #000; } body { background: transparent; color: #fff; margin: 0; }</style>
+    <style>html { background: #07070b; } body { background: transparent; color: #f1efe9; margin: 0; }</style>
     <script>
       // Demo mode (/demo, or a tab already in it): before any of the app runs, give it its own
       // storage for this tab only and a demo session. It has to be here: the app's code is bundled
@@ -91,13 +91,15 @@
           var box = document.createElement('div');
           box.id = 'jomify-boot';
           box.setAttribute('role', 'alert');
-          box.style.cssText = 'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#000;color:#fff;z-index:99999';
+          // The room's look (src/index.css), spelled out: the app's stylesheet may be what failed to load
+          var MONO = 'font-family:JetBrains Mono,ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase';
+          box.style.cssText = 'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center;font-family:Inter Tight,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;background:#07070b;color:#f1efe9;z-index:99999';
           var detail = problems.length ? problems.slice(0, 4).join(' · ') : 'It took too long to start.';
-          box.innerHTML = '<p style="font-size:24px;font-weight:800;margin:0">Jomify didn\'t start</p>'
-            + '<p id="jomify-boot-detail" style="font-size:13px;color:#a3a3a3;max-width:520px;margin:0;word-break:break-word"></p>'
-            + '<p style="font-size:12px;color:#737373;max-width:420px;margin:0">Repair clears the app files this device has saved and fetches them again. Your library, settings and sign-in stay.</p>'
-            + '<div style="display:flex;gap:10px;margin-top:6px"><button id="jomify-boot-repair" style="padding:10px 22px;border-radius:999px;border:0;background:#f91362;color:#fff;font-weight:700;font-size:14px">Repair and reload</button>'
-            + '<button id="jomify-boot-reload" style="padding:10px 22px;border-radius:999px;border:1px solid #404040;background:transparent;color:#fff;font-weight:700;font-size:14px">Reload</button></div>';
+          box.innerHTML = '<p style="font-size:26px;font-weight:600;letter-spacing:-0.02em;margin:0">Jomify didn\'t start</p>'
+            + '<p id="jomify-boot-detail" style="' + MONO + ';text-transform:none;letter-spacing:0;color:rgba(241,239,233,0.5);max-width:520px;margin:0;word-break:break-word"></p>'
+            + '<p style="font-size:13px;color:rgba(241,239,233,0.5);max-width:420px;margin:0">Repair clears the app files this device has saved and fetches them again. Your library, settings and sign-in stay.</p>'
+            + '<div style="display:flex;align-items:center;gap:28px;margin-top:14px"><button id="jomify-boot-reload" style="' + MONO + ';min-height:44px;padding:0;border:0;background:transparent;color:rgba(241,239,233,0.5);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:5px;text-decoration-color:rgba(241,239,233,0.22);cursor:pointer">Reload</button>'
+            + '<button id="jomify-boot-repair" style="min-height:44px;padding:8px 22px;border-radius:999px;border:0;background:#f1efe9;color:#0a0810;font-family:inherit;font-weight:600;font-size:14px;cursor:pointer">Repair and reload</button></div>';
           document.body.appendChild(box);
           document.getElementById('jomify-boot-detail').textContent = detail;
           document.getElementById('jomify-boot-repair').onclick = repair;

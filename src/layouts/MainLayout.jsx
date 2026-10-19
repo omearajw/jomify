@@ -7,7 +7,7 @@ import ContextMenu from '../components/ContextMenu';
 import ToastHost from '../components/Toast';
 import SyncConflictDialog from '../components/SyncConflictDialog';
 import ShortcutsHelp from '../components/ShortcutsHelp';
-import { ChevronLeft, AlertTriangle, CloudOff, WifiOff, PartyPopper } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { usePartyStore } from '../store/partyStore';
 import { endParty, rejoinParty } from '../party/conductor';
 import { useUserStore } from '../store/userStore';
@@ -36,6 +36,8 @@ const registerServiceWorker = shouldRegisterServiceWorker();
 // status line covers short blips. Past this, the user may believe folders are backing up when
 // they aren't, which is the one thing sync must never let happen silently.
 const SYNC_FAILURE_BANNER_AFTER_MS = 5 * 60 * 1000;
+
+const BANNER = 'flex items-center justify-center gap-5 border-b border-[var(--room-hair)] bg-[var(--room-solid)] px-4 md:px-8 py-2.5 text-center text-[13px] [font-family:var(--font-room)] animate-fade-in';
 
 export default function MainLayout({ children }) {
   const { goBack, viewHistory, apiCooldownUntil, setApiCooldown, isZenMode, playbackSettings } = useSlice(useUserStore, ['goBack', 'viewHistory', 'apiCooldownUntil', 'setApiCooldown', 'isZenMode', 'playbackSettings']);
@@ -115,29 +117,25 @@ export default function MainLayout({ children }) {
           {(isCoolingDown || syncBroken || (withBack && canGoBack) || offline || dormantParty) && (
             <div className="sticky top-0 z-30">
               {dormantParty && (
-                <div className="bg-neutral-900/95 backdrop-blur-md text-white px-4 md:px-8 py-2.5 flex items-center justify-center gap-3 text-sm font-medium shadow-lg animate-fade-in">
-                  <PartyPopper className="w-5 h-5 text-[var(--brand-mid)] shrink-0" />
-                  <span className="min-w-0 truncate">Party {dormantParty} is still open from earlier.</span>
-                  <button type="button" onClick={() => { rejoinParty(); useUserStore.getState().setCurrentView('party'); }} className="rounded-full bg-white/10 hover:bg-white/15 px-3 py-1 text-xs font-bold">Resume</button>
-                  <button type="button" onClick={() => endParty()} className="rounded-full border border-white/15 hover:bg-white/10 px-3 py-1 text-xs font-bold">End it</button>
+                <div className={`${BANNER} text-[var(--room-dim)]`}>
+                  <span className="min-w-0 truncate text-[var(--room-paper)]">Party {dormantParty} is still open from earlier.</span>
+                  <button type="button" onClick={() => { rejoinParty(); useUserStore.getState().setCurrentView('party'); }} className="ui-word shrink-0">Resume</button>
+                  <button type="button" onClick={() => endParty()} className="ui-word shrink-0">End it</button>
                 </div>
               )}
               {offline && (
-                <div className="bg-neutral-800/95 backdrop-blur-md text-white px-4 md:px-8 py-3 flex items-center justify-center space-x-3 text-sm font-medium shadow-lg animate-fade-in">
-                  <WifiOff className="w-5 h-5 text-neutral-400" />
+                <div className={`${BANNER} text-[var(--room-dim)]`}>
                   <span>No connection. Your library is shown as it was last seen; playback needs Spotify.</span>
                 </div>
               )}
               {isCoolingDown && (
-                <div className="bg-red-500/90 backdrop-blur-md text-white px-4 md:px-8 py-3 flex items-center justify-center space-x-3 text-sm font-medium shadow-lg animate-fade-in">
-                  <AlertTriangle className="w-5 h-5" />
+                <div className={`${BANNER} text-[rgb(240,160,160)]`}>
                   <span>Spotify API rate limit reached. Pausing network requests to cool down...</span>
                 </div>
               )}
 
               {syncBroken && (
-                <div className="bg-amber-500/90 backdrop-blur-md text-black px-4 md:px-8 py-3 flex items-center justify-center space-x-3 text-sm font-medium shadow-lg animate-fade-in">
-                  <CloudOff className="w-5 h-5" />
+                <div className={`${BANNER} text-[rgb(240,160,160)]`}>
                   <span>
                     Sync isn't reaching the server. Your folders are saved on this device but not backing up.
                     {syncErrorMessage ? ` (${syncErrorMessage})` : ''}

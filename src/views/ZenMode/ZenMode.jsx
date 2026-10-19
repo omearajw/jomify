@@ -162,9 +162,11 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
   // Remembered with the other playback settings, so Zen opens the way it was left
   const showLyrics = Boolean(playbackSettings?.zenLyrics);
   const setShowLyrics = (on) => setPlaybackSetting('zenLyrics', Boolean(on));
-  const [plainLyrics, setPlainLyrics] = useState([]);
-  const [syncedLyrics, setSyncedLyrics] = useState(null);
-  const [lyricsLoading, setLyricsLoading] = useState(false);
+  // The answer carries the song it is for. Between songs the old answer never stands in for the
+  // new song, and the layout holds still until the new one arrives: before, a song with no lyrics
+  // after one with none went "none, finding, none" and the stage jumped twice (Jack, 15 and 19 Oct).
+  const [lyricsAnswer, setLyricsAnswer] = useState({ id: null, synced: null, plain: [] });
+  const [slowLookup, setSlowLookup] = useState(null); // the song id whose lookup is taking a while
   const [sungLine, setSungLine] = useState(null);
 
   const currentTrack = playbackState?.track_window?.current_track;
@@ -307,30 +309,34 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
     let isMounted = true;
     const stop = new AbortController();
     const trackDurationSec = playbackState?.duration ? playbackState.duration / 1000 : null;
+    const id = currentTrack.id;
+    // the dots only for a lookup that is actually slow; a quick (or cached) one shows nothing
+    const slow = setTimeout(() => { if (isMounted) setSlowLookup(id); }, 700);
     const fetchLyrics = async () => {
-      setSyncedLyrics(null);
-      setPlainLyrics([]);
-      setLyricsLoading(true);
-      try {
-        const found = await findLyrics(currentTrack, trackDurationSec, { signal: stop.signal });
-        if (!isMounted) return;
-        if (found.synced) setSyncedLyrics(found.synced);
-        else setPlainLyrics(found.plain);
-      } catch { /* no lyrics: the cover keeps the stage */ } finally {
-        if (isMounted) setLyricsLoading(false);
-      }
+      let found = null;
+      try { found = await findLyrics(currentTrack, trackDurationSec, { signal: stop.signal }); } catch { /* no lyrics: the cover keeps the stage */ }
+      if (!isMounted) return;
+      clearTimeout(slow);
+      setLyricsAnswer({ id, synced: found?.synced || null, plain: found?.synced ? [] : (found?.plain || []) });
     };
     fetchLyrics();
-    return () => { isMounted = false; stop.abort(); };
+    return () => { isMounted = false; clearTimeout(slow); stop.abort(); };
   // Keyed on the track id, not the track object or playbackState.duration: those change on every
   // position tick and would refetch lyrics several times a second
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack?.id, showLyrics]);
 
+  const answered = lyricsAnswer.id === (currentTrack?.id || null);
+  const syncedLyrics = answered ? lyricsAnswer.synced : null;
+  const plainLyrics = answered ? lyricsAnswer.plain : [];
+  const lyricsLoading = showLyrics && Boolean(currentTrack) && !answered && slowLookup === currentTrack?.id;
   const hasSynced = showLyrics && Boolean(syncedLyrics?.length);
   const hasPlain = showLyrics && !syncedLyrics && plainLyrics.length > 0;
-  const noLyrics = showLyrics && !lyricsLoading && !hasSynced && !hasPlain;
-  const split = showLyrics && !noLyrics;
+  const noLyrics = showLyrics && answered && !hasSynced && !hasPlain;
+  // while the next song's lyrics are on their way the stage keeps the shape it had
+  // (the last answer, for the previous song, says what that shape was)
+  const hadLyrics = Boolean(lyricsAnswer.synced?.length || lyricsAnswer.plain?.length);
+  const split = showLyrics && (answered ? !noLyrics : lyricsLoading || hadLyrics);
   const linesKey = useMemo(() => `${trackId}:${syncedLyrics?.length || 0}:${syncedLyrics?.[0]?.timeMs ?? ''}`, [trackId, syncedLyrics]);
 
   const boxRef = useRef(null);
@@ -382,7 +388,7 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
         <div className="absolute inset-0 pointer-events-none">
           {/* In the room the light has to reach every edge, under the layer and the strip; a
               contained square left black bands either side of a wide window and read as a box */}
-          {backdropUrl && <div className={`absolute -inset-[30%] bg-center bg-no-repeat transition-opacity duration-1000 ${room ? 'bg-cover opacity-55' : 'bg-contain opacity-80'}`} style={{ backgroundImage: `url(${backdropUrl})` }} />}
+          {backdropUrl && <div className={`zen-lite-drift absolute -inset-[30%] bg-center bg-no-repeat transition-opacity duration-1000 ${room ? 'bg-cover opacity-55' : 'bg-contain opacity-80'}`} style={{ backgroundImage: `url(${backdropUrl})` }} />}
           <div className={`absolute inset-0 ${room ? 'bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.6)_100%)]' : 'bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.75)_100%)]'}`} />
         </div>
       )}

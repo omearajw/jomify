@@ -1,4 +1,5 @@
 import { Component } from 'react';
+import JomifyMark from './JomifyMark';
 
 // The only error boundary in the app. Without one, any render-time throw (a podcast episode in
 // the queue with no `album`, an unexpected API shape, a bad merge) unmounts the whole tree and
@@ -35,19 +36,20 @@ export default class ErrorBoundary extends Component {
     if (!this.state.error) return this.props.children;
 
     return (
-      <div className="flex flex-col items-center justify-center h-dvh bg-black text-white gap-4 px-8 text-center">
-        <p className="text-2xl font-extrabold tracking-tight">Something went wrong.</p>
-        <p className="text-neutral-400 max-w-md text-sm">
+      <div className="flex h-dvh flex-col items-center justify-center gap-4 px-8 text-center" style={{ background: 'var(--room-ink)', color: 'var(--room-paper)', fontFamily: 'var(--font-room)' }}>
+        <JomifyMark word size={36} className="mb-4" />
+        <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em]">Something went wrong.</h1>
+        <p className="room-mono max-w-md normal-case tracking-normal text-[var(--room-dim)] [overflow-wrap:anywhere]">
           {String(this.state.error?.message || this.state.error)}
         </p>
-        <p className="text-neutral-500 text-xs max-w-md">
+        <p className="max-w-md text-[13px] text-[var(--room-dim)]">
           Your folders and settings are safe -- they're stored separately from anything that could
           have broken here.
         </p>
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="mt-2 px-6 py-2.5 rounded-full bg-brand-gradient text-white font-bold shadow-brand-glow hover:scale-105 transition-transform"
+          className="ui-pill mt-4 min-h-[44px] px-6"
         >
           Reload Jomify
         </button>

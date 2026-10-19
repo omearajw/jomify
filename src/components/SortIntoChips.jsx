@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Star, Plus, X, Loader } from 'lucide-react';
+import { Loader } from 'lucide-react';
 import { useIsMobile } from '../hooks/useMediaQuery';
 
 // The row of "sort into" chips under a track in Unadded Songs: the top pick, two more that fit,
@@ -22,19 +22,18 @@ export default function SortIntoChips({ suggestions, targets, busy, onPick }) {
         title={target.reason ? `${target.reason}` : `Add to ${target.name}`}
         onClick={(e) => { stop(e); onPick(target.id); }}
         onPointerDown={stop}
-        className={`inline-flex items-center gap-1 max-w-[11rem] shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none transition-colors disabled:opacity-50 ${top
-          ? 'border-[var(--brand-mid)]/60 bg-[var(--brand-mid)]/15 text-white hover:bg-[var(--brand-mid)]/30'
-          : 'border-white/10 bg-white/5 text-neutral-300 hover:bg-white/10 hover:text-white'}`}
+        className={`ui-headword inline-block max-w-[11rem] shrink-0 truncate py-0.5 text-[12px] font-medium leading-tight disabled:opacity-40 ${top
+          ? 'text-[var(--room-paper)] decoration-[var(--room-paper)]'
+          : 'text-[var(--room-dim)] hover:text-[var(--room-paper)]'}`}
       >
-        {top ? <Star className="w-3 h-3 fill-current text-[var(--brand-mid)] shrink-0" /> : <Plus className="w-3 h-3 shrink-0" />}
-        <span className="truncate">{target.name}</span>
+        {target.name}
       </button>
     );
   };
 
   const picker = pickerOpen && createPortal(
     <div
-      className={`fixed inset-0 z-[10000] flex bg-black/70 backdrop-blur-sm ${isMobile ? 'items-end' : 'items-center justify-center px-4 py-6'}`}
+      className={`fixed inset-0 z-[10000] flex bg-black/60 ${isMobile ? 'items-end' : 'items-center justify-center px-4 py-6'}`}
       onClick={(e) => { stop(e); setPickerOpen(false); }}
       onPointerDown={stop}
     >
@@ -44,16 +43,14 @@ export default function SortIntoChips({ suggestions, targets, busy, onPick }) {
         aria-label="Add to a playlist"
         onClick={stop}
         className={isMobile
-          ? 'w-full max-h-[70dvh] rounded-t-3xl bg-neutral-950 border-t border-white/10 shadow-2xl flex flex-col pb-[env(safe-area-inset-bottom)]'
-          : 'w-full max-w-sm rounded-3xl bg-neutral-950 border border-white/10 shadow-2xl flex flex-col max-h-[70vh]'}
+          ? 'ui-plane flex max-h-[70dvh] w-full flex-col rounded-t-[10px] pb-[env(safe-area-inset-bottom)]'
+          : 'ui-plane flex max-h-[70vh] w-full max-w-sm flex-col'}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
-          <h2 className="text-lg font-bold text-white">Add to</h2>
-          <button type="button" onClick={(e) => { stop(e); setPickerOpen(false); }} aria-label="Close" className="text-neutral-400 hover:text-white p-2">
-            <X className="w-5 h-5" />
-          </button>
+        <div className="flex items-center justify-between px-6 pb-3 pt-5">
+          <h2 className="room-mono text-[var(--room-dim)]">Add to</h2>
+          <button type="button" onClick={(e) => { stop(e); setPickerOpen(false); }} className="ui-word">Close</button>
         </div>
-        <div className="overflow-y-auto p-2">
+        <div className="custom-scrollbar overflow-y-auto px-6 pb-4">
           {targets.map((t) => {
             const suggested = suggestions.find((s) => s.id === t.id);
             return (
@@ -61,12 +58,11 @@ export default function SortIntoChips({ suggestions, targets, busy, onPick }) {
                 key={t.id}
                 type="button"
                 onClick={(e) => { stop(e); setPickerOpen(false); onPick(t.id); }}
-                className="w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-left text-neutral-200 hover:bg-white/5 active:bg-white/10"
+                className={`ui-row min-h-[44px] ${suggested ? 'text-[var(--room-paper)]' : ''}`}
               >
-                {suggested ? <Star className="w-4 h-4 fill-current text-[var(--brand-mid)] shrink-0" /> : <Plus className="w-4 h-4 text-neutral-500 shrink-0" />}
-                <span className="flex-1 min-w-0">
-                  <span className="block font-semibold truncate">{t.name}</span>
-                  {suggested?.reason && <span className="block text-xs text-neutral-500">{suggested.reason}</span>}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{t.name}</span>
+                  {suggested?.reason && <span className="block text-[11.5px] font-normal text-[var(--room-faint)]">{suggested.reason}</span>}
                 </span>
               </button>
             );
@@ -78,14 +74,14 @@ export default function SortIntoChips({ suggestions, targets, busy, onPick }) {
   );
 
   return (
-    <div className="flex items-center gap-1.5 mt-1.5 overflow-x-auto md:overflow-visible md:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" onClick={stop} onPointerDown={stop}>
-      {busy && <Loader className="w-3.5 h-3.5 animate-spin text-neutral-400" />}
+    <div className="flex items-center gap-x-4 gap-y-1 mt-1.5 overflow-x-auto md:overflow-visible md:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" onClick={stop} onPointerDown={stop}>
+      {busy && <Loader className="h-3.5 w-3.5 animate-spin text-[var(--room-faint)]" />}
       {!busy && suggestions.map(chip)}
       {!busy && (
         <button
           type="button"
           onClick={(e) => { stop(e); setPickerOpen(true); }}
-          className="inline-flex items-center shrink-0 rounded-full border border-dashed border-white/15 px-2.5 py-1 text-[11px] font-semibold leading-none text-neutral-400 hover:text-white hover:border-white/30"
+          className="ui-word shrink-0"
         >
           {suggestions.length ? 'More…' : 'Add to…'}
         </button>
