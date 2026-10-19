@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Play, Shuffle, X } from 'lucide-react';
 import { useSevenView, formatBatchDate } from '../views/Library/useSevenView';
-import { searchSpotify, checkTracksLiked } from '../services/spotify/api';
+import { searchSpotify, checkTracksLiked, playUris } from '../services/spotify/api';
+import { playOn } from '../services/spotify/playbackController';
 import { useUserStore } from '../store/userStore';
 import { artUrl } from '../utils/images';
 import { formatTime } from '../utils/formatTime';
@@ -224,6 +225,11 @@ export default function RoomSeven() {
   const batchOrder = slots.filter(Boolean).map((t) => t.uri);
   // one column (the phone): a run of empty slots would push the pool a screen down, so past the
   // last filled slot only the next empty one shows; the count in the head still says "n of 7"
+  const playBatch = () => {
+    const uris = slots.filter(Boolean).filter((t) => !isUnplayable(t)).map((t) => t.uri);
+    if (!uris.length || !token) return;
+    playOn((deviceId) => playUris(token, deviceId, uris, 0), { track: slots.find(Boolean) });
+  };
   const lastFilled = slots.reduce((at, t, k) => (t ? k : at), -1);
   const slotRow = (track, k) => {
     const isSel = track && sel.zone === 'batch' && selected.has(track.uri);
@@ -309,7 +315,11 @@ export default function RoomSeven() {
             onDrop={(e) => { if (e.defaultPrevented) return; const tracks = fromPool(e); if (tracks.length && staged.length < 7) { e.preventDefault(); placeFrom(tracks, slots.indexOf(null)); } }}
           >
             <div className="flex items-center justify-between border-b border-[var(--room-hair)] pb-2">
-              <Mono className="text-[var(--room-faint)]">The batch · {staged.length} of 7</Mono>
+              <span className="flex min-w-0 items-center gap-4">
+                <Mono className="text-[var(--room-faint)]">The batch · {staged.length} of 7</Mono>
+                {/* hear the batch as it stands, slot 1 to 7, before sending it */}
+                <button type="button" disabled={!staged.length} onClick={playBatch} data-tip="Play the songs in the batch, from slot 1 down, before you send it" className="ui-word shrink-0">Play the batch</button>
+              </span>
               <button type="button" onClick={handlePublishSeven} disabled={staged.length !== 7 || isPublishing} className="ui-pill">{isPublishing ? 'Sending…' : 'Send the batch'}</button>
             </div>
             {publishError && <p className="pt-3 text-[13px] text-[rgb(240,160,160)]">{publishError}</p>}

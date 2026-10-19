@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { UnfoldingMark } from '../components/JomifyMark';
+import { useUserStore } from '../store/userStore';
 
 // The launcher: Library · Search · Sevens · Unadded · Party, living at the left edge and shown
 // only when reached for (DESIGN.md §5). The reveal must not be finicky: it opens on a deliberate
@@ -21,6 +22,7 @@ const RAIL_ITEMS = [
   { id: 'sevens', label: 'Sevens' },
   { id: 'unadded', label: 'Unadded' },
   { id: 'party', label: 'Party' },
+  { id: 'profile', label: 'Profile' },
   { id: 'account', label: 'Settings' }
 ];
 
@@ -30,6 +32,9 @@ export default function Rail({ open, held = false, pinned = false, active, onPic
   const leaveTimer = useRef(null);
   const railRef = useRef(null);
   const shown = pinned || open || held || reached;
+  // modes switched off in Settings leave the rail
+  const modesOff = useUserStore((s) => s.playbackSettings?.modesOff) || [];
+  const items = RAIL_ITEMS.filter((it) => !modesOff.includes(it.id));
 
   useEffect(() => {
     const clearHold = () => { clearTimeout(holdTimer.current); holdTimer.current = null; };
@@ -84,7 +89,7 @@ export default function Rail({ open, held = false, pinned = false, active, onPic
         style={{ transform: shown ? 'none' : 'translateX(-100%)', transition: `transform var(--room-mid) var(--room-ease)`, fontFamily: 'var(--font-mono)' }}
       >
         <UnfoldingMark open={open} left={3} top={10} />
-        {RAIL_ITEMS.map((it) => (
+        {items.map((it) => (
           <button
             key={it.id}
             type="button"

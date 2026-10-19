@@ -485,7 +485,8 @@ function App() {
       <MainLayout>
         {profile ? (
           <>
-            {currentView === 'home' && (
+            {/* the room's Profile is the legacy layout's Home */}
+            {(currentView === 'home' || currentView === 'profile') && (
               <div className="flex flex-col items-start relative z-10 w-full max-w-[1600px] animate-fade-in">
                 
                 {/* Phones have no sidebar footer: sync status, backup and disconnect live behind this */}

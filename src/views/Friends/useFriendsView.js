@@ -6,15 +6,29 @@ import { fetchSpotifyUser } from '../../services/spotify/api';
 import { userIdFromInput } from '../../utils/spotifyUri';
 import { toast } from '../../store/toastStore';
 import { artUrl } from '../../utils/images';
+import { scanCollaborators, knownCollaborators } from '../../services/collaborators';
 
 // Everything the Friends page does, with no markup. The old page (Friends.jsx) and the room's
 // (src/room/RoomFriends.jsx) are two faces on it.
 // Spotify's API can't list who you follow or search for people, so friends are added by
 // pasting a profile link. People you already share playlists with are offered as shortcuts.
 export function useFriendsView() {
-  const { token, profile, friends, sevens, addFriend, removeFriend, navigateToUser } = useSlice(useUserStore, [
-    'token', 'profile', 'friends', 'sevens', 'addFriend', 'removeFriend', 'navigateToUser'
+  const { token, profile, friends, sevens, playlists, addFriend, removeFriend, navigateToUser } = useSlice(useUserStore, [
+    'token', 'profile', 'friends', 'sevens', 'playlists', 'addFriend', 'removeFriend', 'navigateToUser'
   ]);
+  // people you share a collaborative playlist with: what is known at once, then read afresh
+  const [sharers, setSharers] = useState(() => knownCollaborators(profile?.id));
+  const sharedKey = (playlists || []).filter((p) => p?.collaborative).map((p) => `${p.id}:${p.snapshot_id || ''}`).join(',');
+  useEffect(() => {
+    if (!token || !profile?.id || !sharedKey) return undefined;
+    let gone = false;
+    scanCollaborators(token, useUserStore.getState().playlists, profile.id).then((found) => { if (!gone) setSharers(found); }).catch(() => {});
+    return () => { gone = true; };
+  }, [token, profile?.id, sharedKey]);
+  useEffect(() => {
+    const friendIds = new Set(friends.map((f) => f.id));
+    ensureUserProfiles(token, Object.keys(sharers).filter((id) => !friendIds.has(id)).slice(0, 20));
+  }, [token, sharers, friends]);
   const profiles = useUserProfilesStore((s) => s.profiles);
   const [input, setInput] = useState('');
   const [adding, setAdding] = useState(false);
@@ -29,11 +43,21 @@ export function useFriendsView() {
     sevens.forEach((seven) => {
       if (seven.partnerId) seen.set(seven.partnerId, { id: seven.partnerId, name: seven.partnerName || seven.partnerId, why: 'Sevens partner' });
     });
+    // shared collaborative playlists, most shared first: "adds to Road trips with you"
+    Object.entries(sharers)
+      .sort((a, b) => b[1].length - a[1].length || b[1].reduce((n, x) => n + x.songs, 0) - a[1].reduce((n, x) => n + x.songs, 0))
+      .forEach(([id, where]) => {
+        const name = profiles[id]?.display_name || id;
+        const first = where[0]?.name || 'a playlist';
+        const why = where.length > 1 ? `Shares ${first} and ${where.length - 1} more with you` : `Shares ${first} with you`;
+        const before = seen.get(id);
+        seen.set(id, { id, name: before?.name && before.name !== id ? before.name : name, why: before ? `${before.why} · ${why}` : why });
+      });
     Object.values(profiles).forEach((p) => {
       if (p?.id && !seen.has(p.id)) seen.set(p.id, { id: p.id, name: p.display_name || p.id, why: 'Playlist collaborator' });
     });
     return [...seen.values()].filter(s => s.id !== profile?.id && !friendIds.has(s.id));
-  }, [sevens, profiles, profile?.id, friends]);
+  }, [sevens, profiles, profile?.id, friends, sharers]);
 
   const addById = async (id) => {
     if (!token) return;

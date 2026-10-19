@@ -204,6 +204,8 @@ export default function LibraryTree({ onExpand, onSlash }) {
   };
   const from = usePlayingFrom();
   const [query, setQueryState] = useState('');
+  // whether anything has been typed since the field was last focused (see the / rule below)
+  const typedSinceFocus = useRef(false);
   // the one field (DESIGN.md §6): it filters the tree, and when search is open on the right it
   // searches Spotify as you type
   const setSearchQuery = useRoomStore((s) => s.setSearchQuery);
@@ -287,10 +289,14 @@ export default function LibraryTree({ onExpand, onSlash }) {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => { typedSinceFocus.current = false; }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') searchSpotify();
-            // a second / (the field empty) asks for the full layer rather than typing a slash
-            if (e.key === '/' && !query) { e.preventDefault(); onSlash?.(); return; }
+            // a second / asks for the full layer rather than typing a slash: when the field is
+            // empty, and also as the first key since it was focused, words already in it or not
+            // (Jack, 19 Oct: / opened the library onto his last search and the next / typed "/")
+            if (e.key === '/' && !e.metaKey && !e.ctrlKey && (!query || !typedSinceFocus.current)) { e.preventDefault(); onSlash?.(); return; }
+            if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') typedSinceFocus.current = true;
             // Escape clears the words first; a second one reaches the room, which puts the layer away
             if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery(''); }
           }}

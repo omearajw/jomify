@@ -15,7 +15,7 @@ import PhoneSheet from './PhoneSheet';
 
 export default function PhoneRoom({ children }) {
   const {
-    currentView, setAccountOpen, isSeven, pileId, suggestionsAttempt, roomPlaylist, layer, setLayer, list,
+    currentView, isSeven, pileId, suggestionsAttempt, roomPlaylist, layer, setLayer, list,
     backFrame, nameOf, backOverride, goBackInRoom, expand, less, lit, pick
   } = useRoomState({ phone: true });
   const [closedH, setClosedH] = useState(76);
@@ -56,7 +56,7 @@ export default function PhoneRoom({ children }) {
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: 'var(--room-ink)' }}>
       {unadded ? <PhoneUnadded bottomInset={closedH} /> : <PhoneNowPlaying bottomInset={closedH + 12} />}
-      <PhoneSheet state={layer} onState={setLayer} lit={lit} litAtRest={unadded ? 'unadded' : null} onPick={pick} onSettings={() => setAccountOpen(true)} head={head} onHeadHeight={onHeadHeight}>
+      <PhoneSheet state={layer} onState={setLayer} lit={lit} litAtRest={unadded ? 'unadded' : null} onPick={pick} onProfile={() => pick('profile')} head={head} onHeadHeight={onHeadHeight}>
         {showThing
           ? <OpenThing currentView={currentView} isSeven={isSeven} roomPlaylist={roomPlaylist}>{children}</OpenThing>
           : List ? <List onExpand={unadded ? () => setLayer('closed') : expand} /> : null}

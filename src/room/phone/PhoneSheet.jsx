@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Settings } from 'lucide-react';
+import { useUserStore } from '../../store/userStore';
+import { artUrl } from '../../utils/images';
 
 // The phone's layer (DESIGN.md §5): a sheet from the bottom whose head is always showing, the
 // handle and the launcher (Library · Search · Sevens · Unadded · Party). Three stops, as on the
@@ -52,7 +53,12 @@ function useSafeInsets() {
   return insets;
 }
 
-export default function PhoneSheet({ state, onState, lit, litAtRest = null, onPick, onSettings, head, children, onHeadHeight }) {
+export default function PhoneSheet({ state, onState, lit, litAtRest = null, onPick, onProfile, head, children, onHeadHeight }) {
+  // switched-off modes leave the launcher; your picture at its end is Profile (Settings is there)
+  const modesOff = useUserStore((s) => s.playbackSettings?.modesOff) || [];
+  const me = useUserStore((s) => s.profile);
+  const launcher = LAUNCHER.filter((it) => !modesOff.includes(it.id));
+  const meLit = (lit === 'profile' && state !== 'closed');
   const vh = useViewportHeight();
   const safe = useSafeInsets();
   const headRef = useRef(null);
@@ -139,13 +145,17 @@ export default function PhoneSheet({ state, onState, lit, litAtRest = null, onPi
           <span className="h-[5px] w-10 rounded-full bg-white/25" />
         </button>
         <nav aria-label="Jomify" className="flex items-center justify-between">
-          {LAUNCHER.map((it) => (
+          {launcher.map((it) => (
             <button key={it.id} type="button" onClick={() => onPick(it.id)} aria-current={(lit === it.id && state !== 'closed') || litAtRest === it.id ? 'page' : undefined}
               className={`room-mono min-h-[44px] px-1 transition-colors ${(lit === it.id && state !== 'closed') || litAtRest === it.id ? 'text-[var(--room-paper)]' : 'text-[var(--room-dim)]'}`}>
               {it.label}
             </button>
           ))}
-          <button type="button" onClick={onSettings} aria-label="Settings" className="grid h-11 w-9 place-items-center text-[var(--room-dim)]"><Settings className="h-4 w-4" /></button>
+          <button type="button" onClick={onProfile} aria-label="Profile" aria-current={meLit ? 'page' : undefined} className="grid h-11 w-9 place-items-center">
+            <span className={`grid h-7 w-7 place-items-center overflow-hidden rounded-full bg-white/10 text-[11px] font-semibold text-[var(--room-paper)] transition-shadow ${meLit ? 'shadow-[0_0_0_1.5px_var(--room-paper)]' : ''}`}>
+              {me?.images?.[0]?.url ? <img src={artUrl(me.images, 28)} alt="" draggable="false" className="h-full w-full object-cover" /> : (me?.display_name || '?').slice(0, 1).toUpperCase()}
+            </span>
+          </button>
         </nav>
       </div>
       {head}

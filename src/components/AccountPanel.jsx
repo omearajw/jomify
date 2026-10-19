@@ -75,6 +75,35 @@ function Choice({ label, value, options, onChange }) {
   );
 }
 
+// The room's optional modes, each switched on or off (Jack, 19 Oct: for people who don't use them).
+// Off, a mode leaves the rail and the phone's launcher; what it holds is kept, so on again
+// brings it back as it was.
+const MODES = [
+  { id: 'sevens', label: 'Sevens' },
+  { id: 'unadded', label: 'Unadded' },
+  { id: 'party', label: 'Party' }
+];
+function ModeSwitches({ off, onToggle }) {
+  return (
+    <div className="border-t border-[var(--room-hair)] pt-3 pb-1" style={{ fontFamily: 'var(--font-room)' }}>
+      <p className="room-mono mb-2 text-[var(--room-faint)]">Modes</p>
+      <div className="flex flex-wrap gap-x-5 gap-y-2" role="group" aria-label="Modes">
+        {MODES.map((m) => {
+          const on = !off.includes(m.id);
+          return (
+            <button key={m.id} type="button" role="switch" aria-checked={on} onClick={() => onToggle(m.id)}
+              className={`text-[13px] transition-colors ${on ? 'font-semibold text-[var(--room-paper)]' : 'text-[var(--room-faint)] line-through decoration-[var(--room-faint)] hover:text-[var(--room-dim)]'}`}
+              style={{ transitionDuration: 'var(--room-mid)' }}>
+              {m.label}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1.5 text-[12px] text-[var(--room-faint)]">Tap one to switch it off or on. Off, it leaves the rail and the launcher; nothing in it is lost.</p>
+    </div>
+  );
+}
+
 function formatAgo(timestamp) {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
   if (seconds < 60) return 'just now';
@@ -272,6 +301,7 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
       <p className="pt-4 room-mono text-[var(--room-faint)]">App</p>
       <Choice label="Open on" value={playbackSettings?.startupPage || 'resume'} options={STARTS} onChange={(v) => setPlaybackSetting('startupPage', v)} />
       <Choice label="Layout" value={playbackSettings?.newLayout ?? 'on'} options={LAYOUTS} onChange={(v) => setPlaybackSetting('newLayout', v)} />
+      {(playbackSettings?.newLayout ?? 'on') === 'on' && <ModeSwitches off={playbackSettings?.modesOff || []} onToggle={(id) => { const off = playbackSettings?.modesOff || []; setPlaybackSetting('modesOff', off.includes(id) ? off.filter((x) => x !== id) : [...off, id]); }} />}
       {(playbackSettings?.newLayout ?? 'on') === 'on' && <Choice label="Hearts on song rows" value={playbackSettings?.rowHearts || 'always'} options={HEARTS} onChange={(v) => setPlaybackSetting('rowHearts', v)} />}
       <Choice label="Contrast" value={playbackSettings?.contrast || 'auto'} options={CONTRASTS} onChange={(v) => setPlaybackSetting('contrast', v)} />
       <Choice label="Zen mode effects" value={playbackSettings?.zenEffects || 'auto'} options={ZEN_EFFECTS} onChange={(v) => { setPlaybackSetting('zenEffects', v); if (v !== 'auto') { try { localStorage.removeItem('jomify_zen_lite'); } catch { /* fine */ } } }} />
