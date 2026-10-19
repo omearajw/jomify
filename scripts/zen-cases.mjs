@@ -1,5 +1,5 @@
 // Zen mode's pure parts: the cover's palette and which lyric lines are on stage, when and where.
-import { paletteFromPixels, FALLBACK_PALETTE, SILVER, COOL_SILVER } from '../src/views/ZenMode/palette.js';
+import { paletteFromPixels, FALLBACK_PALETTE, SILVER, DIM_SILVER } from '../src/views/ZenMode/palette.js';
 import { focusAt, fillProgress, lineAt, layoutFocus, isInstrumental, faceKey } from '../src/views/ZenMode/lyricFocus.js';
 import { LYRIC_LEAD_IN_MS } from '../src/lib/lrc.js';
 import { wordFill, wordStops, followFill, chorusLines, endingAt } from '../src/views/ZenMode/lyricFocus.js';
@@ -24,7 +24,7 @@ const hueOf = ([r, g, b]) => { const mx = Math.max(r, g, b), mn = Math.min(r, g,
 }
 {
   const p = paletteFromPixels(pixels([[245, 245, 245, 900], [20, 20, 20, 124]]));
-  check('a black-and-white cover is drawn in silver light', p[0] === SILVER && p[1] === COOL_SILVER);
+  check('a black-and-white cover is drawn in silver light', p[0] === SILVER && p[1] === DIM_SILVER);
 }
 {
   const p = paletteFromPixels(pixels([[30, 90, 220, 500], [220, 120, 30, 300], [10, 10, 10, 224]]));
@@ -32,7 +32,7 @@ const hueOf = ([r, g, b]) => { const mx = Math.max(r, g, b), mn = Math.min(r, g,
 }
 {
   const p = paletteFromPixels(pixels([[210, 30, 40, 120], [245, 245, 245, 800], [15, 15, 15, 104]]));
-  check('one colour on white: that colour, with silver as the second shade', hueOf(p[0]) < 15 || hueOf(p[0]) > 345 ? p[1] === COOL_SILVER : false);
+  check('one colour on white: that colour, with a paler shade of it as the second', (hueOf(p[0]) < 15 || hueOf(p[0]) > 345) && (hueOf(p[1]) < 15 || hueOf(p[1]) > 345) && Math.min(...p[1]) > Math.min(...p[0]));
 }
 check('no pixels at all gives the fallback', paletteFromPixels(new Uint8Array(0)) === FALLBACK_PALETTE);
 

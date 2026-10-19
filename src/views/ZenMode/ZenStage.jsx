@@ -219,13 +219,14 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
       const drawn = [...items.values()].filter((it) => it.alpha > 0.003).sort((a, b) => b.alpha - a.alpha).slice(0, 6)
         .map((it) => ({ ...it, x: ox + it.x * kx, y: oy + it.y * ky, scale: it.scale * kx }));
       // In a scene the lines stand in the room: turned a little towards its middle about the lyric
-      // column's centre, reflected in the floor, their glow cooled and quietened so they read
+      // column's centre, reflected in the floor, their glow paled and quietened so they read
       let stage = null, tint = null, glowGain = 1, disperse = 1, strength = 280;
       if (sceneFade > 0.003 && box) {
         const angle = (14 * Math.PI / 180) * sceneFade * calm;
         const focal = canvas.height * 820 / 900;
         stage = { tilt: [-Math.tan(angle) / focal, Math.cos(angle), (box.left + box.width / 2) * dpr, (box.top + box.height / 2) * dpr], mirror: [canvas.height * 0.667, 0.3 * sceneFade] };
-        tint = colours[0].map((v, i) => v + ([0.8, 0.85, 1.0][i] - v) * sceneFade);
+        const top = Math.max(...colours[0]) || 1;
+        tint = colours[0].map((v) => v + ((v / top + (1 - v / top) * 0.6) * 0.88 - v) * sceneFade);
         glowGain = 1 - 0.45 * sceneFade;
         // the room's hard edges would show through the glass as colour fringes
         disperse = 1 - 0.85 * sceneFade;

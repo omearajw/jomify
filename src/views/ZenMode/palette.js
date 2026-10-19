@@ -9,10 +9,15 @@ import { loadArt } from '../../utils/blurBackdrop.js';
 export const FALLBACK_PALETTE = [[0.98, 0.15, 0.42], [0.35, 0.55, 1.0], [0.5, 0.45, 0.6]];
 
 // Black can't be light (adding black adds nothing), so a black-and-white cover is drawn in white
-// light: a bright silver and a cooler, dimmer one. Kept below full white so it sits at about the
-// brightness of the coloured ribbons. Also the second shade of a cover with only one colour.
-export const SILVER = [0.86, 0.87, 0.9];
-export const COOL_SILVER = [0.62, 0.66, 0.76];
+// light: a bright silver and a dimmer one. Kept below full white so it sits at about the
+// brightness of the coloured ribbons. Neutral: a blue cast here was bent through the lyrics' glass
+// as a blue light no cover had (Jack, 19 Oct).
+export const SILVER = [0.87, 0.87, 0.88];
+export const DIM_SILVER = [0.65, 0.65, 0.66];
+
+// The second shade of a cover with only one colour: that colour, paled towards white, so a gold
+// cover is gold and pale-gold light rather than gold and an invented colour
+const paled = (c) => lift(c.map((v) => v + (1 - v) * 0.55), 0.82);
 
 function hsv(r, g, b) {
   const mx = Math.max(r, g, b);
@@ -54,13 +59,12 @@ export function paletteFromPixels(pixels) {
   const ranked = bins.filter((b) => b.w > 0).sort((a, b) => b.w - a.w);
   const first = ranked[0];
   // Only a cover with almost no colour at all (black and white, greys) borrows Jomify's own
-  if (!first || first.w / count < 0.008) return [SILVER, COOL_SILVER, lift(mean, 0.75)];
+  if (!first || first.w / count < 0.008) return [SILVER, DIM_SILVER, lift(mean, 0.75)];
   const hueGap = (b) => Math.min(Math.abs(b.i - first.i), 12 - Math.abs(b.i - first.i));
-  // A second colour only if the cover really has one; otherwise silver, so a red-on-white cover
-  // is red and white light rather than red and an invented colour
+  // A second colour only if the cover really has one; otherwise the first, paled
   const other = ranked.find((b) => hueGap(b) >= 2 && b.w > first.w * 0.08);
   const colour = (b) => [b.r / b.w, b.g / b.w, b.b / b.w];
-  if (!other) return [lift(colour(first), 1), COOL_SILVER, lift(mean, 0.7)];
+  if (!other) return [lift(colour(first), 1), paled(lift(colour(first), 1)), lift(mean, 0.7)];
   const second = colour(other);
   return [lift(colour(first), 1), lift(second, 0.9), lift(mean, 0.7)];
 }

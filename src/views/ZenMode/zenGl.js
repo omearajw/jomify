@@ -36,7 +36,7 @@ float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f
 float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
 void main(){
   vec2 p = vec2(uv.x * aspect, uv.y);
-  vec3 col = mix(vec3(0.012, 0.01, 0.025), c3 * 0.06, uv.y);
+  vec3 col = mix(c3 * 0.02 + 0.005, c3 * 0.06, uv.y);
   // Happy songs warm the light a little, sad ones cool it; a minor key and low mood dim it a touch,
   // a chorus brightens it
   vec3 tint = mix(vec3(0.9, 0.96, 1.1), vec3(1.1, 1.0, 0.88), valence);
@@ -81,6 +81,8 @@ uniform sampler2D scene, glow; uniform vec2 res; uniform float strength, grain, 
 ${Array.from({ length: ITEMS }, (_, i) => `uniform sampler2D tx${i}; uniform vec4 bx${i}, pr${i}, tl${i};`).join('\n')}
 ${STAGE_GLSL}
 float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+// A colour at full brightness: the cover's hue, for light that should be the cover's and not a fixed grey
+vec3 hueOf(vec3 c){ return c / max(max(c.r, c.g), max(c.b, 0.001)); }
 // A line's reflection: its soft shape, dim, fading with distance from the floor line
 float ghost(sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
   if (pr.x < 0.003) return 0.0;
@@ -114,16 +116,19 @@ vec3 item(vec3 col, sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
     vec2 off = (n.xy * strength + (1.0 - n.z) * vec2(0.0, -6.0)) / res;
     // the glass splits colours a little; on a scene with hard edges that read as fringes, so a scene turns it down
     vec3 seen = vec3(texture2D(scene, uv - off * (1.0 - 0.25 * disperse)).r, texture2D(scene, uv - off).g, texture2D(scene, uv - off * (1.0 + 0.32 * disperse)).b);
-    vec3 face = mix(seen * 1.5 + 0.03, vec3(0.30, 0.30, 0.34), 0.24);
+    vec3 face = mix(seen * 1.5 + 0.03, mix(vec3(0.31), hueOf(c1) * 0.31, 0.3), 0.24);
     vec3 hv = normalize(normalize(vec3(-0.6, 0.6, 0.55)) + vec3(0.0, 0.0, 1.0));
     float spec = pow(max(dot(n, hv), 0.0), 40.0);
     float rim = pow(1.0 - n.z, 1.4);
     float lower = max(dot(n.xy, normalize(vec2(0.7, -0.7))), 0.0);
     vec3 g = face + spec * 0.8 + rim * 0.32 - lower * 0.16;
-    g = mix(g, vec3(1.0) - (1.0 - n.z) * 0.06, lit);
+    // Sung: brighter glass with a glowing edge in the cover's colour (Jack, 19 Oct: "O", picked
+    // over a white edge and over tinting the glass itself, which was hard to read on its own colour)
+    g = mix(g, face * 1.35 + 0.06 + spec * 0.9, lit);
+    g += lit * (smoothstep(0.0, 0.6, 1.0 - n.z) * 1.3 * mix(vec3(1.0), hueOf(c1), 0.6) + spec * 0.6);
     col = mix(col, g, a * glass * alpha);
   }
-  col = mix(col, vec3(0.92, 0.9, 0.96), clamp(s * 1.25, 0.0, 1.0) * (1.0 - glass) * alpha * 0.32);
+  col = mix(col, mix(vec3(0.93), hueOf(c1) * 0.93, 0.15), clamp(s * 1.25, 0.0, 1.0) * (1.0 - glass) * alpha * 0.32);
   col += (vec3(1.0) * 0.06 + tint * 0.1) * s * pr.z * alpha * (1.0 - a * glass * 0.5) * glowGain;
   return col;
 }
@@ -135,12 +140,12 @@ void main(){
     float fall = 1.0 - clamp((fpx.y - mirror.x) / (0.3 * res.y), 0.0, 1.0);
     float g = 0.0;
 ${Array.from({ length: ITEMS }, (_, i) => `    g += ghost(tx${i}, bx${i}, pr${i}, tl${i}, m);`).join('\n')}
-    col = mix(col, vec3(0.78, 0.82, 0.9), clamp(g, 0.0, 1.0) * mirror.y * fall * fall);
+    col = mix(col, mix(vec3(0.8), hueOf(c1) * 0.8, 0.25), clamp(g, 0.0, 1.0) * mirror.y * fall * fall);
   }
   vec2 wpx = warp(fpx);
 ${Array.from({ length: ITEMS }, (_, i) => `  col = item(col, tx${i}, bx${i}, pr${i}, tl${i}, wpx);`).join('\n')}
   // The sung words' glow: their letters, blurred as a whole (see GLOW_FS)
-  col += (vec3(1.0) * 0.42 + tint * 0.5) * texture2D(glow, uv).r * 0.6 * glowGain;
+  col += (vec3(1.0) * 0.1 + hueOf(tint) * 0.56) * texture2D(glow, uv).r * 0.6 * glowGain;
   vec2 q = uv - 0.5;
   col *= 1.0 - dot(q, q) * 0.9;
   col += (hash(fpx + fract(grain) * 31.0) - 0.5) * 0.022;
