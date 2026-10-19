@@ -1,16 +1,31 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { useUserStore } from '../store/userStore';
 import { usePartyStore } from '../store/partyStore';
 import { useQueue, remove, move, clear, jumpTo } from '../queue/engine';
 import { artUrl } from '../utils/images';
 import { formatTime } from '../utils/formatTime';
 import Artists from './Artists';
+import { noteFlight } from './flight';
 
 // The new queue (src/queue), as the room shows it: Next up (songs added by hand) and Then (the
 // rest of what was pressed play on, in the order it will really play). Every row plays when
 // tapped, can be dragged within its part, and comes out with ×; a song's menu has the rest
 // (Play next, Remove from queue). One list, read from the queue itself, so it is always what plays.
+//
+// It moves (Jack, 19 Oct): a song arriving slides in and the rows below make room, a removed one
+// folds away, a dragged or Play-next'd one glides to its place, and the song at the top, when it
+// starts, hands its cover to the now-playing cover to fly into (flight.js). The parts are one flat
+// list, so a song moving from Then to Next up travels rather than vanishing and reappearing. The
+// rows are plain elements inside the animated ones, which keep the browser's own drag and drop.
+// With the system's reduce-motion setting on, only the fades remain.
+
+const EASE = [0.2, 0.75, 0.2, 1];
+const MOVE = { duration: 0.5, ease: EASE };
+const ENTER = { opacity: 0, y: -10 };
+const SHOWN = { opacity: 1, y: 0 };
+const LEAVE = { opacity: 0, scale: 0.96, transition: { duration: 0.3, ease: EASE } };
 
 const coarse = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 
@@ -33,6 +48,18 @@ export default function QueueList({ compact = false, maxRows = 3 }) {
   const more = q.then.length - then.length;
   const fromName = q.source?.readOnly ? `${q.source.name || 'the playlist'}, as Spotify plays it` : q.source?.name || '';
 
+  // the song that has just become the one playing: its cover, still on screen as it leaves, is
+  // where the now-playing cover flies in from
+  const covers = useRef(new Map());
+  const nowKey = q.now?.key || null;
+  useLayoutEffect(() => {
+    if (!nowKey) return;
+    const el = covers.current.get(nowKey);
+    if (el) noteFlight(q.now, el);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowKey]);
+  const coverRef = (key) => (el) => { if (el) covers.current.set(key, el); else covers.current.delete(key); };
+
   const openMenu = (e, entry, part) => {
     e.preventDefault();
     setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track: entry, queueKey: entry.key, queuePart: part });
@@ -47,8 +74,8 @@ export default function QueueList({ compact = false, maxRows = 3 }) {
   const row = (e, i, part) => {
     const lit = over && over.part === part && over.index === i && drag && drag.key !== e.key;
     return (
+      <motion.div key={e.key} layout="position" initial={ENTER} animate={SHOWN} exit={LEAVE} transition={MOVE}>
       <div
-        key={e.key}
         draggable={!coarse}
         onDragStart={(ev) => { setDrag({ key: e.key, part }); try { ev.dataTransfer.effectAllowed = 'move'; } catch { /* a drag not started by the pointer */ } }}
         onDragOver={(ev) => { if (dragRef.current?.part !== part) return; ev.preventDefault(); if (over?.index !== i || over?.part !== part) setOver({ part, index: i }); }}
@@ -63,7 +90,7 @@ export default function QueueList({ compact = false, maxRows = 3 }) {
           opacity: drag?.key === e.key ? 0.35 : part === 'then' ? 0.6 - Math.min(0.3, i * 0.05) : 1 - Math.min(0.5, i * 0.12)
         }}
       >
-        {e.album?.images?.[0] ? <img src={artUrl(e.album.images, 34)} alt="" width="34" height="34" loading="lazy" decoding="async" className="h-[34px] w-[34px] flex-none rounded-[4px] object-cover" draggable="false" /> : <span className="h-[34px] w-[34px] flex-none rounded-[4px] bg-white/5" />}
+        {e.album?.images?.[0] ? <img ref={coverRef(e.key)} src={artUrl(e.album.images, 34)} alt="" width="34" height="34" loading="lazy" decoding="async" className="h-[34px] w-[34px] flex-none rounded-[4px] object-cover" draggable="false" /> : <span ref={coverRef(e.key)} className="h-[34px] w-[34px] flex-none rounded-[4px] bg-white/5" />}
         <div className="min-w-0 flex-1">
           <b className={`block truncate text-[var(--room-paper)] ${part === 'next' ? 'font-semibold' : 'font-medium'}`}>{e.name}</b>
           <Artists artists={e.artists} inRow className="block truncate text-[11px] text-[var(--room-dim)]" />
@@ -73,8 +100,11 @@ export default function QueueList({ compact = false, maxRows = 3 }) {
           <X className="h-3 w-3" />
         </button>
       </div>
+      </motion.div>
     );
   };
+  // a heading or a note in the flat list: it moves with the rows around it
+  const line = (key, node) => <motion.div key={key} layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.2 } }} transition={MOVE}>{node}</motion.div>;
 
   if (partyCode) {
     const lined = q.next.filter((e) => e.request);
@@ -82,28 +112,36 @@ export default function QueueList({ compact = false, maxRows = 3 }) {
     const shownRequests = compact ? requests.slice(0, cap) : requests.slice(0, 8);
     const rest = then.slice(0, compact ? Math.max(0, cap - shownRequests.length) : 4);
     return (
-      <div className="min-w-0" data-control data-queue-list style={{ fontFamily: 'var(--font-room)' }}>
-        <p className="room-mono mb-4 flex justify-between text-[var(--room-dim)]"><span>Requests</span><span>{requests.length || ''}</span></p>
-        {requests.length === 0 && <p className="text-[13px] text-[var(--room-faint)]">Nothing asked for yet.</p>}
+      <MotionConfig reducedMotion="user">
+      <div className="relative min-w-0" data-control data-queue-list style={{ fontFamily: 'var(--font-room)' }}>
+        <AnimatePresence initial={false} mode="popLayout">
+        {line('h-requests', <p className="room-mono mb-4 flex justify-between text-[var(--room-dim)]"><span>Requests</span><span>{requests.length || ''}</span></p>)}
+        {requests.length === 0 && line('none', <p className="text-[13px] text-[var(--room-faint)]">Nothing asked for yet.</p>)}
         {shownRequests.map((r, i) => (
-          <div key={r.key} className="flex min-w-0 items-center gap-3 py-2 text-[13px]" style={{ borderTop: i ? '1px solid var(--room-hair)' : 'none', opacity: 1 - Math.min(0.5, i * 0.12) }}>
-            {r.image ? <img src={r.image} alt="" width="34" height="34" className="h-[34px] w-[34px] flex-none rounded-[4px] object-cover" draggable="false" /> : <span className="h-[34px] w-[34px] flex-none rounded-[4px] bg-white/5" />}
+          <motion.div key={r.key} layout="position" initial={ENTER} animate={SHOWN} exit={LEAVE} transition={MOVE}>
+          <div className="flex min-w-0 items-center gap-3 py-2 text-[13px]" style={{ borderTop: i ? '1px solid var(--room-hair)' : 'none', opacity: 1 - Math.min(0.5, i * 0.12) }}>
+            {r.image ? <img ref={coverRef(r.key)} src={r.image} alt="" width="34" height="34" className="h-[34px] w-[34px] flex-none rounded-[4px] object-cover" draggable="false" /> : <span className="h-[34px] w-[34px] flex-none rounded-[4px] bg-white/5" />}
             <div className="min-w-0 flex-1">
               <b className="block truncate font-semibold text-[var(--room-paper)]">{r.name}</b>
               <i className="block truncate text-[11px] not-italic text-[var(--room-dim)]">{r.lined ? 'next · ' : ''}{r.by}</i>
             </div>
             {r.votes > 0 && <span className="room-mono shrink-0 text-[var(--room-dim)]">▲ {r.votes}</span>}
           </div>
+          </motion.div>
         ))}
-        {rest.length > 0 && <p className="room-mono mb-1 mt-5 text-[var(--room-faint)]">Then{fromName ? ` · ${fromName}` : ''}</p>}
+        {rest.length > 0 && line('h-then', <p className="room-mono mb-1 mt-5 text-[var(--room-faint)]">Then{fromName ? ` · ${fromName}` : ''}</p>)}
         {rest.map((e, i) => row(e, i, 'then'))}
+        </AnimatePresence>
       </div>
+      </MotionConfig>
     );
   }
 
   return (
-    <div className="min-w-0" data-control data-queue-list style={{ fontFamily: 'var(--font-room)' }}>
-      {(q.next.length > 0 || then.length === 0) && (
+    <MotionConfig reducedMotion="user">
+    <div className="relative min-w-0" data-control data-queue-list style={{ fontFamily: 'var(--font-room)' }}>
+      <AnimatePresence initial={false} mode="popLayout">
+      {(q.next.length > 0 || then.length === 0) && line('h-next', (
         <p className="room-mono mb-4 flex items-baseline justify-between gap-3 text-[var(--room-dim)]">
           <span>Up next</span>
           <span className="flex items-baseline gap-3">
@@ -111,14 +149,16 @@ export default function QueueList({ compact = false, maxRows = 3 }) {
             <span>{q.next.length || ''}</span>
           </span>
         </p>
-      )}
-      {q.next.length === 0 && then.length === 0 && <p className="text-[13px] text-[var(--room-faint)]">Nothing queued. Add songs from a song's menu.</p>}
+      ))}
+      {q.next.length === 0 && then.length === 0 && line('none', <p className="text-[13px] text-[var(--room-faint)]">Nothing queued. Add songs from a song's menu.</p>)}
       {next.map((e, i) => row(e, i, 'next'))}
-      {then.length > 0 && (
+      {then.length > 0 && line('h-then', (
         <p className={`room-mono mb-1 ${q.next.length ? 'mt-5 text-[var(--room-faint)]' : 'mb-4 text-[var(--room-dim)]'}`}>{q.next.length ? 'Then' : 'Up next'}{fromName ? ` · ${fromName}` : ''}</p>
-      )}
+      ))}
       {then.map((e, i) => row(e, i, 'then'))}
-      {!compact && more > 0 && <p className="pt-2 text-[12px] text-[var(--room-faint)]">and {more} more</p>}
+      {!compact && more > 0 && line('more', <p className="pt-2 text-[12px] text-[var(--room-faint)]">and {more} more</p>)}
+      </AnimatePresence>
     </div>
+    </MotionConfig>
   );
 }

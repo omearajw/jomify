@@ -1,4 +1,4 @@
-import { cloneElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { cloneElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, Projector } from 'lucide-react';
@@ -22,6 +22,7 @@ import { requestedBy } from '../../party/view';
 import { log } from '../../services/debugLog';
 import { initialLite, measureFrames, rememberLite, zenEffectsSetting, SLOW_FRAME_MS } from './zenEffects';
 import Artists from '../../room/Artists';
+import { flyIn, flightWaiting } from '../../room/flight';
 
 // Zen mode: a calm, cinematic room for the song. A WebGL stage draws slow light in the cover's
 // colours and the lyrics as glass that bends it, one line at a time; this component is the
@@ -176,6 +177,14 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
   const isPaused = playbackState ? playbackState.paused : true;
   const albumArtUrl = currentTrack?.album?.images?.[0]?.url || '';
   const trackId = currentTrack?.id || 'empty';
+  // A song arriving from the top of the queue: its cover flies in from the queue row
+  // (room/flight.js) instead of rising in like any other change of song
+  const flyRef = useRef(null);
+  const flying = flightWaiting(currentTrack);
+  useLayoutEffect(() => {
+    if (flyRef.current && currentTrack) flyIn(flyRef.current, currentTrack);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackId]);
 
   // The light's colours, from the cover
   const [palette, setPalette] = useState(FALLBACK_PALETTE);
@@ -422,8 +431,10 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
                 data-control={roomLayout === 'full' ? '' : undefined}
                 onDragStart={roomLayout === 'full' ? (e) => { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData(TRACK_DRAG_TYPE, currentTrack.uri); e.dataTransfer.setData('text/plain', currentTrack.uri); } : undefined}
               >
-              <motion.div key={trackId} className="relative aspect-square w-full" initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 16, filter: 'blur(10px)' }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: 1.1, ease: EASE }}>
-                <img src={albumArtUrl} alt="" draggable="false" className="absolute inset-0 h-full w-full rounded-[6px] object-cover shadow-[0_60px_120px_-40px_rgba(0,0,0,0.9)]" style={{ animation: reducedMotion ? 'none' : 'room-breathe 9s ease-in-out infinite' }} />
+              <motion.div key={trackId} className="relative aspect-square w-full" initial={reducedMotion || flying ? { opacity: flying ? 1 : 0 } : { opacity: 0, y: 16, filter: 'blur(10px)' }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: 1.1, ease: EASE }}>
+                <div ref={flyRef} className="absolute inset-0">
+                  <img src={albumArtUrl} alt="" draggable="false" className="absolute inset-0 h-full w-full rounded-[6px] object-cover shadow-[0_60px_120px_-40px_rgba(0,0,0,0.9)]" style={{ animation: reducedMotion ? 'none' : 'room-breathe 9s ease-in-out infinite' }} />
+                </div>
               </motion.div>
               </motion.div>
             )}

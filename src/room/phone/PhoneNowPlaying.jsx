@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Pause, SkipBack, SkipForward, Mic2, Speaker, Volume1, Volume2 } from 'lucide-react';
 import { useUserStore } from '../../store/userStore';
@@ -14,6 +14,7 @@ import { ZenFocusLyricsLite, ZenPlainLyrics } from '../../views/ZenMode/ZenLyric
 import { useNowLyrics } from './useNowLyrics';
 import JomifyMark from '../../components/JomifyMark';
 import Artists from '../Artists';
+import { flyIn } from '../flight';
 
 // The room on a phone (DESIGN.md §5, 13 Oct): the cover, the song, the controls and up next, on
 // the cover's own light. The queue stays here because it is edited; the phone is the controller.
@@ -80,6 +81,12 @@ export default function PhoneNowPlaying({ bottomInset }) {
   const track = playbackState?.track_window?.current_track || null;
   const paused = playbackState?.paused ?? true;
   const art = track?.album?.images?.[0]?.url || null;
+  // the song arriving from the top of the queue: its cover flies in from the queue row (room/flight.js)
+  const flyRef = useRef(null);
+  useLayoutEffect(() => {
+    if (flyRef.current && track) flyIn(flyRef.current, track);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track?.uri]);
   const lyrics = useNowLyrics(track, playbackState?.duration, showLyrics);
   const hasLyrics = Boolean(lyrics.synced?.length || lyrics.plain?.length);
 
@@ -112,8 +119,8 @@ export default function PhoneNowPlaying({ bottomInset }) {
 
         {/* the cover and the song: stacked at rest, side by side when the lyrics are on */}
         <div className={`mt-3 ${lyricsOn ? 'flex items-center gap-4' : ''}`}>
-          <motion.div layout transition={MOVE} className={`shrink-0 overflow-hidden rounded-[6px] bg-white/5 ${lyricsOn ? 'h-16 w-16' : 'mx-auto aspect-square w-full max-w-[min(100%,34dvh)]'}`}>
-            {art && <img src={art} alt="" draggable="false" className="h-full w-full object-cover" />}
+          <motion.div layout transition={MOVE} className={`shrink-0 ${lyricsOn ? 'h-16 w-16' : 'mx-auto aspect-square w-full max-w-[min(100%,34dvh)]'}`}>
+            <div ref={flyRef} className="h-full w-full overflow-hidden rounded-[6px] bg-white/5">{art && <img src={art} alt="" draggable="false" className="h-full w-full object-cover" />}</div>
           </motion.div>
           <motion.div layout="position" transition={MOVE} className={`min-w-0 ${lyricsOn ? 'flex-1' : 'mt-5'}`}>
             <div className="flex items-start gap-3">
