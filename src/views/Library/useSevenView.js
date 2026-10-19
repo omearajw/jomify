@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
-import { playOn, setShuffle } from '../../services/spotify/playbackController';
+import { setShuffle } from '../../services/spotify/playbackController';
+import { startPlaying } from '../../queue/play';
 import { usePlayerStore } from '../../store/playerStore';
 import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
 import { useIsMobile } from '../../hooks/useMediaQuery';
@@ -103,18 +104,23 @@ export function useSevenView() {
   const isShuffled = usePlayerStore((s) => s.isShuffled);
   const isMobile = useIsMobile();
 
+  // For the queue (src/queue): the Seven as a playlist; its songs come from the screen once loaded
+  const sevenSource = (extra) => ({
+    uri: `spotify:playlist:${activePlaylistId}`, kind: 'playlist', name: view?.name || '',
+    ...(playlist && !playlist.tracks?.next ? { tracks: playlist.tracks.items.map((i) => i.track) } : {}), ...extra
+  });
+
   const playFromTop = () => {
     if (!token || !activePlaylistId) return;
-    playOn((deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, 0));
+    startPlaying(sevenSource({ start: 0 }), (deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, 0));
   };
 
   const shufflePlay = () => {
     if (!token || !activePlaylistId) return;
     const count = view?.tracks?.total || 1;
-    const index = Math.floor(Math.random() * count);
-    playOn(async (deviceId) => {
+    startPlaying(sevenSource({ shuffle: true }), async (deviceId) => {
       await setShuffle(true, deviceId);
-      await playPlaylistTrack(token, deviceId, activePlaylistId, index);
+      await playPlaylistTrack(token, deviceId, activePlaylistId, Math.floor(Math.random() * count));
     });
   };
   const [playlist, setPlaylist] = useState(null);
@@ -338,8 +344,8 @@ const turnIndicator = useMemo(() => {
     if (!token || !track) return;
     const items = poolPlaylist?.tracks?.items || [];
     const index = items.findIndex((i) => i.track?.uri === track.uri);
-    if (poolPlaylistId && index !== -1) playOn((deviceId) => playPlaylistTrack(token, deviceId, poolPlaylistId, index), { track });
-    else playOn((deviceId) => playUris(token, deviceId, [track.uri], 0), { track });
+    if (poolPlaylistId && index !== -1) startPlaying({ uri: `spotify:playlist:${poolPlaylistId}`, kind: 'playlist', name: poolPlaylist?.name || 'Pool', tracks: poolPlaylist?.tracks?.next ? undefined : items.map((i) => i.track), start: index, track }, (deviceId) => playPlaylistTrack(token, deviceId, poolPlaylistId, index));
+    else startPlaying({ kind: 'list', tracks: [track], start: 0, track }, (deviceId) => playUris(token, deviceId, [track.uri], 0));
   };
   // move the pool item at `from` so it sits before index `to` (Spotify's insert_before)
   const reorderPool = (from, to) => {
@@ -387,7 +393,7 @@ const turnIndicator = useMemo(() => {
     if (!token || !playlist) return;
     const realIndex = playlist.tracks.items.findIndex(item => item.track?.uri === trackUri);
     if (realIndex === -1) return;
-    playOn((deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, realIndex), { track: playlist.tracks.items[realIndex].track });
+    startPlaying(sevenSource({ start: realIndex, track: playlist.tracks.items[realIndex].track }), (deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, realIndex));
   };
 
   return {

@@ -5,11 +5,14 @@ import { hostApi } from './client';
 import { addToQueue, playContext, fetchQueue, fetchDevices, transferPlayback } from '../services/spotify/api';
 import { playOn, skipRaw as skipNext, setSkipHook, setShuffle, requestFastPlaybackUpdates, PLAYER_NAME, onUserPause } from '../services/spotify/playbackController';
 import { setSuspended as suspendQueue } from '../services/queueConductor';
+import { engineOn as newQueueOn, playSource, next as queueNext } from '../queue/engine';
 import { log } from '../services/debugLog';
 
 // The host device that keeps the party going. It heartbeats so the server has a live token and
 // something to show guests; when it holds the conductor lock it hands Spotify the next song just
 // before the current one ends, confirms it played, and refuses to let the music stop.
+// With the new queue on (src/queue/engine.js) the requests are the queue's to hand over, skip and
+// confirm; this keeps the heartbeat, the speaker, the wake lock and the never-silent watchdog.
 //
 // Only one of the host's devices conducts at a time (the lock); the rest just show the party.
 
@@ -183,6 +186,7 @@ async function restartBacking(reason) {
   lastRestartAt = Date.now();
   log('party', `starting ${backing.name || 'the playlist'} again`, reason);
   const start = async (deviceId) => {
+    if (newQueueOn()) { await playSource({ uri: backing.uri, kind: 'playlist', name: backing.name || '', shuffle: true, deviceId }); return; }
     await playContext(t, deviceId, backing.uri, 0);
     await setShuffle(true, deviceId).catch(() => {});
   };
@@ -213,13 +217,14 @@ async function tick() {
   // A request another of the host's devices fed (a skip from the phone) is confirmed here, so it
   // reaches the history and its guest is told
   const currentTrack = player().playbackState?.track_window?.current_track;
-  if (!fed && p.upNext && p.upNext.id !== lastConfirmedId && isItem(currentTrack, p.upNext)) {
+  const queueDoesIt = newQueueOn();
+  if (!queueDoesIt && !fed && p.upNext && p.upNext.id !== lastConfirmedId && isItem(currentTrack, p.upNext)) {
     lastConfirmedId = p.upNext.id;
     hostApi.op(p.code, { op: 'played', id: p.upNext.id }).then((res) => party().applyState(res)).catch(() => {});
   }
 
   // A fed song heard playing is done with; one that never starts goes back
-  if (fed) {
+  if (fed && !queueDoesIt) {
     if (isItem(player().playbackState?.track_window?.current_track, fed.item)) {
       const done = fed; fed = null;
       hostApi.op(p.code, { op: 'played', id: done.item.id }).then((res) => party().applyState(res)).catch(() => {});
@@ -247,7 +252,8 @@ async function tick() {
     hostPaused = false; // playing again: the next silence is judged afresh
   }
 
-  // Hand over the next request as late as possible
+  // Hand over the next request as late as possible (the new queue does this itself)
+  if (queueDoesIt) return;
   const remaining = (state.duration || 0) - livePosition(state, s.positionAt);
   if (!fed && p.queue.length > 0 && remaining > 0 && remaining < FEED_AT_MS) await feedNext(`${Math.round(remaining / 1000)}s left`);
 }
@@ -257,6 +263,7 @@ async function tick() {
 // button shows it is working and a second press while it works is ignored, not queued up.
 let skipInFlight = false;
 export async function skipWithParty() {
+  if (newQueueOn()) return queueNext();
   if (skipInFlight) return;
   skipInFlight = true;
   usePartyStore.setState({ skipping: true });

@@ -4,7 +4,7 @@ import { useUserStore } from '../store/userStore';
 import { useSlice } from '../store/selectors';
 import { fetchAlbumsByIds, fetchArtistsByIds, fetchPlaylistSummary, playContext } from '../services/spotify/api';
 import { getRecentlyPlayed } from '../services/recentlyPlayed';
-import { playOn } from '../services/spotify/playbackController';
+import { startPlaying } from '../queue/play';
 import { artUrl } from '../utils/images';
 import { rowButtonProps } from '../utils/a11y';
 import { Skeleton } from './Skeleton';
@@ -109,7 +109,7 @@ export default function JumpBackIn() {
     else if (entry.type === 'album') navigateToAlbum(entry.id);
     else navigateToArtist(entry.id);
   };
-  const play = (entry) => playOn((deviceId) => playContext(token, deviceId, `spotify:${entry.type}:${entry.id}`));
+  const play = (entry) => startPlaying({ uri: `spotify:${entry.type}:${entry.id}`, name: entry.name }, (deviceId) => playContext(token, deviceId, `spotify:${entry.type}:${entry.id}`));
 
   return (
     <div className="w-full mb-8">

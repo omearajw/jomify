@@ -2,7 +2,7 @@
 
 
 import { artUrl } from '../../utils/images';
-import { playOn } from '../../services/spotify/playbackController';
+import { startPlaying } from '../../queue/play';
 import { ChevronUp as StageUpIcon, ChevronDown as StageDownIcon, Shuffle as ShuffleIcon } from 'lucide-react';
 
 import { collaboratorStyleFor } from '../../utils/collaboratorStyle';
@@ -368,7 +368,7 @@ export default function PlaylistView_2() {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (!token || !poolPlaylist) return;
-                          playOn((deviceId) => playPlaylistTrack(token, deviceId, poolPlaylistId, idx), { track: item.track });
+                          startPlaying({ uri: `spotify:playlist:${poolPlaylistId}`, kind: 'playlist', name: poolPlaylist.name || 'Pool', tracks: poolPlaylist.tracks?.next ? undefined : poolPlaylist.tracks.items.map((i) => i.track), start: idx, track: item.track }, (deviceId) => playPlaylistTrack(token, deviceId, poolPlaylistId, idx));
                         }}
                       >
                         <img src={artUrl(item.track.album.images, 40)} width="40" height="40" loading="lazy" decoding="async" className="w-full h-full object-cover" alt="" />

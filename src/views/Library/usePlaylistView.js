@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { playOn, setShuffle } from '../../services/spotify/playbackController';
+import { setShuffle } from '../../services/spotify/playbackController';
+import { startPlaying } from '../../queue/play';
 import { fetchPlaylistDetails, playPlaylistTrack, playUris, checkTracksLiked, updatePlaylist, uploadPlaylistCoverImage, fetchUserPlaylists, spotifyFetch, reorderPlaylistTracks, addTracksToPlaylist, removeTrackFromPlaylist, removeTracksFromPlaylist, fetchMoreTracks, followPlaylist, unfollowPlaylist, searchSpotify } from '../../services/spotify/api';
 import { playlistItemsUrl, normalizePlaylist } from '../../services/spotify/compat';
 import { useUnaddedSuggestions, noteTrackSorted } from './useUnaddedSuggestions';
@@ -559,10 +560,22 @@ export function usePlaylistView() {
     // Custom order keeps the playlist context so Spotify shows "playing from <playlist>". Match
     // the row by identity, not by track id: a playlist with the same song twice used to start
     // at the first copy whichever one you clicked.
-    const targetTrack = sortedTracks[originalIndex];
-    let realIndex = playlist.tracks.items.indexOf(targetTrack);
-    if (realIndex === -1) realIndex = playlist.tracks.items.findIndex(item => item.track?.uri === targetTrack.track?.uri);
+    const realIndex = realIndexOf(originalIndex);
     return realIndex !== -1 ? playPlaylistTrack(token, deviceId, activePlaylistId, realIndex) : Promise.resolve();
+  };
+  const realIndexOf = (originalIndex) => {
+    const targetTrack = sortedTracks[originalIndex];
+    const at = playlist.tracks.items.indexOf(targetTrack);
+    return at !== -1 ? at : playlist.tracks.items.findIndex(item => item.track?.uri === targetTrack?.track?.uri);
+  };
+
+  // For the queue (src/queue): the playlist itself in its own order (the queue loads whatever has
+  // not loaded yet); a sorted view is the list on screen, in that order
+  const playlistSource = (extra) => {
+    const name = playlist?.name || view?.name || '';
+    if (sortBy !== 'custom') return { kind: 'list', name, tracks: sortedTracks.map((i) => i.track), ...extra };
+    const complete = playlist && !playlist.tracks?.next;
+    return { uri: `spotify:playlist:${activePlaylistId}`, kind: 'playlist', name, ...(complete ? { tracks: playlist.tracks.items.map((i) => i.track) } : {}), ...extra };
   };
 
   const handleTrackSelect = (originalIndex) => {
@@ -570,10 +583,12 @@ export function usePlaylistView() {
     if (playlist && isUnplayable(sortedTracks[originalIndex]?.track, country)) { toast(`${unplayableWhy(sortedTracks[originalIndex]?.track, country)}.`); return; }
     // Before the tracks arrive, Play still works: the playlist context starts from the top
     if (!playlist) {
-      if (originalIndex === 0 && activePlaylistId) playOn((deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, 0));
+      if (originalIndex === 0 && activePlaylistId) startPlaying(playlistSource({ start: 0 }), (deviceId) => playPlaylistTrack(token, deviceId, activePlaylistId, 0));
       return;
     }
-    playOn((deviceId) => startTrack(deviceId, originalIndex), { track: sortedTracks[originalIndex]?.track });
+    const start = sortBy === 'custom' ? realIndexOf(originalIndex) : originalIndex;
+    if (start === -1) return;
+    startPlaying(playlistSource({ start, track: sortedTracks[originalIndex]?.track }), (deviceId) => startTrack(deviceId, originalIndex));
   };
 
   const handleUpdatePlaylist = async ({ name, description, imageFile, isPublic, collaborative }) => {
@@ -860,7 +875,7 @@ export function usePlaylistView() {
     const total = custom ? (view?.tracks?.total || sortedTracks.length) : sortedTracks.length;
     if (!token || total === 0 || (!custom && !playlist)) return;
     const index = Math.floor(Math.random() * total);
-    playOn(async (deviceId) => {
+    startPlaying(playlistSource({ shuffle: true }), async (deviceId) => {
       await setShuffle(true, deviceId);
       if (custom) await playPlaylistTrack(token, deviceId, activePlaylistId, index);
       else await startTrack(deviceId, index);

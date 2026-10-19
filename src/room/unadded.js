@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { toast } from '../store/toastStore';
-import { playOn } from '../services/spotify/playbackController';
+import { startPlaying } from '../queue/play';
 import { fetchPlaylistDetails, fetchMoreTracks, playUris, addTracksToPlaylist, removeTrackFromPlaylist } from '../services/spotify/api';
 import { isSameTrack, isUnplayable, unplayableWhy, applyPlayability } from '../utils/spotifyUri';
 import { confirmPlayability } from '../services/playability';
@@ -77,6 +77,10 @@ const country = () => useUserStore.getState().profile?.country;
 export const blocked = (track) => isUnplayable(track, country());
 export const blockedWhy = (track) => unplayableWhy(track, country());
 const playable = (uris, state = get()) => uris.filter((u) => { const it = state.pile.find((i) => i?.track?.uri === u); return it && !blocked(it.track); });
+// The card and every song still waiting behind it, as the queue's source; the old way sent the
+// card and PLAY_AHEAD - 1 behind it
+const pileFrom = (uri, at, limit, state = get()) => [uri, ...playable(waitingAfter(at, limit, state), state)];
+const tracksOf = (uris, state = get()) => uris.map((u) => state.pile.find((i) => i?.track?.uri === u)?.track).filter(Boolean);
 
 // --- the pile ---
 let loadGeneration = 0;
@@ -166,12 +170,12 @@ export function playFrom(uri) {
     toast(`${blockedWhy(item.track)}. You can still file it.`, { tone: 'info' });
     return;
   }
-  const uris = [uri, ...playable(waitingAfter(at, PLAY_AHEAD - 1, st), st)];
+  const uris = pileFrom(uri, at, PLAY_AHEAD - 1, st);
   setCard(uri, { why: 'playing' });
-  playOn((deviceId) => {
+  startPlaying({ kind: 'list', name: 'Unadded songs', tracks: tracksOf(pileFrom(uri, at, st.pile.length, st), st), start: 0, track: item.track }, (deviceId) => {
     if (cardOf()?.track?.uri !== uri) return Promise.resolve();
     return playUris(token(), deviceId, uris, 0);
-  }, { track: item.track });
+  });
 }
 function scheduleAutoplay() {
   clearTimeout(settleTimer);
@@ -182,9 +186,10 @@ function scheduleAutoplay() {
     const c = cardOf();
     if (c && c.track.uri === card.track.uri && !isSameTrack(nowPlaying(), c.track)) {
       const at = indexOf(c.track.uri);
-      const uris = [c.track.uri, ...playable(waitingAfter(at, PLAY_AHEAD - 1))];
+      const uris = pileFrom(c.track.uri, at, PLAY_AHEAD - 1);
       log('unadded', 'playing the card', `${c.track.name}, ${uris.length - 1} more behind it`);
-      playOn((deviceId) => (cardOf()?.track?.uri === c.track.uri ? playUris(token(), deviceId, uris, 0) : Promise.resolve()), { track: c.track });
+      startPlaying({ kind: 'list', name: 'Unadded songs', tracks: tracksOf(pileFrom(c.track.uri, at, get().pile.length)), start: 0, track: c.track },
+        (deviceId) => (cardOf()?.track?.uri === c.track.uri ? playUris(token(), deviceId, uris, 0) : Promise.resolve()));
     }
   }, SETTLE_MS);
 }

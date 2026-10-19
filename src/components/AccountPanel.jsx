@@ -29,6 +29,10 @@ const LAYOUTS = [
   { id: 'on', label: 'The room', hint: 'The now-playing room is the app, and the library slides over it' },
   { id: 'off', label: 'The old layout (legacy)', hint: 'The sidebar and pages Jomify had before the room. Kept as it is: new features and fixes go to the room only' }
 ];
+const QUEUES = [
+  { id: 'old', label: 'Current' },
+  { id: 'new', label: 'New (testing)', hint: 'Jomify keeps the whole queue, playlist included, and hands Spotify the list to play. Shuffle, repeat and "When a playlist ends" are Jomify\'s; with "Let Spotify choose" the music stops at the end, as Spotify has nothing of its own to pick from a list' }
+];
 const HEARTS = [
   { id: 'always', label: 'Always' },
   { id: 'hover', label: 'When the pointer is on the row' }
@@ -297,6 +301,7 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
 
       <p className="pt-4 room-mono text-[var(--room-faint)]">Playback</p>
       <Choice label="When a playlist ends" value={playbackSettings?.whenPlaylistEnds || 'spotify'} options={ENDINGS} onChange={(v) => setPlaybackSetting('whenPlaylistEnds', v)} />
+      <Choice label="Queue" value={playbackSettings?.queueEngine ? 'new' : 'old'} options={QUEUES} onChange={(v) => setPlaybackSetting('queueEngine', v === 'new')} />
 
       <p className="pt-4 room-mono text-[var(--room-faint)]">App</p>
       <Choice label="Open on" value={playbackSettings?.startupPage || 'resume'} options={STARTS} onChange={(v) => setPlaybackSetting('startupPage', v)} />

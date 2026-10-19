@@ -4,7 +4,8 @@ import { X, Play, Pause, SkipForward, SkipBack, ChevronRight, Undo2, Star, Check
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { usePlaybackSummary } from '../../store/selectors';
-import { playOn, togglePlay, next as nextTrack, previous as previousTrack, seek, requestFastPlaybackUpdates } from '../../services/spotify/playbackController';
+import { togglePlay, next as nextTrack, previous as previousTrack, seek, requestFastPlaybackUpdates } from '../../services/spotify/playbackController';
+import { startPlaying } from '../../queue/play';
 import { playUris, addTracksToPlaylist, removeTrackFromPlaylist } from '../../services/spotify/api';
 import { useProgress } from '../../hooks/useProgress';
 import { toast } from '../../store/toastStore';
@@ -173,12 +174,14 @@ export default function SortMode({ items, total, loadingMore, suggestionsByTrack
     if (!track) return undefined;
     const uris = [track.uri, ...waitingAfter(cursor, PLAY_AHEAD - 1)];
     const mine = ++playGeneration.current;
-    return playOn((deviceId) => {
+    // for the queue (src/queue): the card and every song still waiting behind it
+    const all = [track.uri, ...waitingAfter(cursor, queue.length)].map((u) => queue.find((i) => i?.track?.uri === u)?.track).filter(Boolean);
+    return startPlaying({ kind: 'list', name: 'Sorting', tracks: all, start: 0, track }, (deviceId) => {
       // Finding a device can take a moment, and the card may have moved on while it did
       if (playGeneration.current !== mine) return Promise.resolve();
       log('sort', 'playing the card', `${track.name}, ${uris.length - 1} more queued behind it`);
       return playUris(token, deviceId, uris, 0);
-    }, { track });
+    });
   };
 
   // Only the card the user settles on is played. Skipping through a run of songs used to send one

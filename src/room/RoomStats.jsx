@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useUserStore } from '../store/userStore';
 import { useSlice } from '../store/selectors';
 import { spotifyFetch, playUris } from '../services/spotify/api';
-import { playOn } from '../services/spotify/playbackController';
+import { startPlaying } from '../queue/play';
 import { artUrl } from '../utils/images';
 import { rowButtonProps } from '../utils/a11y';
 import Artists from './Artists';
@@ -90,7 +90,7 @@ export default function RoomStats() {
   const playTrack = (index) => {
     const uris = tracks.map((t) => t.uri).filter(Boolean);
     if (!token || !uris.length) return;
-    playOn((deviceId) => playUris(token, deviceId, uris, index), { track: tracks[index] });
+    startPlaying({ kind: 'list', name: `Your top songs${rangeLabel ? `, ${rangeLabel.toLowerCase()}` : ''}`, tracks, start: index, track: tracks[index] }, (deviceId) => playUris(token, deviceId, uris, index));
   };
   const openTrackMenu = (e, track) => {
     e.preventDefault();

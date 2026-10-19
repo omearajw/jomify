@@ -8,6 +8,7 @@ import { formatTime } from '../../utils/formatTime';
 import { fitFontSize } from '../../utils/fitText';
 import { isProjectorWindow, requestQueue } from './projectorBridge';
 import { partyLink } from '../../party/client';
+import { useQueue, upcomingSongs } from '../../queue/engine';
 import { qrSvg, requestedBy } from '../../party/view';
 
 // What the projector draws, in the room's language: one typeface, white on black, nothing thin.
@@ -183,6 +184,8 @@ function WallList({ box, heading, rows, empty }) {
 
 function NextWidget({ track, box }) {
   const token = useUserStore((s) => s.token);
+  // the new queue changes without a song change (an edit); follow it
+  const queueRev = useQueue((s) => s.q);
   const [upNext, setUpNext] = useState([]);
   const trackId = track?.id;
   useEffect(() => {
@@ -191,13 +194,14 @@ function NextWidget({ track, box }) {
     // the projector's own window asks the main window, which holds the sign-in
     const load = () => (isProjectorWindow()
       ? requestQueue().then((q) => { if (!cancelled && q) setUpNext(q.slice(0, 5)); })
+      : upcomingSongs(5) ? Promise.resolve(setUpNext(upcomingSongs(5)))
       : fetchQueue(token)
         .then((data) => { if (!cancelled) setUpNext((data?.queue || []).filter((t) => t && t.type !== 'episode').slice(0, 5)); })
         .catch(() => {}));
     load();
     const id = setInterval(load, 20000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [token, trackId]);
+  }, [token, trackId, queueRev]);
   return <WallList box={box} heading="Up next" empty={track ? 'Nothing queued' : 'Up next'} rows={upNext.map((t, i) => ({ key: `${t.id}-${i}`, title: t.name, sub: names(t.artists) }))} />;
 }
 

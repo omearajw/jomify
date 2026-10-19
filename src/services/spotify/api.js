@@ -559,6 +559,18 @@ export async function playUris(token, deviceId, uris, offsetIndex = 0) {
 }
 
 // Plays any context (album, artist, playlist) from a position, so playback continues through it
+// The queue's list (src/queue): the current song first, at a position, and everything after it.
+// Spotify takes 500 and starts on the first (Jack's Check queue run, 19 Oct 2026).
+export async function playList(token, deviceId, uris, positionMs = 0) {
+  if (!uris?.length) return;
+  const response = await spotifyFetch(`https://api.spotify.com/v1/me/player/play${deviceQuery(deviceId)}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uris, offset: { position: 0 }, position_ms: Math.max(0, Math.round(positionMs || 0)) })
+  });
+  if (!response.ok) throw await playbackError(response, 'Failed to play tracks');
+}
+
 export async function playContext(token, deviceId, contextUri, offsetIndex = 0) {
   const url = "https://api.spotify.com/v1/me/player/play" + deviceQuery(deviceId);
   const response = await spotifyFetch(url, {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Play, Shuffle, X } from 'lucide-react';
 import { useSevenView, formatBatchDate } from '../views/Library/useSevenView';
 import { searchSpotify, checkTracksLiked, playUris } from '../services/spotify/api';
-import { playOn } from '../services/spotify/playbackController';
+import { startPlaying } from '../queue/play';
 import { useUserStore } from '../store/userStore';
 import { artUrl } from '../utils/images';
 import { formatTime } from '../utils/formatTime';
@@ -226,9 +226,10 @@ export default function RoomSeven() {
   // one column (the phone): a run of empty slots would push the pool a screen down, so past the
   // last filled slot only the next empty one shows; the count in the head still says "n of 7"
   const playBatch = () => {
-    const uris = slots.filter(Boolean).filter((t) => !isUnplayable(t)).map((t) => t.uri);
+    const batch = slots.filter(Boolean).filter((t) => !isUnplayable(t));
+    const uris = batch.map((t) => t.uri);
     if (!uris.length || !token) return;
-    playOn((deviceId) => playUris(token, deviceId, uris, 0), { track: slots.find(Boolean) });
+    startPlaying({ kind: 'list', name: `${playlist?.name || 'Seven'} batch`, tracks: batch, start: 0, track: batch[0] }, (deviceId) => playUris(token, deviceId, uris, 0));
   };
   const lastFilled = slots.reduce((at, t, k) => (t ? k : at), -1);
   const slotRow = (track, k) => {

@@ -1,16 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
-import { useQueueStore } from '../store/queueStore';
-import { nudge as nudgeQueue } from '../services/queueConductor';
-import { playOn } from '../services/spotify/playbackController';
+import { startPlaying, queueSongs, queueSongsNext } from '../queue/play';
+import { promote as promoteInQueue, move as moveInQueue, remove as removeFromQueue } from '../queue/engine';
 import {
   addTracksToPlaylist, removeTrackFromPlaylist, removeTracksFromPlaylist, unfollowPlaylist, unsaveAlbum, saveAlbumToLibrary,
   followPlaylist, fetchPlaylistSummary, fetchAlbumsByIds, fetchAlbumTracks, fetchAlbumTrackUris, playContext, toggleTrackLike, checkTracksLiked,
   followArtists, unfollowArtists
 } from '../services/spotify/api';
 import { shareSpotifyLink } from '../services/share';
-import { ListPlus, Plus, ChevronRight, Trash2, FolderPlus, Pin, PinOff, Pencil, User, Disc3, Heart, Play, Share2, UserPlus, UserCheck, BookmarkPlus, BookmarkMinus, CheckSquare } from 'lucide-react';
+import { ListPlus, ListStart, X, Plus, ChevronRight, Trash2, FolderPlus, Pin, PinOff, Pencil, User, Disc3, Heart, Play, Share2, UserPlus, UserCheck, BookmarkPlus, BookmarkMinus, CheckSquare } from 'lucide-react';
 import { idFromUri } from '../utils/spotifyUri';
 import FolderFormDialog from './FolderFormDialog';
 import { toast } from '../store/toastStore';
@@ -320,15 +319,14 @@ export default function ContextMenu() {
   const trackList = manyTracks || (contextMenu?.track ? [contextMenu.track] : []);
   const describeMany = (list) => (list.length === 1 ? `"${list[0].name}"` : `${list.length} songs`);
 
-  // Jomify holds the queue and hands Spotify each song when it is due (services/queueConductor.js)
-  const handleAddToQueue = () => {
+  // Jomify holds the queue (src/queue)
+  const handleAddToQueue = (first = false) => {
     const list = trackList;
     if (!token || list.length === 0) return;
     closeMenu();
-    useQueueStore.getState().add(list);
-    nudgeQueue();
+    (first ? queueSongsNext : queueSongs)(list);
     triggerQueueRefresh();
-    toast(`Queued ${describeMany(list)}`, { tone: 'success' });
+    toast(first ? `${describeMany(list)} will play next` : `Queued ${describeMany(list)}`, { tone: 'success' });
     contextMenu.onDone?.();
   };
 
@@ -382,7 +380,7 @@ export default function ContextMenu() {
   const handlePlayContext = (uri) => {
     if (!token) return;
     closeMenu();
-    playOn((deviceId) => playContext(token, deviceId, uri));
+    startPlaying({ uri }, (deviceId) => playContext(token, deviceId, uri));
   };
 
   const handleQueueAlbum = async () => {
@@ -390,8 +388,7 @@ export default function ContextMenu() {
     closeMenu();
     try {
       const tracks = await fetchAlbumTracks(token, menuAlbumId);
-      useQueueStore.getState().add(tracks);
-      nudgeQueue();
+      queueSongs(tracks);
       triggerQueueRefresh();
       toast(`Added ${tracks.length} song${tracks.length === 1 ? '' : 's'} to the queue`, { tone: 'success' });
     } catch (err) {
@@ -621,13 +618,30 @@ export default function ContextMenu() {
           {contextMenu.onSelect && !manyTracks && (
             <MenuItem icon={CheckSquare} label="Select" onClick={() => { const fn = contextMenu.onSelect; closeMenu(); fn(); }} />
           )}
-          <button
-            onClick={handleAddToQueue}
-            className="ui-row px-5"
-          >
-            <ListPlus className="w-4 h-4 text-[var(--room-dim)]" />
-            <span>Add to Queue</span>
-          </button>
+          {contextMenu.queueKey ? (
+            // a row of the queue itself: move it up or take it out, rather than add it again
+            <>
+              <MenuItem icon={ListStart} label="Play Next" onClick={() => { const { queueKey, queuePart } = contextMenu; closeMenu(); if (queuePart === 'then') promoteInQueue(queueKey); else moveInQueue(queueKey, 0); }} />
+              <MenuItem icon={X} label="Remove from Queue" onClick={() => { const key = contextMenu.queueKey; closeMenu(); removeFromQueue(key); }} />
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => handleAddToQueue(true)}
+                className="ui-row px-5"
+              >
+                <ListStart className="w-4 h-4 text-[var(--room-dim)]" />
+                <span>Play Next</span>
+              </button>
+              <button
+                onClick={() => handleAddToQueue(false)}
+                className="ui-row px-5"
+              >
+                <ListPlus className="w-4 h-4 text-[var(--room-dim)]" />
+                <span>Add to Queue</span>
+              </button>
+            </>
+          )}
           {trackId && !manyTracks && (
             <MenuItem icon={Heart} label={trackLiked === true ? 'Remove from Liked Songs' : 'Save to Liked Songs'} onClick={handleLikeToggle} iconClass={trackLiked === true ? 'fill-[var(--room-paper)] text-[var(--room-paper)]' : ''} />
           )}

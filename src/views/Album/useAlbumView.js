@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
-import { playOn, setShuffle } from '../../services/spotify/playbackController';
+import { setShuffle } from '../../services/spotify/playbackController';
+import { startPlaying } from '../../queue/play';
 import { playContext, checkTracksLiked, fetchMoreTracks, spotifyFetch, saveAlbumToLibrary, unsaveAlbum } from '../../services/spotify/api';
 import { formatDuration } from '../../utils/formatTime';
 import { isUnplayable, unplayableWhy } from '../../utils/spotifyUri';
@@ -115,15 +116,20 @@ export function useAlbumView() {
     if (isUnplayable(tracks[index], country)) { toast(`${unplayableWhy(tracks[index], country)}.`); return; }
     // The tapped song shows at once rather than after Spotify's next report
     const track = tracks[index] ? { ...tracks[index], album: tracks[index].album || album } : null;
-    playOn((deviceId) => playContext(token, deviceId, `spotify:album:${currentAlbumId}`, index), { track });
+    startPlaying(albumSource({ start: index, track }), (deviceId) => playContext(token, deviceId, `spotify:album:${currentAlbumId}`, index));
+  };
+  // For the queue (src/queue): the album's songs from the screen once they have all loaded
+  const albumSource = (extra) => {
+    const complete = tracks.length > 0 && tracks.length >= (album?.total_tracks || 0);
+    return { uri: `spotify:album:${shown?.id || currentAlbumId}`, kind: 'album', name: shown?.name || album?.name || '', ...(complete ? { tracks: tracks.map((t) => ({ ...t, album: t.album || album })) } : {}), ...extra };
   };
   const playAlbum = () => {
     if (!shown) return;
-    playOn((deviceId) => playContext(token, deviceId, `spotify:album:${shown.id}`, 0));
+    startPlaying(albumSource({ start: 0 }), (deviceId) => playContext(token, deviceId, `spotify:album:${shown.id}`, 0));
   };
   const shuffleAlbum = () => {
     if (!shown) return;
-    playOn(async (deviceId) => { await setShuffle(true, deviceId); await playContext(token, deviceId, `spotify:album:${shown.id}`, randomIndex(Math.max(1, shown.total_tracks || tracks.length || 1))); });
+    startPlaying(albumSource({ shuffle: true }), async (deviceId) => { await setShuffle(true, deviceId); await playContext(token, deviceId, `spotify:album:${shown.id}`, randomIndex(Math.max(1, shown.total_tracks || tracks.length || 1))); });
   };
   const openTrackMenu = (e, track) => setContextMenu({ type: 'track', x: e.pageX, y: e.pageY, track, sourceAlbumId: currentAlbumId });
 

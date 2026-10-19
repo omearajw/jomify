@@ -15,6 +15,7 @@ import { idFromUri } from '../utils/spotifyUri';
 import { useSlice } from '../store/selectors';
 import { usePlayingFrom, playingFromLabel } from '../hooks/usePlayingFrom';
 import SleepTimer from '../components/SleepTimer';
+import { useQueue } from '../queue/engine';
 import { setVolume as setPlaybackVolume } from '../services/spotify/playbackController';
 
 // Outer component only decides whether the sheet exists; the body mounts fresh each time it
@@ -40,13 +41,16 @@ function NowPlayingSheetBody() {
     if (playingFrom.type === 'playlist') navigateToPlaylist(playingFrom.id);
     else if (playingFrom.type === 'album') navigateToAlbum(playingFrom.id);
     else if (playingFrom.type === 'artist') navigateToArtist(playingFrom.id);
-    else setCurrentView('liked-songs');
+    else if (playingFrom.type === 'liked') setCurrentView('liked-songs');
   };
   const { isShuffled, repeatMode, activeDevice, sdkStatus, remoteVolume, autoplaySource } = useSlice(usePlayerStore, ['isShuffled', 'repeatMode', 'activeDevice', 'sdkStatus', 'remoteVolume', 'autoplaySource']);
   // What comes next: this browser's player knows; for another device, the queue the panel fetched
   const nextTrack = usePlayerStore((s) => s.playbackState?.track_window?.next_tracks?.[0] || null);
   const queuedNext = useUserStore((s) => s.queueData?.queue?.[0] || null);
-  const upNext = nextTrack || queuedNext;
+  // with the new queue (src/queue) on, the queue itself says
+  const queueNext = useQueue((s) => (s.q.next[0] || s.q.then[0] || null));
+  const newQueue = useUserStore((s) => s.playbackSettings?.queueEngine === true);
+  const upNext = newQueue ? queueNext : nextTrack || queuedNext;
   // A speaker or computer playing: its volume, from here
   const remoteVolumeControl = Boolean(activeDevice) && !activeDevice.isLocal && activeDevice.supportsVolume !== false;
   const [volumeDraft, setVolumeDraft] = useState(null);

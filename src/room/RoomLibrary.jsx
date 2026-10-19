@@ -3,7 +3,7 @@ import { Play } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { useSlice } from '../store/selectors';
 import { createPlaylist, uploadPlaylistCoverImage, playContext } from '../services/spotify/api';
-import { playOn } from '../services/spotify/playbackController';
+import { startPlaying } from '../queue/play';
 import { getRecentlyPlayed, lastPlayedByContext } from '../services/recentlyPlayed';
 import { buildFolderTree, byOrder, getUnfolderedItems, isDescendant } from '../utils/library';
 import { SORT_OPTIONS, sortItems, ownerOf } from '../views/Library/libraryOrder';
@@ -218,7 +218,11 @@ export default function RoomLibrary() {
 
   const lit = (item) => (item.type === 'album' ? currentView === 'album' && currentAlbumId === item.id : item.type === 'artist' ? currentView === 'artist' && currentArtistId === item.id : currentView === 'playlist' && activePlaylistId === item.id);
   const open = (item) => { if (item.type === 'album') navigateToAlbum(item.id); else if (item.type === 'artist') navigateToArtist(item.id); else navigateToPlaylist(item.id); };
-  const play = (item) => { if (!token) return; playOn((deviceId) => playContext(token, deviceId, `spotify:${item.type === 'album' ? 'album' : item.type === 'artist' ? 'artist' : 'playlist'}:${item.id}`)); };
+  const play = (item) => {
+    if (!token) return;
+    const uri = `spotify:${item.type === 'album' ? 'album' : item.type === 'artist' ? 'artist' : 'playlist'}:${item.id}`;
+    startPlaying({ uri, name: item.name }, (deviceId) => playContext(token, deviceId, uri));
+  };
   const menu = (item, parentFolderId) => (e) => {
     e.preventDefault();
     if (item.type === 'artist') setContextMenu({ type: 'artist', artistId: item.id, artist: item, x: e.pageX, y: e.pageY });

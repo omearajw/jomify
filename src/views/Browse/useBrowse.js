@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 
-import { playOn } from '../../services/spotify/playbackController';
+import { startPlaying } from '../../queue/play';
 import { searchSpotify, playSingleTrack, playContext, playUris, checkTracksLiked, fetchSearchPage } from '../../services/spotify/api';
 
 import { useIsMobile } from '../../hooks/useMediaQuery';
@@ -266,12 +266,13 @@ export function useBrowse() {
     const list = (results?.tracks?.items || []).filter((t) => t?.uri && !isUnplayable(t, country));
     const at = list.findIndex((t) => t.uri === track.uri);
     const uris = at >= 0 ? list.slice(at).map((t) => t.uri).slice(0, 100) : [track.uri];
-    playOn((deviceId) => (uris.length > 1 ? playUris(token, deviceId, uris, 0) : playSingleTrack(token, deviceId, track.uri)), { track });
+    startPlaying({ kind: 'list', name: 'Search results', tracks: at >= 0 ? list : [track], start: Math.max(0, at), track },
+      (deviceId) => (uris.length > 1 ? playUris(token, deviceId, uris, 0) : playSingleTrack(token, deviceId, track.uri)));
   };
 
   const handleContextPlay = (uri) => {
     if (!token) return;
-    playOn((deviceId) => playContext(token, deviceId, uri));
+    startPlaying({ uri }, (deviceId) => playContext(token, deviceId, uri));
   };
 
   const handleArtistClick = (e, artistId) => {

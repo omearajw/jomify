@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
-import { playOn, setShuffle } from '../../services/spotify/playbackController';
+import { setShuffle } from '../../services/spotify/playbackController';
+import { startPlaying } from '../../queue/play';
 import { playUris, checkTracksLiked, spotifyFetch, fetchArtistAlbums, followArtists, unfollowArtists, checkFollowingArtists, playContext, fetchAlbumTrackUris, fetchArtistTopTracks } from '../../services/spotify/api';
 import { loadAllLikedSongs, likedSongsLoaded, likedSongsByArtist } from '../../services/likedLibrary';
 import { toast } from '../../store/toastStore';
@@ -191,7 +192,8 @@ export function useArtistView() {
   const playLikedHere = (index) => {
     const uris = (likedHere || []).map((t) => t.uri).filter(Boolean);
     if (!token || !uris.length) return;
-    playOn((deviceId) => playUris(token, deviceId, uris.slice(0, 100), Math.min(index, 99)), { track: likedHere[index] });
+    startPlaying({ kind: 'list', name: `${artist?.name || 'This artist'} in your Liked Songs`, tracks: likedHere, start: index, track: likedHere[index] },
+      (deviceId) => playUris(token, deviceId, uris.slice(0, 100), Math.min(index, 99)));
   };
 
   // The clicked row and then the rest of the popular tracks, in the order shown. A single URI
@@ -202,26 +204,26 @@ export function useArtistView() {
     const top = topTracks.slice(0, 10).map(t => t.uri).filter(Boolean);
     const index = Math.max(0, top.indexOf(trackUri));
     const track = topTracks.find((t) => t.uri === trackUri) || null;
-    playOn(async (deviceId) => {
+    startPlaying({ uri: `spotify:artist:${artist?.id}`, kind: 'artist', name: artist?.name || '', start: index, track }, async (deviceId) => {
       const more = [];
       for (const album of albumsOnly.slice(0, 3)) {
         if (top.length + more.length >= 100) break;
         try { more.push(...(await fetchAlbumTrackUris(token, album.id)).filter((u) => !top.includes(u))); } catch { /* the popular tracks still play */ }
       }
       return playUris(token, deviceId, [...top, ...more].slice(0, 100), index);
-    }, { track });
+    });
   };
   const playArtist = () => {
     if (!artist) return;
-    playOn((deviceId) => playContext(token, deviceId, `spotify:artist:${artist.id}`));
+    startPlaying({ uri: `spotify:artist:${artist.id}`, kind: 'artist', name: artist.name }, (deviceId) => playContext(token, deviceId, `spotify:artist:${artist.id}`));
   };
   const playAlbum = (albumId) => {
     if (!token || !albumId) return;
-    playOn((deviceId) => playContext(token, deviceId, `spotify:album:${albumId}`));
+    startPlaying({ uri: `spotify:album:${albumId}`, kind: 'album' }, (deviceId) => playContext(token, deviceId, `spotify:album:${albumId}`));
   };
   const shufflePlay = () => {
     if (!token || !artist) return;
-    playOn(async (deviceId) => {
+    startPlaying({ uri: `spotify:artist:${artist.id}`, kind: 'artist', name: artist.name, shuffle: true }, async (deviceId) => {
       await setShuffle(true, deviceId);
       await playContext(token, deviceId, `spotify:artist:${artist.id}`, randomIndex(Math.max(1, topTracks.length)));
     });

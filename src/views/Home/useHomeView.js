@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { useUserStore } from '../../store/userStore';
 import { useSlice } from '../../store/selectors';
 import { playContext } from '../../services/spotify/api';
-import { playOn } from '../../services/spotify/playbackController';
+import { startPlaying } from '../../queue/play';
 import { childrenOf } from '../../utils/library';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 
@@ -103,7 +103,7 @@ export function useHomeView() {
         y: e.pageY
       });
     };
-    const play = pinned.type === 'folder' ? null : () => playOn((deviceId) => playContext(token, deviceId, `spotify:${pinned.type}:${pinned.id}`));
+    const play = pinned.type === 'folder' ? null : () => startPlaying({ uri: `spotify:${pinned.type}:${pinned.id}`, name: item.name }, (deviceId) => playContext(token, deviceId, `spotify:${pinned.type}:${pinned.id}`));
     return { key, index, pinned, failed: false, item, title: item.name, images: item.images, covers, kind, detail, open, play, openMenu };
   }).filter(Boolean);
 

@@ -22,6 +22,7 @@ import { toSdkShape, toSdkTrack, resolveDeviceId, REPEAT_NAMES, describePlatform
 import { isMobileViewport } from '../../hooks/useMediaQuery';
 import { ensureFreshToken } from './session';
 import * as queueConductor from '../queueConductor';
+import * as queueEngine from '../../queue/engine';
 import { log } from '../debugLog';
 
 import * as referee from './pauseReferee';
@@ -285,7 +286,8 @@ export function holdForCheck(on) {
 }
 
 async function afterContextEnded(ended, newState) {
-  if (checkRunning) return;
+  // with Jomify's queue on, what follows the last song is the queue's (src/queue/engine.js)
+  if (checkRunning || queueEngine.engineOn()) return;
   const endedContextUri = ended?.contextUri || null;
   const setting = useUserStore.getState().playbackSettings?.whenPlaylistEnds || 'spotify';
   const t = token();
@@ -857,6 +859,7 @@ export function startPlaybackController() {
       const t = token();
       const deviceId = player().deviceId;
       if (!t || !deviceId) throw new Error('not ready');
+      if (queueEngine.canResume()) { await queueEngine.restoreLost(lost, deviceId); confirmPlayback(); return; }
       await startPlaybackAt(t, deviceId, { contextUri: lost.contextUri, trackUri: lost.uri, positionMs: lost.positionMs });
       confirmPlayback();
     }
@@ -865,6 +868,7 @@ export function startPlaybackController() {
   installActivation();
   installMediaSession();
   queueConductor.start();
+  queueEngine.start();
   if (!polling) {
     polling = true;
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -875,6 +879,7 @@ export function startPlaybackController() {
     polling = false;
     clearTimeout(pollTimer);
     queueConductor.stop();
+    queueEngine.stop();
     document.removeEventListener('visibilitychange', onVisibilityChange);
   };
 }
@@ -1140,6 +1145,8 @@ function resumeShownSong() {
   return playOn((deviceId) => startShownSong(t, deviceId));
 }
 function startShownSong(t, deviceId) {
+  // Jomify's queue knows the song and what follows it; never a playlist "at" a song it may not hold
+  if (queueEngine.canResume()) return queueEngine.resumeHere(deviceId, interpolatedPosition());
   const st = player().playbackState;
   const track = st?.track_window?.current_track;
   if (!track?.uri || String(track.uri).startsWith('pending:')) return transferPlayback(t, deviceId, true);
@@ -1236,6 +1243,7 @@ export function skipRaw() {
 
 export async function next() {
   if (skipHook) { activateLocalPlayer(); return skipHook(); }
+  if (queueEngine.engineOn()) return queueEngine.next();
   lastIntentAt = Date.now();
   referee.noteCommand('next');
   localPlayedThisSession = true;
@@ -1265,6 +1273,7 @@ export function previous() {
   }
   referee.noteCommand('previous');
   log('transport', 'previous', sdk ? 'this browser' : 'remote device');
+  if (queueEngine.canGoBack()) return queueEngine.previous();
   if (sdk) return sdk.previousTrack().catch(console.error);
   return remote(skipToPrevious);
 }
@@ -1310,10 +1319,12 @@ export function setShuffle(on, deviceId = null) {
 }
 
 export function toggleShuffle() {
+  if (queueEngine.engineOn()) { queueEngine.setShuffle(!player().isShuffled); return Promise.resolve(); }
   return setShuffle(!player().isShuffled).catch(() => {});
 }
 
 export function cycleRepeat() {
+  if (queueEngine.engineOn()) return queueEngine.cycleRepeat();
   const t = token();
   const s = player();
   if (!t) return;

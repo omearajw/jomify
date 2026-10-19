@@ -5,7 +5,8 @@ import { usePartyStore } from '../../store/partyStore';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { hostApi, partyLink } from '../../party/client';
 import { startConductor, stopConductor, heartbeat, isConducting } from '../../party/conductor';
-import { playOn, setShuffle } from '../../services/spotify/playbackController';
+import { setShuffle } from '../../services/spotify/playbackController';
+import { startPlaying } from '../../queue/play';
 import { searchSpotify, playContext } from '../../services/spotify/api';
 import { artUrl } from '../../utils/images';
 import { isPile } from '../../utils/unaddedSync';
@@ -71,7 +72,8 @@ export function usePartyHost() {
       setCode(created.code);
       startConductor();
       // Off we go: the backing playlist, shuffled, wherever Spotify plays
-      await playOn(async (deviceId) => { await playContext(token, deviceId, `spotify:playlist:${backing.id}`, 0); await setShuffle(true, deviceId).catch(() => {}); });
+      await startPlaying({ uri: `spotify:playlist:${backing.id}`, kind: 'playlist', name: backing.name, shuffle: true },
+        async (deviceId) => { await playContext(token, deviceId, `spotify:playlist:${backing.id}`, 0); await setShuffle(true, deviceId).catch(() => {}); });
     } catch (err) {
       toast(err?.message || "Couldn't start the party", { tone: 'error' });
     } finally {
@@ -112,7 +114,8 @@ export function usePartyHost() {
     const backing = { uri: `spotify:playlist:${p.id}`, name: p.name, image: artUrl(p.images, 200) || null };
     setShowPlaylists(false);
     await op({ op: 'settings', backing });
-    await playOn(async (deviceId) => { await playContext(token, deviceId, backing.uri, 0); await setShuffle(true, deviceId).catch(() => {}); });
+    await startPlaying({ uri: backing.uri, kind: 'playlist', name: backing.name, shuffle: true },
+      async (deviceId) => { await playContext(token, deviceId, backing.uri, 0); await setShuffle(true, deviceId).catch(() => {}); });
   };
 
   const volume = isLocalActive ? savedVolume : (remoteVolume ?? activeDevice?.volumePercent ?? 50);

@@ -11,12 +11,13 @@ import { isSameTrack } from '../utils/spotifyUri';
 import { formatTime } from '../utils/formatTime';
 import { usePlayingFrom } from '../hooks/usePlayingFrom';
 import Artists from './Artists';
+import QueueList from './QueueList';
 
-// The room's right-hand column: Jomify's own queue (services/queueConductor.js), always on
-// screen on the Mac. Rows on hairlines, the one row design the whole room uses; a remove at the
+// The room's right-hand column, always on screen on the Mac: the new queue (QueueList.jsx) when
+// it is switched on and no party runs; otherwise Jomify's old queue (services/queueConductor.js). Rows on hairlines, the one row design the whole room uses; a remove at the
 // row's end. Below it, a word on what Spotify plays after: the context, by name.
 
-export default function QueueColumn({ compact = false, maxRows = 3 }) {
+function OldQueueColumn({ compact = false, maxRows = 3 }) {
   const items = useQueueStore((s) => s.items);
   const remove = useQueueStore((s) => s.remove);
   const setContextMenu = useUserStore((s) => s.setContextMenu);
@@ -103,4 +104,9 @@ export default function QueueColumn({ compact = false, maxRows = 3 }) {
       ))}
     </div>
   );
+}
+
+export default function QueueColumn(props) {
+  const newQueue = useUserStore((s) => s.playbackSettings?.queueEngine === true);
+  return newQueue ? <QueueList {...props} /> : <OldQueueColumn {...props} />;
 }

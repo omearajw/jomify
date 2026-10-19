@@ -2,6 +2,7 @@ import { usePlayerStore } from '../../store/playerStore';
 import { usePartyStore } from '../../store/partyStore';
 import { useUserStore } from '../../store/userStore';
 import { fetchQueue } from '../../services/spotify/api';
+import { upcomingSongs } from '../../queue/engine';
 import { useProjectorStore, persistProjectorLayouts } from './projectorStore';
 
 // The projector in its own window (/projector), for a second screen: the laptop keeps Jomify
@@ -43,6 +44,8 @@ export function startProjectorFeed() {
     if (m.type === 'edit' && m.layouts) useProjectorStore.getState().setLayouts(m.layouts);
     if (m.type === 'pick' && m.picked) useProjectorStore.getState().setPicked(m.picked);
     if (m.type === 'queue?') {
+      const mine = upcomingSongs(10);
+      if (mine) { ch.postMessage({ type: 'queue', id: m.id, queue: mine }); return; }
       const token = useUserStore.getState().token;
       if (!token) return;
       try {

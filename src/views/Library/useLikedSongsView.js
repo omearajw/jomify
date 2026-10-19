@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { fetchInitialLikedSongs, playLikedSongsQueue, fetchMoreTracks } from '../../services/spotify/api';
-import { playOn, setShuffle } from '../../services/spotify/playbackController';
+import { setShuffle } from '../../services/spotify/playbackController';
+import { startPlaying } from '../../queue/play';
 import { scrollParent } from '../../utils/dom';
 import { useSlice, usePlaybackSummary } from '../../store/selectors';
 import { isUnplayable, unplayableWhy, applyPlayability } from '../../utils/spotifyUri';
@@ -178,7 +179,16 @@ export function useLikedSongsView() {
 
     if (!allUris.length) return;
     const userId = useUserStore.getState().profile?.id;
-    playOn((deviceId) => playLikedSongsQueue(token, deviceId, allUris, index, userId), { track: items[index]?.track });
+    startPlaying(likedSource({ start: index, track: items[index]?.track }), (deviceId) => playLikedSongsQueue(token, deviceId, allUris, index, userId));
+  };
+
+  // For the queue: Liked Songs itself while the list shows it as Spotify keeps it (every song is
+  // then loaded by the queue, from the right page); what is on screen, in its order, when it is
+  // sorted or searched
+  const likedSource = ({ start = null, shuffle, track }) => {
+    const userId = useUserStore.getState().profile?.id;
+    if (sortMode === 'added_desc' && !needle && userId) return { uri: `spotify:user:${userId}:collection`, kind: 'liked', name: 'Liked Songs', start, shuffle, track };
+    return { kind: 'list', name: 'Liked Songs', tracks: items.map((i) => i.track), start, shuffle, track };
   };
 
   // Shuffle on, then start somewhere random, the same as a playlist's Shuffle button
@@ -187,7 +197,7 @@ export function useLikedSongsView() {
     const allUris = items.map(item => item.track?.uri).filter(Boolean);
     const index = randomIndex(allUris.length);
     const userId = useUserStore.getState().profile?.id;
-    playOn(async (deviceId) => {
+    startPlaying(likedSource({ shuffle: true }), async (deviceId) => {
       await setShuffle(true, deviceId);
       await playLikedSongsQueue(token, deviceId, allUris, index, userId);
     });

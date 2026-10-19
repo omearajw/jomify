@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { useUserStore } from '../store/userStore';
 import { fetchPlaylistSummary, fetchAlbumsByIds, fetchArtistsByIds } from '../services/spotify/api';
+import { useQueue } from '../queue/engine';
 
 // Names what the music is coming from ("Playing from <playlist>"), the way Spotify's own
 // Now Playing does. The library usually knows the name already; anything else is fetched once.
@@ -16,7 +17,7 @@ const parseContext = (uri) => {
   return null;
 };
 
-const TYPE_LABEL = { playlist: 'playlist', album: 'album', artist: 'artist', liked: 'Liked Songs' };
+const TYPE_LABEL = { playlist: 'playlist', album: 'album', artist: 'artist', liked: 'Liked Songs', list: 'a list' };
 
 async function lookUp(token, { type, id }) {
   if (type === 'playlist') return (await fetchPlaylistSummary(token, id)).name;
@@ -27,7 +28,12 @@ async function lookUp(token, { type, id }) {
 
 // Returns null when nothing is known, else { type, id, name } (name '' while it is looked up)
 export function usePlayingFrom() {
-  const contextUri = usePlayerStore((s) => s.playbackState?.context?.uri || null);
+  // With the new queue (src/queue) Spotify plays a list and names no context; the queue's source
+  // is what it is playing from
+  const newQueue = useUserStore((s) => s.playbackSettings?.queueEngine === true);
+  const source = useQueue((s) => s.q.source);
+  const spotifyContext = usePlayerStore((s) => s.playbackState?.context?.uri || null);
+  const contextUri = newQueue ? source?.uri || null : spotifyContext;
   const parsed = parseContext(contextUri);
   const token = useUserStore((s) => s.token);
   const known = useUserStore((s) => {
@@ -49,7 +55,7 @@ export function usePlayingFrom() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextUri, token, known]);
 
-  if (!parsed) return null;
+  if (!parsed) return newQueue && source?.name ? { type: 'list', id: null, name: source.name } : null;
   if (parsed.type === 'liked') return { type: 'liked', id: parsed.id, name: 'Liked Songs' };
   return { type: parsed.type, id: parsed.id, name: known || names.get(contextUri) || '' };
 }

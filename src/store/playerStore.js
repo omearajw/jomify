@@ -38,13 +38,16 @@ export const usePlayerStore = create((set) => ({
   // events must not overwrite isShuffled -- a stale event landing mid-flight made the button
   // visibly bounce.
   shufflePending: false,
+  modesFromQueue: false,
 
   setPlaybackState: (state) => set((current) => ({
     playbackState: state,
     positionAt: Date.now(),
     // The SDK payload property is 'shuffle', not 'shuffle_state'
-    isShuffled: current.shufflePending ? current.isShuffled : Boolean(state?.shuffle),
-    repeatMode: typeof state?.repeat_mode === 'number' ? state.repeat_mode : current.repeatMode
+    // With Jomify's queue in charge (src/queue/engine.js), shuffle and repeat are the queue's, and
+    // Spotify's own (kept off) must not show
+    isShuffled: current.shufflePending || current.modesFromQueue ? current.isShuffled : Boolean(state?.shuffle),
+    repeatMode: current.modesFromQueue ? current.repeatMode : typeof state?.repeat_mode === 'number' ? state.repeat_mode : current.repeatMode
   })),
 
   setShuffle: (value) => set({ isShuffled: Boolean(value) }),

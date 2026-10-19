@@ -18,6 +18,7 @@ import { askLease } from './queueLease';
 import { positionNow } from '../lib/playbackClock';
 import { log } from './debugLog';
 import { feedDue, resolveFed, isItem, indexOfTrack } from './queueLogic';
+import { engineOn } from '../queue/engine';
 
 const TICK_MS = 1000;
 const LEASE_RENEW_MS = 10000;
@@ -39,8 +40,11 @@ export const handedOver = () => fed?.item || null;
 const isJomifyDevice = (d) => Boolean(d?.name && /^Jomify\b/.test(d.name));
 
 // Whether this device carries out the queue right now (see the note at the top)
+// With the new queue on (src/queue/engine.js) this one stands down entirely
+const standingDown = () => suspended || Boolean(usePartyStore.getState().code) || engineOn();
+
 export async function inCharge() {
-  if (suspended || usePartyStore.getState().code) return false;
+  if (standingDown()) return false;
   const p = player();
   if (p.isLocalActive) return true;
   if (p.activeDevice && !p.activeDevice.isLocal && isJomifyDevice(p.activeDevice)) return false;
@@ -118,7 +122,7 @@ export function onDeviceReset(why) {
 }
 
 async function tick() {
-  if (suspended || !token()) return;
+  if (standingDown() || !token()) return;
   if (!(await inCharge())) return;
   const now = Date.now();
   const cur = currentTrack();
@@ -139,7 +143,7 @@ async function tick() {
 // Something was just queued: with nothing playing at all, start it now rather than wait for a
 // song end that is not coming
 export async function nudge() {
-  if (suspended || usePartyStore.getState().code) return;
+  if (standingDown()) return;
   const t = token();
   const item = queue().items[0];
   const st = player().playbackState;
@@ -153,7 +157,7 @@ export async function nudge() {
 // Before a skip: the next song goes in first, so the skip lands on it and not on the playlist.
 // The skip was pressed here, so this device acts even without the lease.
 export async function beforeSkip() {
-  if (suspended || usePartyStore.getState().code || fed || !queue().items.length) return;
+  if (standingDown() || fed || !queue().items.length) return;
   await feed('skip', { waitUntilQueued: true });
 }
 

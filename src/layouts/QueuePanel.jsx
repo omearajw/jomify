@@ -14,6 +14,7 @@ import MoreButton from '../components/MoreButton';
 import { cleanString } from '../utils/strings';
 import { useQueueStore } from '../store/queueStore';
 import { withoutQueued } from '../services/queueLogic';
+import QueueList from '../room/QueueList';
 
 // The queue endpoint returns episode objects whenever a podcast is queued. They have `show`
 // instead of `album`, and rendering them as tracks used to throw and blank the whole app.
@@ -54,16 +55,18 @@ export default function QueuePanel() {
     playOn((deviceId) => playUris(token, deviceId, uris, 0), { track });
   };
   const isMobile = useIsMobile();
+  // the new queue (src/queue) shows itself, the same list as the room's
+  const newQueue = useUserStore((s) => s.playbackSettings?.queueEngine === true);
 
 
   useEffect(() => {
-    if (isQueueOpen && token) {
+    if (isQueueOpen && token && !newQueue) {
       const timeoutId = setTimeout(() => {
         fetchQueue(token).then(setQueueData).catch(console.error);
       }, 400);
       return () => clearTimeout(timeoutId);
     }
-  }, [isQueueOpen, token, currentTrackUid, queueRefreshTrigger, setQueueData]);
+  }, [isQueueOpen, token, currentTrackUid, queueRefreshTrigger, setQueueData, newQueue]);
 
   if (!isQueueOpen) return null;
 
@@ -86,6 +89,7 @@ export default function QueuePanel() {
         </button>
       </div>
 
+      {newQueue ? <div className="flex-1 overflow-y-auto p-4 select-none"><QueueList /></div> : (
       <div className="flex-1 overflow-y-auto p-4 space-y-8 select-none">
         {!queueData?.currently_playing && manualQueueEntries.length === 0 && regularQueueEntries.length === 0 && (
           <p className="px-2 py-10 text-center text-sm text-neutral-500">Nothing queued. Play something, or add songs with "Add to Queue" from a song's menu.</p>
@@ -169,6 +173,7 @@ export default function QueuePanel() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 
