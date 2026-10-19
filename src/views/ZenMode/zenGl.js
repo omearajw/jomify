@@ -122,10 +122,13 @@ vec3 item(vec3 col, sampler2D tx, vec4 bx, vec4 pr, vec4 tl, vec2 fpx){
     float rim = pow(1.0 - n.z, 1.4);
     float lower = max(dot(n.xy, normalize(vec2(0.7, -0.7))), 0.0);
     vec3 g = face + spec * 0.8 + rim * 0.32 - lower * 0.16;
-    // Sung: brighter glass with a glowing edge in the cover's colour (Jack, 19 Oct: "O", picked
-    // over a white edge and over tinting the glass itself, which was hard to read on its own colour)
-    g = mix(g, face * 1.35 + 0.06 + spec * 0.9, lit);
-    g += lit * (smoothstep(0.0, 0.6, 1.0 - n.z) * 1.3 * mix(vec3(1.0), hueOf(c1), 0.6) + spec * 0.6);
+    // Sung (Jack, 19 Oct: "O4++"): brighter, glossy glass with a soft glow at its edges in the
+    // cover's colour. The brightening is set by the light behind the glass (x1.2 at least, x1.55 at
+    // most) so a light cover doesn't push it past white; the edge glow comes from the line's wide
+    // blur, which stays soft at any size (the bevel, a pixel or two wide at the room's size, read as
+    // a hard outline), and lightens towards white rather than adding past it.
+    g = mix(g, face * clamp(1.1 / max(dot(face, vec3(0.299, 0.587, 0.114)), 0.05), 1.2, 1.55) + 0.12 + spec * 0.9, lit);
+    g += (vec3(1.0) - min(g, vec3(1.0))) * lit * smoothstep(0.1, 0.55, 1.0 - s) * 0.9 * mix(vec3(1.0), hueOf(c1), 0.6);
     col = mix(col, g, a * glass * alpha);
   }
   col = mix(col, mix(vec3(0.93), hueOf(c1) * 0.93, 0.15), clamp(s * 1.25, 0.0, 1.0) * (1.0 - glass) * alpha * 0.32);
@@ -145,7 +148,8 @@ ${Array.from({ length: ITEMS }, (_, i) => `    g += ghost(tx${i}, bx${i}, pr${i}
   vec2 wpx = warp(fpx);
 ${Array.from({ length: ITEMS }, (_, i) => `  col = item(col, tx${i}, bx${i}, pr${i}, tl${i}, wpx);`).join('\n')}
   // The sung words' glow: their letters, blurred as a whole (see GLOW_FS)
-  col += (vec3(1.0) * 0.1 + hueOf(tint) * 0.56) * texture2D(glow, uv).r * 0.6 * glowGain;
+  // lightening what is behind it towards white, never past it, or a bright cover deep-fried it
+  col += (vec3(1.0) - min(col, vec3(1.0))) * (vec3(1.0) * 0.1 + hueOf(tint) * 0.56) * texture2D(glow, uv).r * 0.6 * glowGain;
   vec2 q = uv - 0.5;
   col *= 1.0 - dot(q, q) * 0.9;
   col += (hash(fpx + fract(grain) * 31.0) - 0.5) * 0.022;
