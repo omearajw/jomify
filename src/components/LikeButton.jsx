@@ -9,6 +9,15 @@ import { toggleTrackLike, checkTracksLiked } from '../services/spotify/api';
 //
 // One of these sits on every track row, so it subscribes to exactly its own entry: a
 // whole-store subscription here re-rendered a thousand hearts on every drag and every poll.
+// A like pops the heart; an unlike lets it sink back a little (transform only, so it costs nothing)
+function pop(el, liked) {
+  if (!el?.animate || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  el.animate(liked
+    ? [{ transform: 'scale(1)' }, { transform: 'scale(1.38)', offset: 0.35 }, { transform: 'scale(0.94)', offset: 0.7 }, { transform: 'scale(1)' }]
+    : [{ transform: 'scale(1)' }, { transform: 'scale(0.8)', offset: 0.4 }, { transform: 'scale(1)' }],
+  { duration: liked ? 460 : 300, easing: 'cubic-bezier(0.2, 0.75, 0.2, 1)' });
+}
+
 export default function LikeButton({ trackId }) {
   const token = useUserStore((s) => s.token);
   const setLikedTracks = useUserStore((s) => s.setLikedTracks);
@@ -22,6 +31,7 @@ export default function LikeButton({ trackId }) {
   const handleToggle = async (e) => {
     e.stopPropagation(); // Prevents the playlist row from playing the song when you click the heart
     if (!token) return;
+    const heart = e.currentTarget.querySelector('svg');
 
     let current = isLiked;
 
@@ -39,6 +49,7 @@ export default function LikeButton({ trackId }) {
 
     // Optimistic UI Update: Instantly flip the state
     setLikedTracks({ [trackId]: !current });
+    pop(heart, !current);
 
     // Perform actual API call
     toggleTrackLike(token, trackId, current).catch((err) => {

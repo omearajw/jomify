@@ -358,20 +358,24 @@ async function plan() {
   const ending = !Q.nextUp(q) && q.repeat !== 'one';
   if (!Q.needsSwitch(q, given) && !(ending && continues())) return;
   if (ending && prepared?.key !== key) prepared = { key, promise: continuation(q).catch(() => null) };
-  timer = setTimeout(() => switchNow(key), Math.max(0, left - SWITCH_LEAD_MS));
+  const wait = Math.max(0, left - SWITCH_LEAD_MS);
+  const due = Date.now() + wait;
+  timer = setTimeout(() => switchNow(key, due), wait);
 }
 
-async function switchNow(key) {
+async function switchNow(key, due = Date.now()) {
   const { q } = get();
   const st = player().playbackState;
-  if (!q.now || q.now.key !== key || !st || st.paused || !isSameTrack(q.now, current())) return;
+  // how the timer kept time (a page off screen has its timers slowed), for the debug log
+  const timing = `timer ${Date.now() - due} ms late, ${Math.round(st ? st.duration - positionNow() : 0)} ms of the song left, page ${document.visibilityState}`;
+  if (!q.now || q.now.key !== key || !st || st.paused || !isSameTrack(q.now, current())) { dlog('no switch: the song had already changed', timing); return; }
   let after = Q.advance(q);
   if (!after.now) {
     after = prepared?.key === key ? await prepared.promise : null;
     if (!after?.now) return;
   }
   try {
-    await hand(after, { deviceId: player().activeDevice?.id || null, why: 'at the song change', force: false });
+    await hand(after, { deviceId: player().activeDevice?.id || null, why: `at the song change; ${timing}`, force: false });
   } catch (err) {
     dlog('could not hand Spotify the next list', err?.message || String(err));
     requestNotPlayed(after.now);

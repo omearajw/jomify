@@ -114,7 +114,7 @@ export default function RoomSearch() {
     );
   };
   const covers = (items, kind) => (
-    <div className="grid gap-x-5 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))' }}>
+    <div className="room-rise-list grid gap-x-5 gap-y-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))' }}>
       {items.map((it) => (
         <Cover
           key={it.id}
@@ -145,7 +145,7 @@ export default function RoomSearch() {
 
   // one open section is the whole page
   if (expandedSection && results) {
-    const map = { tracks: ['Songs', tracks, (items) => <div>{items.map(trackRow)}</div>], playlists: ['Playlists', playlistHits, (items) => covers(items, 'playlist')], albums: ['Albums', albumHits, (items) => covers(items, 'album')], artists: ['Artists', artistHits, (items) => covers(items, 'artist')] };
+    const map = { tracks: ['Songs', tracks, (items) => <div className="room-rise-list">{items.map(trackRow)}</div>], playlists: ['Playlists', playlistHits, (items) => covers(items, 'playlist')], albums: ['Albums', albumHits, (items) => covers(items, 'album')], artists: ['Artists', artistHits, (items) => covers(items, 'artist')] };
     const [title, items, render] = map[expandedSection] || map.tracks;
     return (
       <div className="pb-12" style={{ fontFamily: 'var(--font-room)' }}>
@@ -192,7 +192,7 @@ export default function RoomSearch() {
           {nothing && !searching && <p className="pt-6 text-[13px] text-[var(--room-faint)]">Nothing on Spotify for "{query.trim()}".</p>}
           {results && (
             <>
-              {section({ id: 'tracks', title: 'Songs', items: tracks, first: !mine.length, preview: 5, render: (items) => <div>{items.map(trackRow)}</div> })}
+              {section({ id: 'tracks', title: 'Songs', items: tracks, first: !mine.length, preview: 5, render: (items) => <div className="room-rise-list">{items.map(trackRow)}</div> })}
               {section({ id: 'playlists', title: 'Playlists', items: playlistHits, preview: 6, render: (items) => covers(items, 'playlist') })}
               {section({ id: 'albums', title: 'Albums', items: albumHits, preview: 6, render: (items) => covers(items, 'album') })}
               {section({ id: 'artists', title: 'Artists', items: artistHits, preview: 6, render: (items) => covers(items, 'artist') })}

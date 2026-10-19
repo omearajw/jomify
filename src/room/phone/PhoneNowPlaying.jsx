@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, SkipBack, SkipForward, Mic2, Speaker, Volume1, Volume2 } from 'lucide-react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
@@ -120,11 +120,16 @@ export default function PhoneNowPlaying({ bottomInset }) {
         {/* the cover and the song: stacked at rest, side by side when the lyrics are on */}
         <div className={`mt-3 ${lyricsOn ? 'flex items-center gap-4' : ''}`}>
           <motion.div layout transition={MOVE} className={`shrink-0 ${lyricsOn ? 'h-16 w-16' : 'mx-auto aspect-square w-full max-w-[min(100%,34dvh)]'}`}>
-            <div ref={flyRef} className="h-full w-full overflow-hidden rounded-[6px] bg-white/5">{art && <img src={art} alt="" draggable="false" className="h-full w-full object-cover" />}</div>
+            <div ref={flyRef} className="relative h-full w-full overflow-hidden rounded-[6px] bg-white/5">
+              {/* a change of song crossfades */}
+              <AnimatePresence initial={false}>
+                {art && <motion.img key={art} src={art} alt="" draggable="false" className="absolute inset-0 h-full w-full object-cover" initial={{ opacity: 0, scale: 1.03 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.7, ease: [0.2, 0.75, 0.2, 1] }} />}
+              </AnimatePresence>
+            </div>
           </motion.div>
           <motion.div layout="position" transition={MOVE} className={`min-w-0 ${lyricsOn ? 'flex-1' : 'mt-5'}`}>
             <div className="flex items-start gap-3">
-              <div className="min-w-0 flex-1">
+              <div key={track?.uri || 'none'} className="room-rise-one min-w-0 flex-1">
                 <h1 className={`m-0 truncate font-semibold leading-tight tracking-[-0.02em] ${lyricsOn ? 'text-[18px]' : 'text-[24px]'}`}>{track?.name || 'Nothing playing'}</h1>
                 <Artists artists={track?.artists} className="room-mono mt-1.5 block truncate text-[var(--room-dim)]" />
               </div>
@@ -146,11 +151,11 @@ export default function PhoneNowPlaying({ bottomInset }) {
           <div className="mt-1 flex items-center justify-between" data-control>
             <button type="button" onClick={() => setPlaybackSetting('phoneLyrics', !lyricsOn)} aria-pressed={lyricsOn} aria-label={lyricsOn ? 'Hide lyrics' : 'Show lyrics'} className={`grid h-11 w-11 place-items-center ${lyricsOn ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)]'}`}><Mic2 className="h-5 w-5" /></button>
             <div className="flex items-center gap-7">
-              <button type="button" onClick={previous} aria-label="Previous" className="grid h-11 w-11 place-items-center text-[var(--room-dim)]"><SkipBack className="h-6 w-6" /></button>
-              <button type="button" onClick={togglePlay} aria-label={paused ? 'Play' : 'Pause'} className="grid h-16 w-16 place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] active:scale-95">
-                {paused ? <Play className="ml-0.5 h-7 w-7 fill-current" /> : <Pause className="h-7 w-7 fill-current" />}
+              <button type="button" onClick={previous} aria-label="Previous" className="room-press grid h-11 w-11 place-items-center text-[var(--room-dim)]"><SkipBack className="h-6 w-6" /></button>
+              <button type="button" onClick={togglePlay} aria-label={paused ? 'Play' : 'Pause'} className="grid h-16 w-16 place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform active:scale-90">
+                {paused ? <Play key="play" className="room-turn ml-0.5 h-7 w-7 fill-current" /> : <Pause key="pause" className="room-turn h-7 w-7 fill-current" />}
               </button>
-              <button type="button" onClick={next} aria-label="Next" className="grid h-11 w-11 place-items-center text-[var(--room-dim)]"><SkipForward className="h-6 w-6" /></button>
+              <button type="button" onClick={next} aria-label="Next" className="room-press grid h-11 w-11 place-items-center text-[var(--room-dim)]"><SkipForward className="h-6 w-6" /></button>
             </div>
             <span className="h-11 w-11" aria-hidden="true" />
           </div>

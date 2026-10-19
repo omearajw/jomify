@@ -229,7 +229,7 @@ export default function RoomLibrary() {
     else setContextMenu({ type: item.type === 'album' ? 'album' : 'playlist', playlistId: item.type === 'album' ? null : item.id, albumId: item.type === 'album' ? item.id : null, parentFolderId: parentFolderId ?? null, x: e.pageX, y: e.pageY });
   };
   const tiles = (items, parentFolderId = null) => (
-    <div className="grid gap-x-5 gap-y-6" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${size}px, 1fr))` }}>
+    <div className="room-rise-list grid gap-x-5 gap-y-6" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${size}px, 1fr))` }}>
       {items.map((item) => (
         <Tile key={`${item.type || 'playlist'}-${item.id}`} item={item} size={size} lit={lit(item)} selected={selected.has(item.id)} over={over?.id === item.id ? over.pos : undefined} onOpen={() => open(item)} onPlay={() => play(item)} onMenu={menu(item, parentFolderId)} onSelect={() => toggleSelect(item.id)} drag={item.type === 'artist' ? {} : { ...dragOf(item, parentFolderId), ...tileTarget(item, parentFolderId) }} />
       ))}

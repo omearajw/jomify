@@ -51,7 +51,7 @@ export default function RoomLikedSongs() {
         </span>
       </div>
 
-      <div className="mt-1">
+      <div className="room-rise-list mt-1">
         {!trackData && !loadError && <p className="room-mono py-6 text-[var(--room-faint)]">Loading the songs</p>}
         {trackData && data.items.length === 0 && <p className="py-14 text-[13px] text-[var(--room-dim)]">Songs you like will appear here. Tap the heart on any song.</p>}
         {data.items.slice(0, visibleCount).map((item, index) => {

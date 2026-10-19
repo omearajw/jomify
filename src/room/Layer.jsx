@@ -81,7 +81,7 @@ export default function Layer({ state, onState, children, header, tree, head, pa
         left: RAIL_PX,
         width,
         transform: state === 'closed' ? `translateX(calc(-100% - ${RAIL_PX}px))` : 'none',
-        transition: `transform var(--room-slow) var(--room-ease), width var(--room-slow) var(--room-ease)`,
+        transition: `transform var(--room-slow) var(--room-settle), width var(--room-slow) var(--room-ease)`,
         fontFamily: 'var(--font-room)'
       }}
     >

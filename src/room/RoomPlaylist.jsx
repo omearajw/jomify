@@ -194,7 +194,7 @@ export default function RoomPlaylist() {
       <PlaylistFormDialog open={editDialogOpen} title="Edit playlist" submitLabel="Save changes" initialName={view.name} initialDescription={description} initialImageUrl={coverUrl} initialPublic={Boolean(view.public)} initialCollaborative={Boolean(view.collaborative)} onSubmit={handleUpdatePlaylist} onCancel={() => setEditDialogOpen(false)} isSubmitting={isUpdatingPlaylist} />
 
       {/* the rows */}
-      <div className="mt-1">
+      <div className="room-rise-list mt-1">
         {!playlist && <p className="room-mono py-6 text-[var(--room-faint)]">Loading the songs</p>}
         {playlist && totalRows === 0 && (
           <div className="py-14">

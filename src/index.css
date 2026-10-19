@@ -306,6 +306,8 @@
   --room-ease: cubic-bezier(0.2, 0.75, 0.2, 1);
   --room-slow: 1100ms;
   --room-mid: 700ms;
+  /* a slight overshoot and back: the library layer settling into place as it opens */
+  --room-settle: cubic-bezier(0.3, 1.1, 0.45, 1);
   --font-room: "Inter Tight", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -318,6 +320,39 @@
 @keyframes room-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.012); } }
 @keyframes room-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes room-fade-out { from { opacity: 1; } to { opacity: 0; } }
+/* Motion (Jack, 19 Oct): a list rises in when it arrives (its first 18 items, a beat apart; rows
+   that load later as you scroll come in still), the library layer settles as it opens, the
+   transport answers a press and the play icon turns over. Transform and opacity only, so a phone
+   keeps up; none of it with reduce motion on. */
+@keyframes room-rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes room-turn { from { opacity: 0; transform: scale(0.6) rotate(-25deg); } }
+.room-rise-list > *, .room-rise-list > .contents > * { animation: room-rise 520ms var(--room-ease) backwards; }
+.room-rise-list > :nth-child(2), .room-rise-list > .contents:nth-child(2) > * { animation-delay: 28ms; }
+.room-rise-list > :nth-child(3), .room-rise-list > .contents:nth-child(3) > * { animation-delay: 56ms; }
+.room-rise-list > :nth-child(4), .room-rise-list > .contents:nth-child(4) > * { animation-delay: 84ms; }
+.room-rise-list > :nth-child(5), .room-rise-list > .contents:nth-child(5) > * { animation-delay: 112ms; }
+.room-rise-list > :nth-child(6), .room-rise-list > .contents:nth-child(6) > * { animation-delay: 140ms; }
+.room-rise-list > :nth-child(7), .room-rise-list > .contents:nth-child(7) > * { animation-delay: 168ms; }
+.room-rise-list > :nth-child(8), .room-rise-list > .contents:nth-child(8) > * { animation-delay: 196ms; }
+.room-rise-list > :nth-child(9), .room-rise-list > .contents:nth-child(9) > * { animation-delay: 224ms; }
+.room-rise-list > :nth-child(10), .room-rise-list > .contents:nth-child(10) > * { animation-delay: 252ms; }
+.room-rise-list > :nth-child(11), .room-rise-list > .contents:nth-child(11) > * { animation-delay: 280ms; }
+.room-rise-list > :nth-child(12), .room-rise-list > .contents:nth-child(12) > * { animation-delay: 308ms; }
+.room-rise-list > :nth-child(13), .room-rise-list > .contents:nth-child(13) > * { animation-delay: 336ms; }
+.room-rise-list > :nth-child(14), .room-rise-list > .contents:nth-child(14) > * { animation-delay: 364ms; }
+.room-rise-list > :nth-child(15), .room-rise-list > .contents:nth-child(15) > * { animation-delay: 392ms; }
+.room-rise-list > :nth-child(16), .room-rise-list > .contents:nth-child(16) > * { animation-delay: 420ms; }
+.room-rise-list > :nth-child(17), .room-rise-list > .contents:nth-child(17) > * { animation-delay: 448ms; }
+.room-rise-list > :nth-child(18), .room-rise-list > .contents:nth-child(18) > * { animation-delay: 476ms; }
+.room-rise-list > :nth-child(n+19), .room-rise-list > .contents:nth-child(n+19) > * { animation: none; }
+.room-turn { animation: room-turn 340ms var(--room-ease); }
+.room-rise-one { animation: room-rise 600ms var(--room-ease) 80ms backwards; }
+.room-press { transition: transform 200ms var(--room-ease); }
+.room-press:active { transform: scale(0.86); }
+@media (prefers-reduced-motion: reduce) {
+  .room-rise-list > *, .room-rise-list > .contents > *, .room-turn, .room-rise-one { animation: none !important; }
+  .room-press:active { transform: none; }
+}
 /* the heart in the room: paper when liked, dim otherwise; one colour, no brand pink */
 .room-like button svg { color: var(--room-dim); fill: transparent; }
 .room-like button[aria-pressed="true"] svg { color: var(--room-paper); fill: var(--room-paper); }

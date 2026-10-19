@@ -86,7 +86,7 @@ export default function RoomAlbum() {
 
       <div className="mt-8 border-b border-[var(--room-hair)] @max-md:mt-6" />
 
-      <div className="mt-1">
+      <div className="room-rise-list mt-1">
         {loading && tracks.length === 0 && <p className="room-mono py-6 text-[var(--room-faint)]">Loading the songs</p>}
         {tracks.map((track, index) => {
           const current = isSameTrack(track, currentPlayingTrack);

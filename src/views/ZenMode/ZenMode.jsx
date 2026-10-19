@@ -431,22 +431,28 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
                 data-control={roomLayout === 'full' ? '' : undefined}
                 onDragStart={roomLayout === 'full' ? (e) => { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData(TRACK_DRAG_TYPE, currentTrack.uri); e.dataTransfer.setData('text/plain', currentTrack.uri); } : undefined}
               >
-              <motion.div key={trackId} className="relative aspect-square w-full" initial={reducedMotion || flying ? { opacity: flying ? 1 : 0 } : { opacity: 0, y: 16, filter: 'blur(10px)' }} animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: 1.1, ease: EASE }}>
+              {/* a change of song crossfades: the old cover fades and lifts away as the new one
+                  settles in (or flies in from the queue) */}
+              <AnimatePresence mode="popLayout" initial={false}>
+              <motion.div key={trackId} className="relative aspect-square w-full" initial={flying ? { opacity: 1 } : reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 1.03 }} transition={{ duration: 0.9, ease: EASE }}>
                 <div ref={flyRef} className="absolute inset-0">
                   <img src={albumArtUrl} alt="" draggable="false" className="absolute inset-0 h-full w-full rounded-[6px] object-cover shadow-[0_60px_120px_-40px_rgba(0,0,0,0.9)]" style={{ animation: reducedMotion ? 'none' : 'room-breathe 9s ease-in-out infinite' }} />
                 </div>
               </motion.div>
+              </AnimatePresence>
               </motion.div>
             )}
           </section>
           <section className={roomLayout === 'full' ? 'mt-4 min-w-0 shrink-0' : 'min-w-0 flex-1'}>
             {currentTrack ? (
-              <motion.div layout="position" transition={ROOM_LAYOUT}>
-              <motion.div key={trackId} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE }}>
+              <motion.div layout="position" transition={ROOM_LAYOUT} className="relative">
+              <AnimatePresence mode="popLayout" initial={false}>
+              <motion.div key={trackId} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10, transition: { duration: 0.35, ease: EASE } }} transition={{ duration: 0.8, ease: EASE, delay: 0.1 }}>
                 <h1 className="m-0 font-semibold leading-none tracking-[-0.025em] [text-wrap:balance]" style={{ fontSize: roomLayout === 'full' ? 17 : roomLayout === 'half' ? 26 : 36, transition: 'font-size var(--room-slow) var(--room-ease)' }}>{currentTrack.name}</h1>
                 <Artists artists={currentTrack?.artists} className={`room-mono block text-[var(--room-dim)] ${roomLayout === 'full' ? 'mt-1.5' : 'mt-3'}`} />
                 {requestedByGuest && <p className="room-mono mt-2 text-[var(--room-faint)]">Requested by {requestedByGuest}</p>}
               </motion.div>
+              </AnimatePresence>
               </motion.div>
             ) : (
               <p className="room-mono text-[var(--room-faint)]">Waiting for music</p>
@@ -471,11 +477,11 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
             {noLyrics && <p className="room-mono mt-4 text-[var(--room-faint)]">No lyrics for this one</p>}
             <div className={`flex flex-wrap items-center ${roomLayout === 'full' ? 'mt-4 gap-3' : 'mt-7 gap-6'}`} data-control>
               <motion.div layout="position" transition={ROOM_LAYOUT} className={`flex items-center ${roomLayout === 'full' ? 'gap-3' : 'gap-6'}`}>
-              <button onClick={previousTrack} aria-label="Previous" className="text-[var(--room-dim)] transition-colors hover:text-[var(--room-paper)]"><SkipBack className="h-5 w-5" /></button>
-              <button onClick={togglePlay} aria-label={isPaused ? 'Play' : 'Pause'} className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">
-                {isPaused ? <Play className="ml-0.5 h-[18px] w-[18px] fill-current" /> : <Pause className="h-[18px] w-[18px] fill-current" />}
+              <button onClick={previousTrack} aria-label="Previous" className="room-press text-[var(--room-dim)] transition-colors hover:text-[var(--room-paper)]"><SkipBack className="h-5 w-5" /></button>
+              <button onClick={togglePlay} aria-label={isPaused ? 'Play' : 'Pause'} className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-90">
+                {isPaused ? <Play key="play" className="room-turn ml-0.5 h-[18px] w-[18px] fill-current" /> : <Pause key="pause" className="room-turn h-[18px] w-[18px] fill-current" />}
               </button>
-              <button onClick={nextTrack} aria-label="Next" className="text-[var(--room-dim)] transition-colors hover:text-[var(--room-paper)]"><SkipForward className="h-5 w-5" /></button>
+              <button onClick={nextTrack} aria-label="Next" className="room-press text-[var(--room-dim)] transition-colors hover:text-[var(--room-paper)]"><SkipForward className="h-5 w-5" /></button>
               </motion.div>
               <motion.span layout="position" transition={ROOM_LAYOUT} className={`flex items-center ${roomLayout === 'full' ? 'gap-3' : 'gap-6'}`} style={quiet}>
               {currentTrack?.id && <span className="room-like flex items-center [&_button]:p-0 [&_svg]:h-[17px] [&_svg]:w-[17px]"><LikeButton trackId={currentTrack.id} /></span>}
