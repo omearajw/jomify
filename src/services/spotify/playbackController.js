@@ -277,7 +277,15 @@ function noteNearEnd(state) {
     && state.duration - (state.position || 0) < 15000 && state.repeat_mode === 0;
   wasNearEnd = nearEnd ? { contextUri: state.context?.uri || null, trackUri: state.track_window?.current_track?.uri } : null;
 }
+// The queue check (services/queueCheck.js) plays test lists; nothing here may act on them
+let checkRunning = false;
+export function holdForCheck(on) {
+  checkRunning = Boolean(on);
+  queueConductor.setSuspended(checkRunning);
+}
+
 async function afterContextEnded(ended, newState) {
+  if (checkRunning) return;
   const endedContextUri = ended?.contextUri || null;
   const setting = useUserStore.getState().playbackSettings?.whenPlaylistEnds || 'spotify';
   const t = token();

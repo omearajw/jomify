@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getEntries, subscribe, clearLog, formatEntry, formatLog } from '../services/debugLog';
 import { checkSpotifyEndpoints } from '../services/endpointCheck';
+import { checkQueueBehaviour } from '../services/queueCheck';
 
 const PAGE = 300;
 
@@ -47,6 +48,8 @@ export default function DebugLogPanel({ onClose }) {
   const [copied, setCopied] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [queueChecking, setQueueChecking] = useState(false);
+  const [confirmQueueCheck, setConfirmQueueCheck] = useState(false);
 
   useEffect(() => subscribe(() => rerender((n) => n + 1)), []);
   useEffect(() => {
@@ -73,6 +76,15 @@ export default function DebugLogPanel({ onClose }) {
     if (!confirmClear) { setConfirmClear(true); setTimeout(() => setConfirmClear(false), 3000); return; }
     clearLog();
     setConfirmClear(false);
+  };
+
+  // It plays music for about a minute and leaves it paused, so it asks first
+  const handleQueueCheck = () => {
+    if (!confirmQueueCheck) { setConfirmQueueCheck(true); setTimeout(() => setConfirmQueueCheck(false), 4000); return; }
+    setConfirmQueueCheck(false);
+    setQueueChecking(true);
+    setFilter('queue check');
+    checkQueueBehaviour().finally(() => setQueueChecking(false));
   };
 
   const button = 'ui-word inline-flex min-h-[36px] items-center';
@@ -103,6 +115,15 @@ export default function DebugLogPanel({ onClose }) {
           title="Asks Spotify, read-only, whether each endpoint Jomify uses still answers"
         >
           {checking ? 'Checking…' : 'Check Spotify'}
+        </button>
+        <button
+          type="button"
+          disabled={queueChecking}
+          onClick={handleQueueCheck}
+          className={button}
+          title="Plays a few seconds of your liked songs here to see how Spotify handles lists of songs; takes about two minutes and leaves the music paused"
+        >
+          {queueChecking ? 'Checking queue…' : confirmQueueCheck ? 'Plays music here for ~2 min: tap again' : 'Check queue'}
         </button>
         <button type="button" onClick={handleClear} className={`${button} ${confirmClear ? 'text-[rgb(240,160,160)]' : ''}`}>
           {confirmClear ? 'Tap again to clear' : 'Clear'}
