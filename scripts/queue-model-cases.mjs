@@ -1,6 +1,6 @@
 // The play queue's pure core (src/queue/model.js): every operation, shuffle and repeat, folding in
 // what Spotify reports, and what Spotify should be given.
-import { withFullSource, addEntries, entry } from '../src/queue/model.js';
+import { withFullSource, addEntries, entry, bringForward } from '../src/queue/model.js';
 import { applyOp } from '../api/_lib/queue.js';
 import { emptyQueue, source, play, add, playNext, promote, remove, move, clear, advance, back, jumpTo, setShuffle, setRepeat, reconcile, toGive, needsSwitch, nextUp, upcoming, MAX_GIVEN } from '../src/queue/model.js';
 
@@ -153,6 +153,14 @@ const pl = source({ kind: 'playlist', uri: 'spotify:playlist:bond', name: 'Bond 
   const given = toGive(q);
   check('Play hands Spotify that song first, never the playlist "at" it', given.uris[0] === 'spotify:track:awtd');
   check('...and the playlist carries on after the last song it played', given.uris[1] === 'spotify:track:skyfall');
+}
+
+// --- a song Spotify plays ahead of its turn ---------------------------------------------------
+{
+  let q = add(play(emptyQueue(), pl, { start: 0 }), [song('n1'), song('n2')]);
+  const early = bringForward(q, q.next[1].key);
+  check('a queued song played early becomes now, nothing else lost', early.now.id === 'n2' && names(early.next) === 'n1' && names(early.then) === 'b,c,d,e,f' && early.played[0].id === 'a');
+  check('bringing forward a song the queue no longer has changes nothing', bringForward(q, 'gone') === q);
 }
 
 // --- a long playlist, started from one page --------------------------------------------------

@@ -215,6 +215,14 @@ export function jumpTo(q, key) {
   return q;
 }
 
+// Spotify started a song of the queue's ahead of its turn (one already put in Spotify's own queue
+// before the queue was rearranged): it becomes now, and everything else keeps its place
+export function bringForward(q, key) {
+  const e = [...q.next, ...q.then].find((x) => x.key === key);
+  if (!e) return q;
+  return { ...q, now: e, next: q.next.filter((x) => x.key !== key), then: q.then.filter((x) => x.key !== key), played: pushPlayed(q.played, q.now), out: e.from === 'source' ? [...q.out, key] : q.out };
+}
+
 // Shuffle on: the rest of the source, minus what this pass has used, in a new random order.
 // Off: the source's own order from the current song on. Next up is never touched.
 export function setShuffle(q, on, { random = Math.random } = {}) {

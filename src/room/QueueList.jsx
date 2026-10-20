@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { useUserStore } from '../store/userStore';
@@ -29,7 +29,12 @@ const LEAVE = { opacity: 0, scale: 0.96, transition: { duration: 0.3, ease: EASE
 
 const coarse = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 
-export default function QueueList({ compact = false, maxRows = 3 }) {
+// The whole queue scrolls (Jack, 20 Oct): its songs load 40 at a time as the end comes into view,
+// so a 2,000-song playlist costs no more than a short one. `scroll`: the list is its own scroll
+// area (the room's column); without it the page around it scrolls (the phone).
+const STEP = 40;
+
+export default function QueueList({ compact = false, maxRows = 3, scroll = false }) {
   const q = useQueue((s) => s.q);
   const setContextMenu = useUserStore((s) => s.setContextMenu);
   // At a party the guests' requests are what plays next: the one lined up (already in the queue),
@@ -44,8 +49,18 @@ export default function QueueList({ compact = false, maxRows = 3 }) {
   const [over, setOver] = useState(null);   // { part, index }
   const cap = Math.max(1, maxRows);
   const next = compact ? q.next.slice(0, cap) : q.next;
-  const then = q.then.slice(0, compact ? Math.max(0, cap - next.length) : Math.max(4, 10 - q.next.length));
+  const [limit, setLimit] = useState(STEP);
+  const then = q.then.slice(0, compact ? Math.max(0, cap - next.length) : limit);
   const more = q.then.length - then.length;
+  // more songs as the end of what is shown comes into view
+  const box = useRef(null);
+  const end = useRef(null);
+  useEffect(() => {
+    if (compact || more <= 0 || !end.current) return undefined;
+    const seen = new IntersectionObserver((hits) => { if (hits.some((h) => h.isIntersecting)) setLimit((n) => n + STEP); }, { root: scroll ? box.current : null, rootMargin: '400px 0px' });
+    seen.observe(end.current);
+    return () => seen.disconnect();
+  }, [compact, more, scroll, limit]);
   const fromName = q.source?.readOnly ? `${q.source.name || 'the playlist'}, as Spotify plays it` : q.source?.name || '';
 
   // the song that has just become the one playing: its cover, still on screen as it leaves, is
@@ -74,7 +89,7 @@ export default function QueueList({ compact = false, maxRows = 3 }) {
   const row = (e, i, part) => {
     const lit = over && over.part === part && over.index === i && drag && drag.key !== e.key;
     return (
-      <motion.div key={e.key} layout="position" initial={ENTER} animate={SHOWN} exit={LEAVE} transition={MOVE}>
+      <motion.div key={e.key} layout="position" initial={i < 12 ? ENTER : false} animate={SHOWN} exit={LEAVE} transition={MOVE}>
       <div
         draggable={!coarse}
         onDragStart={(ev) => { setDrag({ key: e.key, part }); try { ev.dataTransfer.effectAllowed = 'move'; } catch { /* a drag not started by the pointer */ } }}
@@ -87,7 +102,8 @@ export default function QueueList({ compact = false, maxRows = 3 }) {
         style={{
           borderTop: i ? '1px solid var(--room-hair)' : 'none',
           boxShadow: lit ? 'inset 0 2px 0 var(--room-paper)' : 'none',
-          opacity: drag?.key === e.key ? 0.35 : part === 'then' ? 0.6 - Math.min(0.3, i * 0.05) : 1 - Math.min(0.5, i * 0.12)
+          // the first rows step down; deeper ones (a scrolled queue) stay readable
+          opacity: drag?.key === e.key ? 0.35 : part === 'then' ? 0.62 - Math.min(0.14, i * 0.035) : 1 - Math.min(0.4, i * 0.1)
         }}
       >
         {e.album?.images?.[0] ? <img ref={coverRef(e.key)} src={artUrl(e.album.images, 34)} alt="" width="34" height="34" loading="lazy" decoding="async" className="h-[34px] w-[34px] flex-none rounded-[4px] object-cover" draggable="false" /> : <span ref={coverRef(e.key)} className="h-[34px] w-[34px] flex-none rounded-[4px] bg-white/5" />}
@@ -137,9 +153,11 @@ export default function QueueList({ compact = false, maxRows = 3 }) {
     );
   }
 
+  const scrolling = scroll && !compact;
   return (
     <MotionConfig reducedMotion="user">
-    <div className="relative min-w-0" data-control data-queue-list style={{ fontFamily: 'var(--font-room)' }}>
+    <div ref={box} className={`relative min-w-0 ${scrolling ? 'custom-scrollbar -mr-3 overflow-y-auto overscroll-contain pr-3' : ''}`} data-control data-queue-list
+      style={{ fontFamily: 'var(--font-room)', ...(scrolling ? { maxHeight: 'min(62vh, 640px)', maskImage: 'linear-gradient(to bottom, transparent 0, black 14px, black calc(100% - 36px), transparent)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, black 14px, black calc(100% - 36px), transparent)', paddingTop: 6, paddingBottom: 30 } : {}) }}>
       <AnimatePresence initial={false} mode="popLayout">
       {(q.next.length > 0 || then.length === 0) && line('h-next', (
         <p className="room-mono mb-4 flex items-baseline justify-between gap-3 text-[var(--room-dim)]">
@@ -156,7 +174,7 @@ export default function QueueList({ compact = false, maxRows = 3 }) {
         <p className={`room-mono mb-1 ${q.next.length ? 'mt-5 text-[var(--room-faint)]' : 'mb-4 text-[var(--room-dim)]'}`}>{q.next.length ? 'Then' : 'Up next'}{fromName ? ` · ${fromName}` : ''}</p>
       ))}
       {then.map((e, i) => row(e, i, 'then'))}
-      {!compact && more > 0 && line('more', <p className="pt-2 text-[12px] text-[var(--room-faint)]">and {more} more</p>)}
+      {!compact && more > 0 && line('more', <p ref={end} className="pt-2 text-[12px] text-[var(--room-faint)]">{more} more</p>)}
       </AnimatePresence>
     </div>
     </MotionConfig>

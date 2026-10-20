@@ -24,7 +24,7 @@ import { useUserStore } from '../store/userStore';
 import { usePartyStore } from '../store/partyStore';
 import { useQueueStore } from '../store/queueStore';
 import { toast } from '../store/toastStore';
-import { playList, playContext, addToQueue, toggleShuffleState, setRepeatMode, fetchArtistTopTracks, fetchPlaylistTrackArtists } from '../services/spotify/api';
+import { playList, playContext, addToQueue, pausePlayback, toggleShuffleState, setRepeatMode, fetchArtistTopTracks, fetchPlaylistTrackArtists } from '../services/spotify/api';
 import { REPEAT_NAMES } from '../services/spotify/playbackAdapter';
 import { playOn, skipRaw, activateLocalPlayer, handlePlaybackError } from '../services/spotify/playbackController';
 import { loadAllLikedSongs } from '../services/likedLibrary';
@@ -35,6 +35,11 @@ import { isSameTrack } from '../utils/spotifyUri';
 import { log } from '../services/debugLog';
 
 const SWITCH_LEAD_MS = 300;
+// Spotify's next song is put right through its own queue this long before the song ends: the song
+// change is then Spotify's own (no race against the clock, no gap). Measured on Jack's account
+// (Check Spotify's queue, 20 Oct): a queued song plays ahead of the list's next, the list then
+// carries on where it was, and a new list does not clear the queue.
+const FEED_AT_MS = 10000;
 const PLAN_AHEAD_MS = 20000;     // a switch is timed from this close to the end, so drift is small
 const KEEP_SOURCE_SONGS = 1500;  // a longer source is stored on the device without its songs
 const KEEP_THEN_SONGS = 600;
@@ -170,8 +175,11 @@ async function hand(q, { deviceId = null, positionMs = 0, why = '', force = true
   const list = Q.toGive(q);
   if (!list) { shareNow(force); return; }
   await modesFor(deviceId, q);
+  // a song already put in Spotify's queue survives a new list (Check Spotify's queue): when it
+  // comes, it is skipped unless the queue still wants it
+  if (fed) { stale.add(fed.uri); fed = null; }
   await playList(token(), deviceId, list.uris, positionMs);
-  useQueue.setState({ given: list });
+  useQueue.setState({ given: { ...list, at: 0 } });
   dlog(`gave Spotify ${list.uris.length} song${list.uris.length === 1 ? '' : 's'} from ${describeSong(q.now)}`, why);
   shareNow(force);
 }
@@ -186,6 +194,35 @@ let adopting = null;
 // stops two Jomifys fighting over the music.
 let passive = false;
 let checkedElsewhere = false;
+// What Jomify has put in Spotify's own queue: the one song on its way (fed), and any it put there
+// that a new list then overtook (stale), which Spotify will still play when it gets to them
+let fed = null;            // { key, uri }
+const stale = new Set();   // uris
+const sameUri = (track, uri) => Boolean(track && uri && (track.uri === uri || track.linked_from?.uri === uri));
+
+// The song Spotify will play next by itself: one in its own queue, else the next in its list
+function spotifyNextKey() {
+  if (fed) return fed.key;
+  const { given } = get();
+  if (!given?.keys) return null;
+  return given.keys[(given.at ?? 0) + 1] || null;
+}
+
+let feeding = false;
+async function feed(entry, left) {
+  if (feeding) return;
+  feeding = true;
+  try {
+    await addToQueue(token(), player().activeDevice?.id || null, entry.uri);
+    fed = { key: entry.key, uri: entry.uri };
+    dlog(`${entry.name} goes next, through Spotify's own queue`, `${Math.round(left / 1000)} s before the song change`);
+  } catch (err) {
+    dlog(`Spotify refused to queue ${entry.name}`, err?.message || String(err));
+  } finally {
+    feeding = false;
+  }
+  plan();
+}
 
 function onPlayerState() {
   if (!engineOn()) return;
@@ -199,6 +236,27 @@ function onPlayerState() {
     // switched on): take it over, unless it is the unreadable one the queue already let it play
     if (contextUri && kindOf(contextUri) && !(q.source?.readOnly && q.source.uri === contextUri)) adopt(contextUri, track, st.shuffle);
     else {
+      // a song from Spotify's own queue: Jomify's next (normal), one it put there before the queue
+      // was rearranged (it plays now, nothing else lost), or one the queue no longer has (skipped)
+      const queuedHere = (fed && sameUri(track, fed.uri)) || [...stale].some((u) => sameUri(track, u));
+      if (fed && !sameUri(track, fed.uri)) { stale.add(fed.uri); fed = null; }
+      if (queuedHere) {
+        fed = null;
+        [...stale].filter((u) => sameUri(track, u)).forEach((u) => stale.delete(u));
+        const want = Q.nextUp(q);
+        if (!(want && isSameTrack(want, track)) && !(q.now && isSameTrack(q.now, track))) {
+          const waiting = [...q.next, ...q.then].find((e) => isSameTrack(e, track));
+          if (waiting) { setQ(Q.bringForward(q, waiting.key)); shareSoon(); dlog(`now ${describeSong(waiting)}`, 'it was already in Spotify\'s queue, so it plays now; nothing else moves'); plan(); return; }
+          dlog(`skipped ${track.name}`, "it was already in Spotify's queue, but isn't in Jomify's any more");
+          skipRaw();
+          return;
+        }
+      } else {
+        // where Spotify is in the list it was given
+        const g = get().given;
+        const j = g?.uris ? g.uris.findIndex((u, k) => k > (g.at ?? 0) && sameUri(track, u)) : -1;
+        if (j > 0) useQueue.setState({ given: { ...g, at: j } });
+      }
       const r = Q.reconcile(q, track);
       if (r.change === 'outside' && !contextUri && !checkedElsewhere) {
         // perhaps another device started it: its queue first, then decide
@@ -355,9 +413,27 @@ async function plan() {
     takeRequest(); // the queue changes, and this plans again
     return;
   }
-  const ending = !Q.nextUp(q) && q.repeat !== 'one';
-  if (!Q.needsSwitch(q, given) && !(ending && continues())) return;
-  if (ending && prepared?.key !== key) prepared = { key, promise: continuation(q).catch(() => null) };
+  if (q.repeat === 'one') return;
+  const want = Q.nextUp(q);
+  if (given?.keys && given.keys.includes(key)) {
+    // Spotify is playing a list Jomify gave it: its next song is made the queue's through its own
+    // queue, well before the end, and the song change is Spotify's own
+    const have = spotifyNextKey();
+    if (want && want.key !== have) {
+      if (fed) return; // a song is already on its way; if the queue no longer wants it, it is dealt with when it starts
+      if (left > FEED_AT_MS) { timer = setTimeout(plan, left - FEED_AT_MS + 200); return; }
+      feed(want, left);
+      return;
+    }
+    if (want) return;
+    // nothing after this song in the queue: the "when a playlist ends" setting, or stop if Spotify
+    // would otherwise go on with songs the queue no longer has
+    if (!continues() && !have) return;
+  } else if (!Q.needsSwitch(q, given) && !(!want && continues())) return;
+  // Spotify playing something Jomify didn't give it (taken over from the Spotify app), or the end of
+  // the queue: a new list just before the song ends. If it is late, the song Spotify plays instead
+  // is that playlist's own, or a moment of silence: never one the queue doesn't want.
+  if (!want && prepared?.key !== key) prepared = { key, promise: continuation(q).catch(() => null) };
   const wait = Math.max(0, left - SWITCH_LEAD_MS);
   const due = Date.now() + wait;
   timer = setTimeout(() => switchNow(key, due), wait);
@@ -372,7 +448,12 @@ async function switchNow(key, due = Date.now()) {
   let after = Q.advance(q);
   if (!after.now) {
     after = prepared?.key === key ? await prepared.promise : null;
-    if (!after?.now) return;
+    if (!after?.now) {
+      // Spotify's list goes on with songs the queue no longer has: stop at the end instead
+      await pausePlayback(token(), player().activeDevice?.id || null).catch(() => {});
+      dlog('the queue has ended; stopped rather than play songs it no longer has', timing);
+      return;
+    }
   }
   try {
     await hand(after, { deviceId: player().activeDevice?.id || null, why: `at the song change; ${timing}`, force: false });
@@ -518,14 +599,12 @@ export async function next() {
   if (!synced(q)) return skipRaw();
   // at a party a skip goes to the next request, taken now
   if (partyCode() && !q.next.some((e) => e.request) && (usePartyStore.getState().queue || []).length) { await takeRequest(); q = get().q; }
-  const { given } = get();
   let after = Q.advance(q);
   if (!after.now) {
     after = await continuation(q).catch(() => null);
     if (!after?.now) return skipRaw();
   }
-  const at = given ? given.keys.indexOf(q.now.key) : -1;
-  if (at >= 0 && given.keys[at + 1] === after.now.key) { setQ(after); shareNow(true); return skipRaw(); }
+  if (spotifyNextKey() === after.now.key) { setQ(after); shareNow(true); return skipRaw(); }
   return playOn((deviceId) => hand(after, { deviceId, why: 'next' }), { track: after.now });
 }
 

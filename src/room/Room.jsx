@@ -60,7 +60,7 @@ export default function Room({ children, header }) {
     <div className="relative h-full w-full overflow-hidden bg-[var(--room-ink)] text-[var(--room-paper)]" style={{ fontFamily: 'var(--font-room)' }}>
       <div className="absolute inset-0" onPointerDown={onRoomPointerDown}>
         <Suspense fallback={null}>
-          <ZenMode inRoom mode={isZenMode ? 'zen' : 'room'} roomLayout={layer === 'closed' ? 'rest' : layer} aside={<QueueColumn compact={layer === 'full'} />} />
+          <ZenMode inRoom mode={isZenMode ? 'zen' : 'room'} roomLayout={layer === 'closed' ? 'rest' : layer} aside={<QueueColumn compact={layer === 'full'} scroll />} />
         </Suspense>
       </div>
 
