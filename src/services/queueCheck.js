@@ -10,6 +10,8 @@ import { usePartyStore } from '../store/partyStore';
 import { spotifyFetch } from './spotify/api';
 import { holdForCheck } from './spotify/playbackController';
 import { log } from './debugLog';
+import { toast } from '../store/toastStore';
+import { positionNow } from '../lib/playbackClock';
 
 const PLAYER = 'https://api.spotify.com/v1/me/player';
 const say = (message, detail) => log('queue check', message, detail);
@@ -203,5 +205,55 @@ export async function checkQueueBehaviour() {
     holdForCheck(false);
     running = false;
     say('finished', 'paused here; shuffle and repeat put back');
+  }
+}
+
+// Listening test (19 Oct): the queue would keep Spotify's list equal to itself by handing over a
+// corrected list the moment an edit makes it wrong, which restarts the current song at its own
+// position. How audible is that? This plays a liked song and does it three times, 6 s apart (as it
+// is, then twice nudged forward by the request's own delay) for Jack to listen, and logs how long
+// Spotify took each time.
+export async function listenListSwap() {
+  if (running) return;
+  const device = usePlayerStore.getState().deviceId;
+  if (!useUserStore.getState().token) { say('LISTEN not signed in'); return; }
+  if (usePartyStore.getState().code) { say('LISTEN not during a party'); return; }
+  if (!device) { say("LISTEN this browser's player is not ready yet"); return; }
+  running = true;
+  holdForCheck(true);
+  const before = await call('GET', '');
+  const was = before.json || {};
+  try {
+    const songs = (await likedSongs(50)).filter((t) => (t.duration_ms || 0) > 90000);
+    const song = songs[3] || songs[0];
+    if (!song) { say('LISTEN no long enough liked song to play'); return; }
+    const after = songs.slice(4, 10).map((t) => t.uri);
+    const q = `?device_id=${device}`;
+    await call('PUT', '', { device_ids: [device], play: false });
+    await sleep(1200);
+    await call('PUT', `/shuffle?state=false&device_id=${device}`);
+    await call('PUT', `/play${q}`, { uris: [song.uri, ...after], position_ms: 30000 });
+    if (!(await waitForState(playing(song.uri), 8000))) { say('LISTEN could not start the song'); return; }
+    toast('Listen: three swaps, 6, 12 and 18 seconds from now. Is there a hiccup?', { tone: 'info' });
+    say('LISTEN playing', `${song.name}; swaps at 6, 12 and 18 seconds`);
+    let latency = 0;
+    for (const [n, nudge] of [[1, false], [2, true], [3, true]]) {
+      await sleep(6000);
+      const asked = Date.now();
+      const pos = Math.round(positionNow() + (nudge ? latency : 0));
+      const r = await call('PUT', `/play${q}`, { uris: [song.uri, ...after], position_ms: pos });
+      const back = await waitForState((st) => playing(song.uri)(st) && st.timestamp > asked, 6000);
+      if (n === 1) latency = r.ms;
+      say(`LISTEN swap ${n}${nudge ? ` (nudged ${latency} ms)` : ''}`, back ? `request ${r.ms} ms, playing reported ${back - asked} ms after asking, at ${Math.round(pos / 1000)}s` : 'no fresh report');
+    }
+    await sleep(5000);
+  } catch (err) {
+    say('LISTEN stopped by an error', err?.message || String(err));
+  } finally {
+    await call('PUT', `/pause?device_id=${device}`);
+    if (was.shuffle_state !== undefined) await call('PUT', `/shuffle?state=${Boolean(was.shuffle_state)}&device_id=${device}`);
+    holdForCheck(false);
+    running = false;
+    say('LISTEN finished', 'paused here; tell Claude whether you heard each swap');
   }
 }

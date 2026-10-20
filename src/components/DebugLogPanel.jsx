@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getEntries, subscribe, clearLog, formatEntry, formatLog } from '../services/debugLog';
 import { checkSpotifyEndpoints } from '../services/endpointCheck';
-import { checkQueueBehaviour } from '../services/queueCheck';
+import { checkQueueBehaviour, listenListSwap } from '../services/queueCheck';
 
 const PAGE = 300;
 
@@ -50,6 +50,7 @@ export default function DebugLogPanel({ onClose }) {
   const [checking, setChecking] = useState(false);
   const [queueChecking, setQueueChecking] = useState(false);
   const [confirmQueueCheck, setConfirmQueueCheck] = useState(false);
+  const [listening, setListening] = useState(false);
 
   useEffect(() => subscribe(() => rerender((n) => n + 1)), []);
   useEffect(() => {
@@ -124,6 +125,15 @@ export default function DebugLogPanel({ onClose }) {
           title="Plays a few seconds of your liked songs here to see how Spotify handles lists of songs; takes about two minutes and leaves the music paused"
         >
           {queueChecking ? 'Checking queue…' : confirmQueueCheck ? 'Plays music here for ~2 min: tap again' : 'Check queue'}
+        </button>
+        <button
+          type="button"
+          disabled={listening}
+          onClick={() => { setListening(true); setFilter('queue check'); listenListSwap().finally(() => setListening(false)); }}
+          className={button}
+          title="Plays a liked song here for about half a minute and swaps Spotify's list three times; listen for a hiccup"
+        >
+          {listening ? 'Listen…' : 'Listen: list swap'}
         </button>
         <button type="button" onClick={handleClear} className={`${button} ${confirmClear ? 'text-[rgb(240,160,160)]' : ''}`}>
           {confirmClear ? 'Tap again to clear' : 'Clear'}
