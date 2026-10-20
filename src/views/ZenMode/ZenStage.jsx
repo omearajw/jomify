@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { createZenRenderer } from './zenGl';
+import { createZenRenderer, fitBig } from './zenGl';
 import { focusAt, fillProgress, layoutFocus, faceKey, SMALL_RATIO, wordFill, followFill, WORD_LEAD_MS, chorusLines, endingAt } from './lyricFocus';
 import { positionNow } from '../../lib/playbackClock';
 import { FALLBACK_PALETTE } from './palette';
@@ -45,6 +45,7 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
     const items = new Map(); // key -> the line, its texture and where it is drawn this frame
     const colours = (live.current.palette || FALLBACK_PALETTE).map((c) => c.slice());
     let t = 0, speed = 1, dim = 1, intro = 0, beat = 0, big = 60;
+    let fitted = { key: '', big: 60 };
     // The song's character, eased so a new song's scene arrives over a few seconds
     const mood = { energy: 0.5, valence: 0.5, acoustic: 0, minor: 0, lift: 0 };
     let ending = 0;
@@ -124,6 +125,13 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
       if (L.showLyrics && L.lines?.length && box && box.width > 0 && boxW > 0) {
         focus = focusAt(L.lines, pos);
         big = Math.round(Math.max(26, Math.min(84, boxW * 0.105)) * dpr); // the room's full-state column is ~290px wide: the type follows the box down
+        // then down again for a line too long for the box's height, this line only
+        const fitKey = `${L.linesKey}|${focus.prev}|${focus.current}|${focus.next}|${boxW}|${boxH}|${big}`;
+        if (fitted.key !== fitKey) {
+          const text = (i) => (i === null || i === focus.current ? null : L.lines[i].text);
+          fitted = { key: fitKey, big: fitBig({ cur: focus.current === null ? null : L.lines[focus.current].text, prev: text(focus.prev), next: text(focus.next), big, maxW: boxW * dpr, maxH: boxH * dpr, smallRatio: SMALL_RATIO, least: Math.round(16 * dpr) }) };
+        }
+        big = fitted.big;
         const want = [];
         if (focus.current !== null) want.push([focus.current, 'big']);
         if (focus.prev !== null) want.push([focus.prev, 'small']);

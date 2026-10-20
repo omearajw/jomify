@@ -18,6 +18,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as Q from './model';
 import { loadSource, kindOf } from './sources';
+import { newQueueOn, whenPlaylistEnds } from './settings';
 import { pull, push } from './share';
 import { usePlayerStore } from '../store/playerStore';
 import { useUserStore } from '../store/userStore';
@@ -66,7 +67,7 @@ const player = () => usePlayerStore.getState();
 const token = () => useUserStore.getState().token;
 const current = () => player().playbackState?.track_window?.current_track || null;
 
-export const engineOn = () => useUserStore.getState().playbackSettings?.queueEngine === true;
+export const engineOn = () => newQueueOn(useUserStore.getState().playbackSettings);
 // A party (src/party): guests' requests are Next up, in the party's order, taken one at a time
 // from the party server just before they are due; the backing playlist is Then. Only the
 // device conducting the party carries it out.
@@ -464,10 +465,10 @@ async function switchNow(key, due = Date.now()) {
 }
 
 // "When a playlist ends": what plays after the last song, as a new source
-const continues = () => ['liked', 'artists'].includes(useUserStore.getState().playbackSettings?.whenPlaylistEnds);
+const continues = () => ['liked', 'artists'].includes(whenPlaylistEnds(useUserStore.getState().playbackSettings));
 
 async function continuation(q) {
-  const setting = useUserStore.getState().playbackSettings?.whenPlaylistEnds;
+  const setting = whenPlaylistEnds(useUserStore.getState().playbackSettings);
   const t = token();
   const ended = Q.advance(q);
   if (setting === 'liked') {
@@ -665,7 +666,7 @@ export function start() {
   unsubs = [
     usePlayerStore.subscribe((s, prev) => { if (s.playbackState !== prev.playbackState) onPlayerState(); }),
     useQueue.subscribe((s, prev) => { if (s.q !== prev.q || s.given !== prev.given) plan(); }),
-    useUserStore.subscribe((s, prev) => { if (s.playbackSettings?.queueEngine !== prev.playbackSettings?.queueEngine) switchedOver(); }),
+    useUserStore.subscribe((s, prev) => { if (newQueueOn(s.playbackSettings) !== newQueueOn(prev.playbackSettings)) switchedOver(); }),
     usePartyStore.subscribe((s, prev) => { if (Boolean(s.code) !== Boolean(prev.code)) partyChanged(Boolean(s.code)); })
   ];
   const onVisible = () => { if (document.visibilityState === 'visible') pullNow(); };

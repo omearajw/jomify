@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../store/userStore';
+import { newQueueOn } from '../queue/settings';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useSlice } from '../store/selectors';
 import { artUrl } from '../utils/images';
@@ -56,7 +57,7 @@ export default function QueuePanel() {
   };
   const isMobile = useIsMobile();
   // the new queue (src/queue) shows itself, the same list as the room's
-  const newQueue = useUserStore((s) => s.playbackSettings?.queueEngine === true);
+  const newQueue = useUserStore((s) => newQueueOn(s.playbackSettings));
 
 
   useEffect(() => {

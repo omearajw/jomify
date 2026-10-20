@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { useUserStore } from '../store/userStore';
+import { newQueueOn } from '../queue/settings';
 import { fetchPlaylistSummary, fetchAlbumsByIds, fetchArtistsByIds } from '../services/spotify/api';
 import { useQueue } from '../queue/engine';
 
@@ -30,7 +31,7 @@ async function lookUp(token, { type, id }) {
 export function usePlayingFrom() {
   // With the new queue (src/queue) Spotify plays a list and names no context; the queue's source
   // is what it is playing from
-  const newQueue = useUserStore((s) => s.playbackSettings?.queueEngine === true);
+  const newQueue = useUserStore((s) => newQueueOn(s.playbackSettings));
   const source = useQueue((s) => s.q.source);
   const spotifyContext = usePlayerStore((s) => s.playbackState?.context?.uri || null);
   const contextUri = newQueue ? source?.uri || null : spotifyContext;

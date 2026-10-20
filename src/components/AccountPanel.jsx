@@ -12,6 +12,7 @@ import { disableNotifications } from '../pwa/push';
 import { clearLibraryCache } from '../services/libraryCache';
 import { canHearComputer } from '../views/ZenMode/zenPulse';
 import { isDemo } from '../demo/boot';
+import { newQueueOn, whenPlaylistEnds } from '../queue/settings';
 import { Keyboard } from 'lucide-react';
 
 const ENDINGS = [
@@ -30,8 +31,8 @@ const LAYOUTS = [
   { id: 'off', label: 'The old layout (legacy)', hint: 'The sidebar and pages Jomify had before the room. Kept as it is: new features and fixes go to the room only' }
 ];
 const QUEUES = [
-  { id: 'old', label: 'Current' },
-  { id: 'new', label: 'New (testing)', hint: 'Jomify keeps the whole queue, playlist included, and hands Spotify the list to play. Shuffle, repeat and "When a playlist ends" are Jomify\'s; with "Let Spotify choose" the music stops at the end, as Spotify has nothing of its own to pick from a list' }
+  { id: 'new', label: 'New', hint: 'Jomify keeps the whole queue, playlist included, and hands Spotify the list to play. Shuffle, repeat and "When a playlist ends" are Jomify\'s' },
+  { id: 'old', label: 'Old', hint: 'The queue Jomify had before: Spotify plays the playlist itself and Jomify adds the songs you queue' }
 ];
 const HEARTS = [
   { id: 'always', label: 'Always' },
@@ -300,8 +301,8 @@ export default function AccountPanel({ variant = 'footer', tagline = '' }) {
       )}
 
       <p className="pt-4 room-mono text-[var(--room-faint)]">Playback</p>
-      <Choice label="When a playlist ends" value={playbackSettings?.whenPlaylistEnds || 'spotify'} options={ENDINGS} onChange={(v) => setPlaybackSetting('whenPlaylistEnds', v)} />
-      <Choice label="Queue" value={playbackSettings?.queueEngine ? 'new' : 'old'} options={QUEUES} onChange={(v) => setPlaybackSetting('queueEngine', v === 'new')} />
+      <Choice label="When a playlist ends" value={whenPlaylistEnds(playbackSettings)} options={newQueueOn(playbackSettings) ? ENDINGS.filter((e) => e.id !== 'spotify') : ENDINGS} onChange={(v) => setPlaybackSetting('whenPlaylistEnds', v)} />
+      <Choice label="Queue" value={newQueueOn(playbackSettings) ? 'new' : 'old'} options={QUEUES} onChange={(v) => setPlaybackSetting('queueEngine', v === 'new')} />
 
       <p className="pt-4 room-mono text-[var(--room-faint)]">App</p>
       <Choice label="Open on" value={playbackSettings?.startupPage || 'resume'} options={STARTS} onChange={(v) => setPlaybackSetting('startupPage', v)} />

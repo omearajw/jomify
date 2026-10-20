@@ -205,7 +205,8 @@ function App() {
       syncSheetWithHistory((s) => s.isQueueOpen, () => setQueueOpen(false), { tag: 'queue', when: isMobileViewport }),
       syncSheetWithHistory((s) => s.isDevicePickerOpen, () => setDevicePickerOpen(false), { tag: 'devices' }),
       syncSheetWithHistory((s) => s.isAccountOpen, () => useUserStore.getState().setAccountOpen(false), { tag: 'account' }),
-      syncSheetWithHistory((s) => Boolean(s.contextMenu), () => setContextMenu(null), { tag: 'menu', when: isMobileViewport })
+      syncSheetWithHistory((s) => Boolean(s.contextMenu), () => setContextMenu(null), { tag: 'menu', when: isMobileViewport }),
+      syncSheetWithHistory((s) => Boolean(s.bigPicture), () => useUserStore.getState().setBigPicture(null), { tag: 'picture' })
     ];
     return () => { unsubscribes.forEach((fn) => fn()); stop(); };
   }, [signedIn]);
@@ -450,6 +451,8 @@ function App() {
   }, [token, profile, sevens, sevensCheckNonce]);
 
   
+  const roomLayout = useUserStore((s) => (s.playbackSettings?.newLayout ?? 'on') === 'on');
+
   if (!token) {
     return (
       <div className="relative flex h-dvh items-center justify-center overflow-hidden px-6" style={{ background: 'var(--room-ink)', color: 'var(--room-paper)', fontFamily: 'var(--font-room)' }}>
@@ -478,8 +481,10 @@ function App() {
   
   return (
     <>
-      <div className="fixed inset-0 z-[-2] bg-aurora opacity-20"></div>
-      <div className="fixed inset-0 z-[-1] bg-noise opacity-[0.03] pointer-events-none"></div>
+      {/* the old layout's ground; the room paints its own, and this showing while the room's code
+          loaded was the old design flashing at every start */}
+      {!roomLayout && <div className="fixed inset-0 z-[-2] bg-aurora opacity-20"></div>}
+      {!roomLayout && <div className="fixed inset-0 z-[-1] bg-noise opacity-[0.03] pointer-events-none"></div>}
       
       {isDemo() && <DemoBadge />}
       <MainLayout>

@@ -1,6 +1,7 @@
 import { useUserView } from '../views/User/useUserView';
 import { shareSpotifyLink, spotifyLink } from '../services/share';
 import { artUrl } from '../utils/images';
+import { showPicture } from './picture';
 
 // Someone's profile on the room's language: the head (a round avatar, the facts, the name, then
 // Follow, friend, Open in Spotify and Share as words), and their public playlists as covers that
@@ -43,9 +44,9 @@ export default function RoomUser() {
   return (
     <Shell>
       <header className="flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4">
-        <div className="grid h-[168px] w-[168px] shrink-0 place-items-center overflow-hidden rounded-full bg-white/5 text-[56px] font-semibold text-[var(--room-dim)] @max-md:h-[120px] @max-md:w-[120px] @max-md:text-[40px]">
+        <button type="button" onClick={(e) => showPicture(e.currentTarget, user.images, name)} disabled={!avatar} aria-label={`See ${name}'s picture`} className="grid h-[168px] w-[168px] shrink-0 cursor-zoom-in place-items-center overflow-hidden rounded-full bg-white/5 text-[56px] font-semibold text-[var(--room-dim)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-default disabled:hover:scale-100 @max-md:h-[120px] @max-md:w-[120px] @max-md:text-[40px]" style={{ transitionDuration: 'var(--room-mid)' }}>
           {avatar ? <img src={avatar} alt="" draggable="false" className="h-full w-full object-cover" /> : name.charAt(0).toUpperCase()}
-        </div>
+        </button>
         <div className="min-w-0 flex-1 pb-1">
           <Mono className="text-[var(--room-faint)]">{facts}</Mono>
           <h1 className="mt-2 break-words text-[34px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] [text-wrap:balance] @max-md:text-[26px]">{name}</h1>

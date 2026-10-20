@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '../../store/playerStore';
 import { positionNow } from '../../lib/playbackClock';
@@ -23,8 +23,36 @@ function useFocus(lines) {
 export function ZenFocusLyricsLite({ lines }) {
   const focus = useFocus(lines);
   const shown = [focus.prev, focus.current, focus.next].filter((i) => i !== null);
+  // A long line shrinks, with the ones either side, until the three fit the box's height (Jack,
+  // 20 Oct: they ran out of it). Measured on an unseen copy with no transitions, so the size is
+  // the one being eased to, not one on the way; the shown lines ease to it. (Inline: the line's
+  // own transition is unlayered CSS and beats any Tailwind class.)
+  const boxRef = useRef(null);
+  const copyRef = useRef(null);
+  const shownKey = shown.join(',');
+  useLayoutEffect(() => {
+    const box = boxRef.current, copy = copyRef.current;
+    if (!box || !copy) return undefined;
+    const fit = () => {
+      let f = 1;
+      for (let k = 0; k < 8; k++) {
+        copy.style.setProperty('--fit', f);
+        const over = copy.offsetHeight / box.clientHeight;
+        if (over <= 1 || f <= 0.35) break;
+        f = Math.max(0.35, f * Math.max(0.7, 1 / Math.sqrt(over)));
+      }
+      box.style.setProperty('--fit', f);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [shownKey]);
   return (
-    <div className="@container absolute inset-0 flex flex-col justify-center gap-6">
+    <div ref={boxRef} className="@container absolute inset-0 flex flex-col justify-center gap-6">
+      <div ref={copyRef} aria-hidden="true" className="pointer-events-none invisible absolute inset-x-0 top-0 flex flex-col gap-6">
+        {shown.map((i) => <p key={i} className={`zen-lite-line font-extrabold tracking-tight leading-[1.1] ${i === focus.current ? 'is-current' : ''}`} style={{ transition: 'none' }}>{lines[i].text}</p>)}
+      </div>
       <AnimatePresence initial mode="popLayout">
         {shown.map((i) => {
           const isCurrent = i === focus.current;

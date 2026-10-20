@@ -5,6 +5,7 @@ import {
   ChevronDown, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, MonitorSpeaker, ListMusic, MicVocal, Ellipsis, Volume2
 } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
+import { newQueueOn } from '../queue/settings';
 import { usePlayerStore } from '../store/playerStore';
 import { useProgress } from '../hooks/useProgress';
 import { togglePlay, next, previous, seek, toggleShuffle, cycleRepeat } from '../services/spotify/playbackController';
@@ -49,7 +50,7 @@ function NowPlayingSheetBody() {
   const queuedNext = useUserStore((s) => s.queueData?.queue?.[0] || null);
   // with the new queue (src/queue) on, the queue itself says
   const queueNext = useQueue((s) => (s.q.next[0] || s.q.then[0] || null));
-  const newQueue = useUserStore((s) => s.playbackSettings?.queueEngine === true);
+  const newQueue = useUserStore((s) => newQueueOn(s.playbackSettings));
   const upNext = newQueue ? queueNext : nextTrack || queuedNext;
   // A speaker or computer playing: its volume, from here
   const remoteVolumeControl = Boolean(activeDevice) && !activeDevice.isLocal && activeDevice.supportsVolume !== false;

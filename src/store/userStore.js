@@ -573,6 +573,10 @@ export const useUserStore = create(
       browseQuery: '',
       setBrowseQuery: (browseQuery) => set((state) => (state.browseQuery === browseQuery ? {} : { browseQuery })),
 
+      // A picture shown large over the room (room/PictureViewer.jsx): { url, name, from } or null
+      bigPicture: null,
+      setBigPicture: (bigPicture) => set({ bigPicture }),
+
       // The keyboard shortcuts sheet ("?")
       isShortcutsOpen: false,
       setShortcutsOpen: (isShortcutsOpen) => set({ isShortcutsOpen }),

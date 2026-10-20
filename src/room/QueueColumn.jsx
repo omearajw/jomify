@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { useQueueStore } from '../store/queueStore';
 import { useUserStore } from '../store/userStore';
+import { newQueueOn } from '../queue/settings';
 import { usePlayerStore } from '../store/playerStore';
 import { usePartyStore } from '../store/partyStore';
 import { fetchQueue } from '../services/spotify/api';
@@ -107,6 +108,6 @@ function OldQueueColumn({ compact = false, maxRows = 3 }) {
 }
 
 export default function QueueColumn(props) {
-  const newQueue = useUserStore((s) => s.playbackSettings?.queueEngine === true);
+  const newQueue = useUserStore((s) => newQueueOn(s.playbackSettings));
   return newQueue ? <QueueList {...props} /> : <OldQueueColumn {...props} />;
 }

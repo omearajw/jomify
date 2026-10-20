@@ -6,6 +6,7 @@ import QueuePanel from './QueuePanel';
 import ContextMenu from '../components/ContextMenu';
 import ToastHost from '../components/Toast';
 import SyncConflictDialog from '../components/SyncConflictDialog';
+import PictureViewer from '../room/PictureViewer';
 import ShortcutsHelp from '../components/ShortcutsHelp';
 import { ChevronLeft } from 'lucide-react';
 import { usePartyStore } from '../store/partyStore';
@@ -190,6 +191,7 @@ export default function MainLayout({ children }) {
         <ToastHost />
         <ProjectorStudioHost />
         <SyncConflictDialog />
+        <PictureViewer />
         {registerServiceWorker && <UpdatePrompt />}
       </div>
     );
@@ -206,6 +208,7 @@ export default function MainLayout({ children }) {
         <ProjectorStudioHost />
         <Tooltips />
         <SyncConflictDialog />
+        <PictureViewer />
         <ShortcutsHelp />
         {registerServiceWorker && <UpdatePrompt />}
       </div>

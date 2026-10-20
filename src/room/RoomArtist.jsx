@@ -10,6 +10,7 @@ import { artUrl } from '../utils/images';
 import { rowButtonProps } from '../utils/a11y';
 import { isSameTrack, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import Artists from './Artists';
+import { showPicture } from './picture';
 
 // An artist on the room's language (DESIGN.md §6, §11): the record-sleeve head with the artist
 // round, as artists are everywhere in the room, then popular songs and your liked songs by them
@@ -126,9 +127,9 @@ export default function RoomArtist() {
     <div className="relative min-h-full pb-10" style={{ fontFamily: 'var(--font-room)' }}>
 
       <header className="relative flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4">
-        <div className="h-[168px] w-[168px] shrink-0 overflow-hidden rounded-full bg-white/5 shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)] @max-md:h-[132px] @max-md:w-[132px]">
+        <button type="button" onClick={(e) => showPicture(e.currentTarget, artist.images, artist.name)} disabled={!imageUrl} aria-label={`See ${artist.name}'s picture`} className="h-[168px] w-[168px] shrink-0 cursor-zoom-in overflow-hidden rounded-full bg-white/5 shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-default disabled:hover:scale-100 @max-md:h-[132px] @max-md:w-[132px]" style={{ transitionDuration: 'var(--room-mid)' }}>
           {imageUrl && <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable="false" />}
-        </div>
+        </button>
         <div className="min-w-0 flex-1 pb-1">
           <Mono className="text-[var(--room-faint)]">{facts}</Mono>
           <h1 className="mt-2 text-[34px] @max-md:text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] [text-wrap:balance] line-clamp-2">{artist.name}</h1>

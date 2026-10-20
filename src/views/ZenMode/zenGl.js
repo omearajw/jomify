@@ -194,6 +194,25 @@ export function wrapRows(ctx, text, maxW) {
   return rows;
 }
 
+// The largest size, up to `big`, at which the sung line and the small ones either side fit the
+// box's height (device pixels), laid out as layoutFocus does: the sung line centred, the others a
+// gap above and below. Sized from the width alone, a long line wrapped past the box, over the
+// song's name and the controls (Jack, 20 Oct). Never below `least`.
+let fitCtx = null;
+export function fitBig({ cur, prev, next, big, maxW, maxH, smallRatio, least }) {
+  fitCtx = fitCtx || document.createElement('canvas').getContext('2d');
+  const height = (text, px) => { fitCtx.font = lineFont(px); return Math.max(1, wrapRows(fitCtx, text, maxW).length) * px * 1.1; };
+  const fits = (px) => {
+    const small = Math.round(px * smallRatio);
+    const side = Math.max(prev == null ? 0 : height(prev, small), next == null ? 0 : height(next, small));
+    return height(cur ?? '', px) / 2 + (side ? px * 0.55 + side : 0) <= maxH / 2;
+  };
+  if (big <= least || fits(big)) return big;
+  let lo = least, hi = big;
+  while (hi - lo > 1) { const mid = Math.floor((lo + hi) / 2); if (fits(mid)) lo = mid; else hi = mid; }
+  return lo;
+}
+
 // onFail(reason) says why WebGL could not be used, for the debug log
 export function createZenRenderer(canvas, { onLost, onFail } = {}) {
   const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, powerPreference: 'high-performance' });

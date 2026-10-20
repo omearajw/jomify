@@ -283,8 +283,9 @@
   .zen-range::-moz-range-thumb { width: 20px; height: 20px; }
 }
 /* sized by the lyric box, not the window: the room's full-state column is a quarter of the width */
-.zen-lite-line { font-size: clamp(0.9rem, 3.2cqw, 1.6rem); transition: font-size 0.8s cubic-bezier(0.16, 1, 0.3, 1), text-shadow 0.8s ease; }
-.zen-lite-line.is-current { font-size: clamp(1.5rem, 8.5cqw, 4.6rem); text-shadow: 0 0 2px #fff, 0 0 18px rgba(255, 255, 255, 0.45), 0 0 40px var(--zen-glow); }
+/* --fit: below 1 when a long line would not fit its box's height (ZenLyricsDom.jsx) */
+.zen-lite-line { font-size: calc(clamp(0.9rem, 3.2cqw, 1.6rem) * var(--fit, 1)); transition: font-size 0.8s cubic-bezier(0.16, 1, 0.3, 1), text-shadow 0.8s ease; }
+.zen-lite-line.is-current { font-size: calc(clamp(1.5rem, 8.5cqw, 4.6rem) * var(--fit, 1)); text-shadow: 0 0 2px #fff, 0 0 18px rgba(255, 255, 255, 0.45), 0 0 40px var(--zen-glow); }
 /* Before the first line and in instrumental breaks: three dots that fill in as the wait runs out */
 .zen-dot { opacity: clamp(0.15, calc(var(--p, 0) * 3 - var(--k)), 1); transform: scale(clamp(0.7, calc(0.7 + (var(--p, 0) * 3 - var(--k)) * 0.3), 1));
   box-shadow: 0 0 14px rgba(255, 255, 255, 0.55), 0 0 30px var(--zen-glow); animation: zen-breathe 3.2s ease-in-out infinite; }
