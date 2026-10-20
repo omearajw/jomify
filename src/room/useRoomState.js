@@ -31,7 +31,7 @@ const takesLayerOn = (phone, v) => MODE_VIEWS.has(v) && !(phone && v === 'unadde
 
 export function useRoomState({ phone = false } = {}) {
   const takesLayer = (v) => takesLayerOn(phone, v);
-  const { currentView, setCurrentView, isZenMode, setAccountOpen, activePlaylistId, currentAlbumId, currentArtistId, sevens, viewHistory, playlists, albums, followedArtists } = useSlice(useUserStore, ['currentView', 'setCurrentView', 'isZenMode', 'setAccountOpen', 'activePlaylistId', 'currentAlbumId', 'currentArtistId', 'sevens', 'viewHistory', 'playlists', 'albums', 'followedArtists']);
+  const { currentView, setCurrentView, isZenMode, setAccountOpen, activePlaylistId, currentAlbumId, currentArtistId, currentUserId, navSeq, sevens, viewHistory, playlists, albums, followedArtists } = useSlice(useUserStore, ['currentView', 'setCurrentView', 'isZenMode', 'setAccountOpen', 'activePlaylistId', 'currentAlbumId', 'currentArtistId', 'currentUserId', 'navSeq', 'sevens', 'viewHistory', 'playlists', 'albums', 'followedArtists']);
   // the open playlist gets the room's own surface; a Seven keeps its workspace, and everything
   // else is the app's page as it is
   const isSeven = currentView === 'playlist' && sevens.some((x) => x.playlistId === activePlaylistId);
@@ -89,7 +89,11 @@ export function useRoomState({ phone = false } = {}) {
   // paints a frame with the old size.
   // A Seven is the one exception: it is always a Sevens thing, so it takes the Sevens list even
   // when Back brings it up after the library or search.
-  const viewKey = `${currentView}:${activePlaylistId || ''}`;
+  // The key is the open thing itself, not the view's name: artist to artist (or album to album)
+  // with the layer put away kept the name and left the layer down (Jack, 20 Oct). navSeq counts
+  // the navigations, so asking for the thing already open still raises the layer.
+  const openId = { playlist: activePlaylistId, artist: currentArtistId, album: currentAlbumId, user: currentUserId }[currentView];
+  const viewKey = `${currentView}:${openId || ''}:${navSeq}`;
   const [seenView, setSeenView] = useState(viewKey);
   if (seenView !== viewKey) {
     setSeenView(viewKey);

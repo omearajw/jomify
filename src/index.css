@@ -349,7 +349,11 @@
 .room-rise-one { animation: room-rise 600ms var(--room-ease) 80ms backwards; }
 .room-press { transition: transform 200ms var(--room-ease); }
 .room-press:active { transform: scale(0.86); }
+/* in and out, not the room's ease: a long shrink drags the scroll with it, and the room's quick
+   start moved it ~200px in a frame */
+.room-ease-height { transition: height 640ms cubic-bezier(0.65, 0, 0.35, 1); } /* the time is set where it is used */
 @media (prefers-reduced-motion: reduce) {
+  .room-ease-height { transition: none; }
   .room-rise-list > *, .room-rise-list > .contents > *, .room-turn, .room-rise-one { animation: none !important; }
   .room-press:active { transform: none; }
 }

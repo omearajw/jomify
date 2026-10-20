@@ -582,10 +582,16 @@ export const useUserStore = create(
       requestSearchFocus: () => set({ currentView: 'browse', searchFocusRequested: true, ...(get().currentView === 'browse' ? {} : { viewHistory: pushHistory(get()) }) }),
       clearSearchFocus: () => set({ searchFocusRequested: false }),
 
+      // Every navigation, counted, so the room raises its layer on one even when the view's name is
+      // unchanged (artist to artist) or the page is already the one asked for (useRoomState.js)
+      navSeq: 0,
+
       // Already on that page: no new frame, or Back would appear to do nothing
       navigateToArtist: (artistId) => set((state) => {
-        if (!artistId || (state.currentView === 'artist' && state.currentArtistId === artistId)) return {};
+        if (!artistId) return {};
+        if (state.currentView === 'artist' && state.currentArtistId === artistId) return { navSeq: state.navSeq + 1 };
         return {
+          navSeq: state.navSeq + 1,
           viewHistory: pushHistory(state),
           currentView: 'artist',
           currentArtistId: artistId
@@ -593,8 +599,10 @@ export const useUserStore = create(
       }),
 
       navigateToAlbum: (albumId) => set((state) => {
-        if (!albumId || (state.currentView === 'album' && state.currentAlbumId === albumId)) return {};
+        if (!albumId) return {};
+        if (state.currentView === 'album' && state.currentAlbumId === albumId) return { navSeq: state.navSeq + 1 };
         return {
+          navSeq: state.navSeq + 1,
           viewHistory: pushHistory(state),
           currentView: 'album',
           currentAlbumId: albumId
@@ -602,8 +610,10 @@ export const useUserStore = create(
       }),
 
       navigateToUser: (userId) => set((state) => {
-        if (!userId || (state.currentView === 'user' && state.currentUserId === userId)) return {};
+        if (!userId) return {};
+        if (state.currentView === 'user' && state.currentUserId === userId) return { navSeq: state.navSeq + 1 };
         return {
+          navSeq: state.navSeq + 1,
           viewHistory: pushHistory(state),
           currentView: 'user',
           currentUserId: userId
@@ -616,8 +626,9 @@ export const useUserStore = create(
       // because it was snapshotted after the overwrite. So Back from playlist to playlist did
       // nothing, everywhere. This pushes the frame first, then moves.
       navigateToPlaylist: (playlistId) => set((state) => {
-        if (state.currentView === 'playlist' && state.activePlaylistId === playlistId) return {};
+        if (state.currentView === 'playlist' && state.activePlaylistId === playlistId) return { navSeq: state.navSeq + 1 };
         return {
+          navSeq: state.navSeq + 1,
           viewHistory: pushHistory(state),
           currentView: 'playlist',
           activePlaylistId: playlistId

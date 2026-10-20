@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Play, Shuffle } from 'lucide-react';
 import { getBlurredBackdrop } from '../utils/blurBackdrop';
 import { useRoomStore } from './roomStore';
@@ -25,6 +25,25 @@ const Head = ({ children, right }) => (
   </div>
 );
 
+// Its height eases to what is inside, so a shorter group draws the page up gently rather than
+// snapping the scroll (the scroller clamps a frame at a time as this shrinks)
+// The time grows with the distance: a phone's 3000px shrink in the time of a short one dragged the
+// page past at ~230px a frame.
+function EaseHeight({ children }) {
+  const inner = useRef(null);
+  const [box, setBox] = useState({ height: null, ms: 0 });
+  useLayoutEffect(() => {
+    const el = inner.current;
+    const ro = new ResizeObserver(() => setBox((b) => {
+      const height = el.offsetHeight;
+      return b.height === height ? b : { height, ms: b.height === null ? 0 : Math.min(1000, 380 + Math.abs(height - b.height) * 0.2) };
+    }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return <div className="room-ease-height overflow-hidden" style={{ height: box.height ?? 'auto', transitionDuration: `${box.ms}ms` }}><div ref={inner}>{children}</div></div>;
+}
+
 const KIND = { album: 'Album', single: 'Single', compilation: 'Compilation', appears_on: 'Appears on' };
 const GROUPS = [['album', 'Albums'], ['single', 'Singles and EPs'], ['appears_on', 'Appears on'], ['compilation', 'Compilations']];
 
@@ -44,6 +63,15 @@ export default function RoomArtist() {
     return () => { gone = true; setLight(null); };
   }, [imageUrl, setLight]);
   const heartsAlways = useUserStore((s) => (s.playbackSettings?.rowHearts || 'always') === 'always');
+  // The covers on screen. A group that is still loading keeps the last one up, dimmed, so the page
+  // holds its place until there is something to show (Jack, 20 Oct: the grid emptied, the page
+  // shrank and the scroll jumped up before the new group arrived)
+  const shownKey = `${tab}:${shownAlbums.map((a) => a.id).join(',')}`;
+  const [held, setHeld] = useState({ key: shownKey, list: shownAlbums });
+  if (!tabLoading && held.key !== shownKey) setHeld({ key: shownKey, list: shownAlbums });
+  const grid = tabLoading ? held.list : shownAlbums;
+  // the covers rise in after a tab is picked, not when the page opens
+  const [picked, setPicked] = useState(false);
 
   if (!artist) {
     if (loading.artist) return <Mono className="pt-6 text-[var(--room-faint)]">Loading</Mono>;
@@ -157,19 +185,19 @@ export default function RoomArtist() {
       {albums.length > 0 && (
         <section>
           <div className="mt-10 mb-4 flex items-center gap-6 border-b border-[var(--room-hair)] pb-2 @max-md:mt-8 @max-md:flex-wrap @max-md:gap-y-2">
-            <Mono className="text-[var(--room-faint)]">Discography</Mono>
+            <Mono className="text-[var(--room-faint)]">Discography{tabLoading ? ' · Loading' : ''}</Mono>
             <span role="tablist" className="ml-auto flex items-center gap-4 @max-md:ml-0 @max-md:w-full @max-md:overflow-x-auto @max-md:pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {GROUPS.map(([id, label]) => (counts[id] === null || counts[id] > 0) && (
-                <button key={id} type="button" role="tab" aria-selected={tab === id} aria-pressed={tab === id || undefined} onClick={() => pickTab(id)} className="ui-word">
+                <button key={id} type="button" role="tab" aria-selected={tab === id} aria-pressed={tab === id || undefined} onClick={() => { setPicked(true); pickTab(id); }} className="ui-word">
                   {label}{counts[id] ? ` · ${counts[id]}` : ''}
                 </button>
               ))}
             </span>
           </div>
-          {tabLoading && <Mono className="py-4 text-[var(--room-faint)]">Loading</Mono>}
-          {!tabLoading && shownAlbums.length === 0 && <p className="py-4 text-[13px] text-[var(--room-faint)]">Nothing in this group.</p>}
-          <div className="grid gap-x-5 gap-y-6 @max-md:gap-x-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))' }}>
-            {shownAlbums.map((album) => (
+          <EaseHeight>
+          {!tabLoading && grid.length === 0 && <p className="py-4 text-[13px] text-[var(--room-faint)]">Nothing in this group.</p>}
+          <div key={held.key} aria-busy={tabLoading || undefined} className={`grid gap-x-5 gap-y-6 transition-opacity @max-md:gap-x-4 ${picked ? 'room-rise-list' : ''}`} style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))', opacity: tabLoading ? 0.35 : 1, transitionDuration: 'var(--room-mid)' }}>
+            {grid.map((album) => (
               <div
                 key={album.id}
                 onClick={() => navigateToAlbum(album.id)}
@@ -188,6 +216,7 @@ export default function RoomArtist() {
               </div>
             ))}
           </div>
+          </EaseHeight>
         </section>
       )}
     </div>
