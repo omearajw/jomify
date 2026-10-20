@@ -257,3 +257,83 @@ export async function listenListSwap() {
     say('LISTEN finished', 'paused here; tell Claude whether you heard each swap');
   }
 }
+
+// Spotify's own queue (20 Oct): before the queue relies on it to make the next song right without
+// a race, three facts measured on the account. Does a song added to Spotify's queue play at the
+// song change, ahead of the list's next? After it, does the list carry on where it was? And does
+// starting a new list clear Spotify's queue, or does a queued song survive it?
+export async function checkSpotifyQueue() {
+  if (running) return;
+  const device = usePlayerStore.getState().deviceId;
+  if (!useUserStore.getState().token) { say('QUEUE not signed in'); return; }
+  if (usePartyStore.getState().code) { say('QUEUE not during a party'); return; }
+  if (!device) { say("QUEUE this browser's player is not ready yet"); return; }
+  running = true;
+  holdForCheck(true);
+  const before = await call('GET', '');
+  const was = before.json || {};
+  const q = `?device_id=${device}`;
+  const name = (uri, songs) => songs.find((t) => t.uri === uri)?.name || uri;
+  const changedFrom = (uri) => (st) => st.track_window?.current_track && !sameSong(st.track_window.current_track, uri) && !st.paused;
+  const queued = async (uri) => {
+    for (let i = 0; i < 12; i++) {
+      const r = await call('GET', '/queue');
+      const at = (r.json?.queue || []).findIndex((t) => sameSong(t, uri));
+      if (at >= 0) return at;
+      await sleep(300);
+    }
+    return -1;
+  };
+  try {
+    const songs = (await likedSongs(80)).filter((t) => (t.duration_ms || 0) > 60000);
+    if (songs.length < 8) { say('QUEUE needs 8 liked songs over a minute long'); return; }
+    const [s1, s2, s3, s4, s5, q1, q2] = songs.slice(0, 7);
+    await call('PUT', '', { device_ids: [device], play: false });
+    await sleep(1200);
+    await call('PUT', `/shuffle?state=false&device_id=${device}`);
+    await call('PUT', `/repeat?state=off&device_id=${device}`);
+    toast('Checking Spotify\'s queue: about a minute of music here', { tone: 'info' });
+
+    // 1. a song added to Spotify's queue, at the song change
+    await call('PUT', `/play${q}`, { uris: [s1.uri, s2.uri, s3.uri], position_ms: s1.duration_ms - 12000 });
+    if (!(await waitForState(playing(s1.uri), 8000))) { say('QUEUE could not start the test'); return; }
+    const added = await call('POST', `/queue?uri=${encodeURIComponent(q1.uri)}&device_id=${device}`);
+    const shownAt = await queued(q1.uri);
+    say('QUEUE ADDED DURING A LIST', `answered ${added.status}; in Spotify's queue ${shownAt >= 0 ? `at position ${shownAt + 1}` : 'NOT shown'}`);
+    await waitForState(changedFrom(s1.uri), 20000);
+    const first = current()?.track_window?.current_track;
+    say('QUEUE AT THE SONG CHANGE', sameSong(first, q1.uri) ? `the queued song played (${q1.name}), ahead of the list's next` : sameSong(first, s2.uri) ? `the list's next played (${s2.name}); the queued song did NOT go first` : `something else: ${first?.name || 'nothing'}`);
+
+    // 2. after the queued song: where does the list carry on?
+    if (sameSong(first, q1.uri)) {
+      await call('PUT', `/seek?position_ms=${q1.duration_ms - 6000}&device_id=${device}`);
+      await waitForState(changedFrom(q1.uri), 15000);
+      const then = current()?.track_window?.current_track;
+      say('QUEUE AFTER THE QUEUED SONG', sameSong(then, s2.uri) ? `the list carried on where it was (${s2.name})` : sameSong(then, s3.uri) ? `the list skipped one (${s3.name})` : `something else: ${then?.name || 'nothing'}`);
+    }
+
+    // 3. a new list, with a song waiting in Spotify's queue
+    await call('POST', `/queue?uri=${encodeURIComponent(q2.uri)}&device_id=${device}`);
+    const waiting = await queued(q2.uri);
+    await call('PUT', `/play${q}`, { uris: [s4.uri, s5.uri], offset: { position: 0 } });
+    await waitForState(playing(s4.uri), 8000);
+    await sleep(1500);
+    const after = await queued(q2.uri);
+    say('QUEUE AND A NEW LIST', waiting < 0 ? "the queued song never showed in Spotify's queue" : after >= 0 ? `the queued song SURVIVED the new list (position ${after + 1})` : 'the new list CLEARED the queued song');
+    if (after >= 0) {
+      await call('PUT', `/seek?position_ms=${s4.duration_ms - 6000}&device_id=${device}`);
+      await waitForState(changedFrom(s4.uri), 15000);
+      const next = current()?.track_window?.current_track;
+      say('QUEUE AND A NEW LIST, at its song change', sameSong(next, q2.uri) ? `the surviving queued song played (${q2.name})` : `${name(next?.uri, songs)} played`);
+    }
+  } catch (err) {
+    say('QUEUE stopped by an error', err?.message || String(err));
+  } finally {
+    await call('PUT', `/pause?device_id=${device}`);
+    if (was.shuffle_state !== undefined) await call('PUT', `/shuffle?state=${Boolean(was.shuffle_state)}&device_id=${device}`);
+    if (was.repeat_state) await call('PUT', `/repeat?state=${was.repeat_state}&device_id=${device}`);
+    holdForCheck(false);
+    running = false;
+    say('QUEUE finished', 'paused here');
+  }
+}

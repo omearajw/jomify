@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getEntries, subscribe, clearLog, formatEntry, formatLog } from '../services/debugLog';
 import { checkSpotifyEndpoints } from '../services/endpointCheck';
-import { checkQueueBehaviour, listenListSwap } from '../services/queueCheck';
+import { checkQueueBehaviour, listenListSwap, checkSpotifyQueue } from '../services/queueCheck';
 
 const PAGE = 300;
 
@@ -51,6 +51,7 @@ export default function DebugLogPanel({ onClose }) {
   const [queueChecking, setQueueChecking] = useState(false);
   const [confirmQueueCheck, setConfirmQueueCheck] = useState(false);
   const [listening, setListening] = useState(false);
+  const [queueTesting, setQueueTesting] = useState(false);
 
   useEffect(() => subscribe(() => rerender((n) => n + 1)), []);
   useEffect(() => {
@@ -135,6 +136,15 @@ export default function DebugLogPanel({ onClose }) {
         >
           {listening ? 'Listen…' : 'Listen: list swap'}
         </button>
+        <button
+          type="button"
+          disabled={queueTesting}
+          onClick={() => { setQueueTesting(true); setFilter('queue check'); checkSpotifyQueue().finally(() => setQueueTesting(false)); }}
+          className={button}
+          title="Plays music here for about a minute to see how Spotify's own queue behaves with Jomify's lists"
+        >
+          {queueTesting ? "Checking Spotify's queue…" : "Check Spotify's queue"}
+        </button>
         <button type="button" onClick={handleClear} className={`${button} ${confirmClear ? 'text-[rgb(240,160,160)]' : ''}`}>
           {confirmClear ? 'Tap again to clear' : 'Clear'}
         </button>
@@ -147,7 +157,7 @@ export default function DebugLogPanel({ onClose }) {
           className="ui-field min-w-[8rem] flex-1 text-[13px]"
         />
       </div>
-      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-2 text-[11px] leading-relaxed [font-family:var(--font-mono)]">
+      <div className="custom-scrollbar min-h-0 flex-1 cursor-text overflow-y-auto overscroll-contain px-5 py-2 text-[11px] leading-relaxed [font-family:var(--font-mono)]" style={{ WebkitUserSelect: 'text', userSelect: 'text' }}>
         {visible.length === 0 && <p className="py-6 text-center text-[var(--room-faint)]">Nothing logged{needle ? ' matching that' : ''}.</p>}
         {visible.map((e, i) => (
           <p key={`${e.t}-${i}`} className={`break-words border-b border-[var(--room-hair)] py-0.5 ${toneFor(e.c)}`}>{formatEntry(e)}</p>
