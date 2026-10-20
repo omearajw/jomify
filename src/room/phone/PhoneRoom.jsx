@@ -7,6 +7,7 @@ import UnaddedEngine from '../UnaddedEngine';
 import PhoneNowPlaying from './PhoneNowPlaying';
 import PhoneUnadded from './PhoneUnadded';
 import PhoneSheet from './PhoneSheet';
+import PhoneMiniPlayer from './PhoneMiniPlayer';
 
 // The room on a phone (DESIGN.md §5): the playing room underneath, the sheet over it. The state is
 // the Mac room's own (useRoomState): the same lists, stops, Back and launcher picks. One column:
@@ -20,6 +21,9 @@ export default function PhoneRoom({ children }) {
   } = useRoomState({ phone: true });
   const [closedH, setClosedH] = useState(76);
   const onHeadHeight = useCallback((h) => setClosedH(h), []);
+  // the player bar beneath the raised sheet moves with it
+  const [lift, setLift] = useState({ to: 0, dragging: false });
+  const onLift = useCallback((to, dragging) => setLift((was) => (was.to === to && was.dragging === dragging ? was : { to, dragging })), []);
   const List = LISTS[list];
 
   // what the sheet shows at full: the open thing (a playlist, search, a mode, a list's own page),
@@ -56,11 +60,12 @@ export default function PhoneRoom({ children }) {
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: 'var(--room-ink)' }}>
       {unadded ? <PhoneUnadded bottomInset={closedH} /> : <PhoneNowPlaying bottomInset={closedH + 12} />}
-      <PhoneSheet state={layer} onState={setLayer} lit={lit} litAtRest={unadded ? 'unadded' : null} onPick={pick} onProfile={() => pick('profile')} head={head} onHeadHeight={onHeadHeight}>
+      <PhoneSheet state={layer} onState={setLayer} lit={lit} litAtRest={unadded ? 'unadded' : null} onPick={pick} onProfile={() => pick('profile')} head={head} onHeadHeight={onHeadHeight} onLift={onLift}>
         {showThing
           ? <OpenThing currentView={currentView} isSeven={isSeven} roomPlaylist={roomPlaylist}>{children}</OpenThing>
           : List ? <List onExpand={unadded ? () => setLayer('closed') : expand} /> : null}
       </PhoneSheet>
+      <PhoneMiniPlayer lift={lift.to} dragging={lift.dragging} onOpen={() => setLayer('closed')} />
       {currentView === 'unadded' && <UnaddedEngine key={suggestionsAttempt} pileId={pileId} />}
     </div>
   );

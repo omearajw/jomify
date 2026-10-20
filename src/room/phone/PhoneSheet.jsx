@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { artUrl } from '../../utils/images';
+import { BAR_PX } from './PhoneMiniPlayer';
 
 // The phone's layer (DESIGN.md §5): a sheet from the bottom whose head is always showing, the
 // handle and the launcher (Library · Search · Sevens · Unadded · Party). Three stops, as on the
@@ -8,6 +9,8 @@ import { artUrl } from '../../utils/images';
 // that starts on the head moves the sheet, following the finger and settling on the nearest stop
 // or, flicked, the next one in that direction; a drag inside the sheet only scrolls it; nothing
 // lives at the top edge, which is the notification shade's.
+// Raised, the sheet stands on the player bar (PhoneMiniPlayer), which rises from the bottom edge
+// beneath it so the controls stay within the thumb's reach; `onLift` tells the room how far.
 
 const LAUNCHER = [
   { id: 'library', label: 'Library' },
@@ -53,7 +56,7 @@ function useSafeInsets() {
   return insets;
 }
 
-export default function PhoneSheet({ state, onState, lit, litAtRest = null, onPick, onProfile, head, children, onHeadHeight }) {
+export default function PhoneSheet({ state, onState, lit, litAtRest = null, onPick, onProfile, head, children, onHeadHeight, onLift }) {
   // switched-off modes leave the launcher; your picture at its end is Profile (Settings is there)
   const modesOff = useUserStore((s) => s.playbackSettings?.modesOff) || [];
   const me = useUserStore((s) => s.profile);
@@ -76,7 +79,8 @@ export default function PhoneSheet({ state, onState, lit, litAtRest = null, onPi
   useEffect(() => { onHeadHeight?.(closedH); }, [closedH, onHeadHeight]);
 
   const fullH = vh - safe.top - 10;
-  const stops = { closed: closedH, half: Math.round(vh * 0.58), full: fullH };
+  const barH = BAR_PX + safe.bottom;
+  const stops = { closed: closedH, half: Math.round((vh - barH) * 0.6), full: fullH - barH };
   const order = ['closed', 'half', 'full'];
 
   // a drag in progress: the visible height follows the finger
@@ -115,8 +119,12 @@ export default function PhoneSheet({ state, onState, lit, litAtRest = null, onPi
   };
 
   const visible = dragH ?? stops[state];
-  const translate = fullH - visible;
-  const contentH = Math.max(0, visible - headH - safe.bottom);
+  // how far it stands on the player bar: none closed, all of it raised, and in between as a drag
+  // from closed gets going
+  const lift = dragH !== null ? Math.max(0, Math.min(1, (dragH - closedH) / 80)) : state === 'closed' ? 0 : 1;
+  useEffect(() => { onLift?.(lift, dragH !== null); }, [lift, dragH, onLift]);
+  const translate = fullH - visible - lift * barH;
+  const contentH = Math.max(0, visible - headH - (lift ? 0 : safe.bottom));
 
   return (
     <section
