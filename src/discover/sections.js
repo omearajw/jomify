@@ -4,8 +4,9 @@ import { log } from '../services/debugLog';
 
 // Discover's sections (Jack, 21 Oct): what each one is and how it is found. Spotify no longer gives
 // apps like Jomify recommendations, related artists or its own playlists (404 since Nov 2024), so
-// every section is built from what still answers: your top artists and songs, who you follow, new
-// releases, search's filters, your Liked Songs and your friends' public playlists.
+// every section is built from what still answers: your top artists and songs, who you follow,
+// search's filters, your Liked Songs and your friends' public playlists. Nothing Spotify picks to
+// feature: its "new releases" list was dropped as promotion, mostly strangers (Jack, 21 Oct).
 // Each loader takes a context { token, me, followed, friends, liked, top } and returns the items,
 // or { items, label } when the section's name depends on what was found.
 
@@ -81,16 +82,6 @@ export const SECTIONS = [
         await pause();
       }
       return uniqueBy(out, (r) => r.id).sort((x, y) => x.rank - y.rank || newestFirst(x, y));
-    }
-  },
-  {
-    key: 'releasesForYou', label: 'New releases for you', type: 'records', meta: 'released', needsLiked: true,
-    // Spotify's new releases, only those by artists you love: the whole list was mostly strangers
-    // (Jack, 21 Oct). Usually short, and left out when none match.
-    async load(ctx) {
-      const data = await getJson(ctx.token, `${API}/browse/new-releases?limit=50`);
-      const mine = new Set(lovedArtists(ctx, 400).map((a) => a.id));
-      return (data.albums?.items || []).filter((r) => r?.artists?.some((a) => mine.has(a.id)));
     }
   },
   {
