@@ -27,6 +27,7 @@
     "test:queue": "node scripts/queue-cases.mjs",
     "test:queue-model": "node scripts/queue-model-cases.mjs",
     "test:queue-server": "node scripts/queue-server-cases.mjs",
+    "test:queue-mirror": "node scripts/queue-mirror-cases.mjs",
     "preview": "vite preview",
     "build-app": "vite build && electron-builder -w"
   },

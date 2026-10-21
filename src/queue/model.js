@@ -8,10 +8,9 @@
 //   played   what has played, newest first; Previous goes back through it
 //
 // Every operation takes a queue and returns a new one; nothing here talks to Spotify. Spotify is
-// given the list `toGive` describes and plays through it by itself; when an edit means its next
-// song is no longer the queue's, `needsSwitch` says so and the player hands it a new list at the
-// next song change (a list replaced mid-song stops the music for ~0.3 s; at a song change it is
-// seamless: Jack's Check queue run, 19 Oct).
+// given the list `toGive` describes when someone presses play and plays through it by itself; how
+// the queue's next song reaches it after that (through Spotify's own queue, never a list swapped
+// at the end of a song) is mirror.js.
 //
 // A source is anything with a list of songs: a playlist, an album, an artist's songs, Liked Songs,
 // or a one-off list (search results, Unadded's pile, a Seven's batch). Its songs keep their
@@ -124,6 +123,14 @@ export function play(q, src, { start = null, shuffle = q.shuffle, random = Math.
   if (!first) first = shuffle ? usable[Math.floor(random() * usable.length)] : usable[0];
   const then = shuffle ? shuffled(usable.filter((e) => e.key !== first.key), random) : tracks.filter((e) => e.i > first.i);
   return refilled({ ...q, now: first, then, played: pushPlayed(q.played, q.now), source: src, out: [first.key], sourceAt: first.i, shuffle }, random);
+}
+
+// What follows when the queue has run out ("When a playlist ends"): a new source lined up after
+// the song playing, which stays as it is, so its first song can go to Spotify like any other next
+export function continueWith(q, src, { shuffle = false, random = Math.random } = {}) {
+  const usable = src.tracks.filter(playable);
+  if (!usable.length) return q;
+  return { ...q, source: src, then: shuffle ? shuffled(usable, random) : usable, out: [], sourceAt: -1 };
 }
 
 // Play songs that aren't part of any source (a song started from a list the queue doesn't hold)
