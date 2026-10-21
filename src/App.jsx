@@ -69,6 +69,9 @@ let launchCodeUsed = false;
 // Home / Library by preference
 {
   const linked = typeof window !== 'undefined' ? pathToFrame(window.location.pathname, window.location.search) : null;
+  // the room reads this, not the address: the address is rewritten to the page restored before the
+  // room's code has loaded, so a launch at / looked like a link to that page
+  useUserStore.setState({ openedOnLink: Boolean(linked && window.location.pathname !== '/') });
   if (linked && window.location.pathname !== '/') {
     useUserStore.setState({
       currentView: linked.view, activePlaylistId: linked.playlistId, currentArtistId: linked.artistId,

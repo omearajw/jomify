@@ -29,11 +29,11 @@ const ago = (date) => {
 };
 
 // The ‹ › are for a mouse with no sideways scroll (Windows); touch screens swipe instead
-function Shelf({ title, right, children }) {
+function Shelf({ id, title, right, children }) {
   const ref = useRef(null);
   const by = (dir) => ref.current?.scrollBy({ left: dir * Math.max(TILE * 2, ref.current.clientWidth - TILE), behavior: 'smooth' });
   return (
-    <section>
+    <section id={id} className="scroll-mt-4">
       <div className="mt-9 flex items-center justify-between gap-4">
         <h2 className="min-w-0 truncate text-[17px] font-semibold tracking-[-0.01em] text-[var(--room-paper)]">{title}</h2>
         <span className="flex shrink-0 items-center gap-4">
@@ -71,10 +71,16 @@ function Tile({ images, onOpen, onPlay, onMenu, playLabel, playing, children }) 
 export default function RoomDiscover() {
   const { token, profile, navigateToAlbum, navigateToArtist, setContextMenu, followedArtists, addFollowedArtist, removeFollowedArtist } = useSlice(useUserStore, ['token', 'profile', 'navigateToAlbum', 'navigateToArtist', 'setContextMenu', 'followedArtists', 'addFollowedArtist', 'removeFollowedArtist']);
   const { currentPlayingTrack, isCurrentTrackPaused } = usePlaybackSummary();
-  const { sections, liked, running, start, ask } = useSlice(useDiscoverStore, ['sections', 'liked', 'running', 'start', 'ask']);
+  const { sections, liked, running, start, ask, focus, setFocus } = useSlice(useDiscoverStore, ['sections', 'liked', 'running', 'start', 'ask', 'focus', 'setFocus']);
   const [busy, setBusy] = useState(null);
 
   useEffect(() => { if (token && profile?.id) start(); }, [token, profile?.id, start]);
+  // a shelf picked in the column: brought into view once the layer has opened out
+  useEffect(() => {
+    if (!focus) return undefined;
+    const id = setTimeout(() => { document.getElementById(`shelf-${focus}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); setFocus(null); }, 450);
+    return () => clearTimeout(id);
+  }, [focus, setFocus]);
 
   const playAlbum = (album) => startPlaying({ uri: `spotify:album:${album.id}`, kind: 'album', name: album.name }, (deviceId) => playContext(token, deviceId, `spotify:album:${album.id}`));
   const playSongs = (name, tracks, index) => {
@@ -102,7 +108,7 @@ export default function RoomDiscover() {
     const title = s.label || def.label;
     if (def.onDemand && s.status === 'idle') {
       return (
-        <section key={def.key}>
+        <section key={def.key} id={`shelf-${def.key}`} className="scroll-mt-4">
           <div className="mt-9"><h2 className="truncate text-[17px] font-semibold tracking-[-0.01em] text-[var(--room-paper)]">{title}</h2></div>
           <div className="py-3"><Word onClick={() => ask(def.key)}>Find them</Word><p className="mt-2 max-w-md text-[12px] text-[var(--room-faint)]">{def.note?.({ followed: followedArtists || [] })}</p></div>
         </section>
@@ -110,12 +116,12 @@ export default function RoomDiscover() {
     }
     if (s.status === 'loading') {
       const note = def.needsLiked && liked ? `Reading your Liked Songs${liked.total ? ` · ${liked.have.toLocaleString()} of ${liked.total.toLocaleString()}` : ''}` : null;
-      return <Shelf key={def.key} title={title} right={note ? <Mono className="text-[var(--room-faint)]">{note}</Mono> : null}><Waiting /></Shelf>;
+      return <Shelf key={def.key} id={`shelf-${def.key}`} title={title} right={note ? <Mono className="text-[var(--room-faint)]">{note}</Mono> : null}><Waiting /></Shelf>;
     }
     if (s.status === 'failed' || !s.items?.length) return null;
     if (def.type === 'records') {
       return (
-        <Shelf key={def.key} title={title}>
+        <Shelf key={def.key} id={`shelf-${def.key}`} title={title}>
           {s.items.map((r) => (
             <Tile key={r.id} images={r.images} onOpen={() => navigateToAlbum(r.id)} onPlay={() => playAlbum(r)} playLabel={`Play ${r.name}`}
               onMenu={(e) => { e.preventDefault(); setContextMenu({ type: 'album', x: e.pageX, y: e.pageY, albumId: r.id, album: r }); }}>
@@ -129,7 +135,7 @@ export default function RoomDiscover() {
     }
     if (def.type === 'artists') {
       return (
-        <Shelf key={def.key} title={title}>
+        <Shelf key={def.key} id={`shelf-${def.key}`} title={title}>
           {s.items.map((a) => (
             <div key={a.id} className="min-w-0 shrink-0 text-center" style={{ width: 130 }}>
               <button type="button" onClick={() => navigateToArtist(a.id)} aria-label={`Open ${a.name}`} className="block w-full">
@@ -144,7 +150,7 @@ export default function RoomDiscover() {
       );
     }
     return (
-      <Shelf key={def.key} title={title} right={<Word onClick={() => playSongs(title, s.items, 0)} label={`Play all of ${title}`}>Play all</Word>}>
+      <Shelf key={def.key} id={`shelf-${def.key}`} title={title} right={<Word onClick={() => playSongs(title, s.items, 0)} label={`Play all of ${title}`}>Play all</Word>}>
         {s.items.map((t, i) => (
           <Tile key={t.id} images={t.album?.images} onOpen={() => playSongs(title, s.items, i)} onPlay={() => playSongs(title, s.items, i)} playLabel={`Play ${t.name}`}
             playing={isSameTrack(t, currentPlayingTrack) && !isCurrentTrackPaused}

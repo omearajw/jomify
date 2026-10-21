@@ -9,8 +9,10 @@ import { SECTIONS, loadTop } from './sections';
 // many requests, so it is read once a day, or again on Refresh. The order is cheapest first, so
 // the page fills from the top while the heavier ones work.
 
-const ORDER = ['onRepeat', 'usedToLove', 'releasesForYou', 'moreFromTop', 'followedNew', 'newInGenres', 'throwbacks', 'fromFriends', 'dippedInto', 'likedNotFollowed'];
-const STORE_KEY = (me) => `jomify_discover:${me}`;
+// the shelves built from your Liked Songs wait for them to be read, so they come last
+const ORDER = ['onRepeat', 'usedToLove', 'moreFromTop', 'newInGenres', 'throwbacks', 'fromFriends', 'followedNew', 'releasesForYou', 'dippedInto', 'likedNotFollowed'];
+// v2: 21 Oct, when the new-release shelves widened to the artists you love
+const STORE_KEY = (me) => `jomify_discover_v2:${me}`;
 const today = () => new Date().toISOString().slice(0, 10);
 
 // what the page needs of each thing, so a day's worth stays small in storage
@@ -34,6 +36,9 @@ export const useDiscoverStore = create((set, get) => ({
   sections: {},
   liked: null, // { have, total } while Liked Songs are read
   running: false,
+  // the shelf the column last asked the page to show (DiscoverColumn → RoomDiscover)
+  focus: null,
+  setFocus: (focus) => set({ focus }),
 
   // Opens Discover for this account: what today already found, then the rest
   start: async ({ refresh = false } = {}) => {

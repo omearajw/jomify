@@ -573,6 +573,9 @@ export const useUserStore = create(
       browseQuery: '',
       setBrowseQuery: (browseQuery) => set((state) => (state.browseQuery === browseQuery ? {} : { browseQuery })),
 
+      // Opened at a page's own address (a shared link, a reload) rather than at / (App.jsx)
+      openedOnLink: false,
+
       // A picture shown large over the room (room/PictureViewer.jsx): { url, name, from } or null
       bigPicture: null,
       setBigPicture: (bigPicture) => set({ bigPicture }),

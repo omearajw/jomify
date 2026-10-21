@@ -56,43 +56,59 @@ async function discography(token, artistId) {
   return discographies.get(artistId);
 }
 
+// The artists you love, best first: the ones you follow, then your top artists, then the ones
+// most in your Liked Songs. Following alone was too few for most people (Jack follows a handful;
+// "new from artists you follow" found nothing and Deep cuts three songs, 21 Oct).
+function lovedArtists({ followed, top, liked }, max = 40) {
+  const out = new Map();
+  const add = (a, rank, weight = 0) => { if (a?.id && !out.has(a.id)) out.set(a.id, { id: a.id, name: a.name, rank, weight }); };
+  followed.forEach((a) => add(a, 0));
+  [...top.artistsShort, ...top.artistsMedium].forEach((a) => add(a, 1));
+  const count = new Map();
+  (liked || []).forEach((t) => (t.artists || []).forEach((a) => { if (a.id) count.set(a.id, { a, n: (count.get(a.id)?.n || 0) + 1 }); }));
+  [...count.values()].filter((c) => c.n >= 3).sort((x, y) => y.n - x.n).forEach((c) => add(c.a, 2, c.n));
+  return [...out.values()].slice(0, max);
+}
+
 export const SECTIONS = [
   {
-    key: 'followedNew', label: 'New from artists you follow', type: 'records', meta: 'released',
-    // their releases from the last four weeks, newest first
-    async load({ token, followed }) {
+    key: 'followedNew', label: 'New from artists you love', type: 'records', meta: 'released', needsLiked: true,
+    // their releases from the last six weeks: those you follow first, then the rest, newest first
+    async load(ctx) {
       const out = [];
-      for (const a of followed.slice(0, 120)) {
-        try { out.push(...(await discography(token, a.id)).filter((r) => isRecent(r, 28))); } catch (err) { if (err?.message === 'RATE_LIMITED') throw err; }
+      for (const a of lovedArtists(ctx)) {
+        try { out.push(...(await discography(ctx.token, a.id)).filter((r) => isRecent(r, 42)).map((r) => ({ ...r, rank: a.rank }))); } catch (err) { if (err?.message === 'RATE_LIMITED') throw err; }
         await pause();
       }
-      return uniqueBy(out, (r) => r.id).sort(newestFirst);
+      return uniqueBy(out, (r) => r.id).sort((x, y) => x.rank - y.rank || newestFirst(x, y));
     }
   },
   {
-    key: 'releasesForYou', label: 'New releases for you', type: 'records', meta: 'released',
-    // Spotify's new releases, those by your top or followed artists first
-    async load({ token, followed, top }) {
-      const data = await getJson(token, `${API}/browse/new-releases?limit=50`);
-      const mine = new Set([...followed, ...top.artistsShort, ...top.artistsMedium].map((a) => a.id));
-      const items = (data.albums?.items || []).filter(Boolean);
-      return [...items.filter((r) => r.artists?.some((a) => mine.has(a.id))), ...items.filter((r) => !r.artists?.some((a) => mine.has(a.id)))];
+    key: 'releasesForYou', label: 'New releases for you', type: 'records', meta: 'released', needsLiked: true,
+    // Spotify's new releases, only those by artists you love: the whole list was mostly strangers
+    // (Jack, 21 Oct). Usually short, and left out when none match.
+    async load(ctx) {
+      const data = await getJson(ctx.token, `${API}/browse/new-releases?limit=50`);
+      const mine = new Set(lovedArtists(ctx, 400).map((a) => a.id));
+      return (data.albums?.items || []).filter((r) => r?.artists?.some((a) => mine.has(a.id)));
     }
   },
   {
-    key: 'newInGenres', label: 'Brand new in your genres', type: 'records', meta: 'released',
-    // search's tag:new (the last two weeks) in your two most common genres
+    key: 'newInGenres', label: 'New this year in your genres', type: 'songs',
+    // this year's songs in your two most common genres. Search's genre filter finds nothing for
+    // albums (tag:new genre: came back empty for Jack, 21 Oct) but works for songs.
     async load({ token, top }) {
       const out = [];
       const genres = topGenres(top);
+      const year = new Date().getFullYear();
       for (const g of genres) {
-        const d = await getJson(token, `${API}/search?type=album&limit=10&q=${encodeURIComponent(`tag:new genre:"${g}"`)}`);
-        const found = (d.albums?.items || []).filter(Boolean);
-        log('discover', `brand new in ${g}`, `${found.length} found`);
+        const d = await getJson(token, `${API}/search?type=track&limit=10&q=${encodeURIComponent(`genre:"${g}" year:${year}`)}`);
+        const found = (d.tracks?.items || []).filter(Boolean);
+        log('discover', `new this year in ${g}`, `${found.length} found`);
         out.push(...found);
         await pause();
       }
-      return { items: uniqueBy(out, (r) => r.id).sort(newestFirst), label: genres.length ? `Brand new in ${genres.join(' and ')}` : null };
+      return { items: uniqueBy(out, (t) => t.id), label: genres.length ? `New this year in ${genres.join(' and ')}` : null };
     }
   },
   {
@@ -154,14 +170,13 @@ export const SECTIONS = [
   },
   {
     key: 'deepCuts', label: 'Deep cuts', type: 'songs', onDemand: true, needsLiked: true,
-    note: ({ followed }) => `Album tracks by the ${followed.length} artists you follow that you have never liked. It reads their albums, so it waits for you.`,
-    // two albums each from the followed artists you like most, their songs you haven't liked and
-    // that aren't among their most popular
-    async load({ token, followed, liked }) {
+    note: () => 'Album tracks by the artists you love that you have never liked. It reads their albums, so it waits for you.',
+    // two albums each from the artists you love most, their songs you haven't liked and that
+    // aren't among their most popular
+    async load(ctx) {
+      const { token, liked } = ctx;
       const mine = new Set(liked.map((t) => t.id));
-      const likedBy = new Map();
-      liked.forEach((t) => (t.artists || []).forEach((a) => likedBy.set(a.id, (likedBy.get(a.id) || 0) + 1)));
-      const artists = [...followed].sort((a, b) => (likedBy.get(b.id) || 0) - (likedBy.get(a.id) || 0)).slice(0, 12);
+      const artists = lovedArtists(ctx, 12);
       const out = [];
       for (const a of artists) {
         try {

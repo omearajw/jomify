@@ -106,6 +106,31 @@ function noteNowPlaying(track) {
   }
 }
 
+// --- Where you left off ----------------------------------------------------------------------
+// Handed Spotify's last session paused at launch, the player gave up on it about 22 s later with a
+// "Playback error" and moved itself on to the next song, so every relaunch lost the song you were
+// on (Jack, 21 Oct: Choke, then havaianas, neither played). With Jomify's queue there is no need to
+// hand it anything: the queue knows the song, this remembers where it had got to, and the first
+// Play starts it there (togglePlay → resumeShownSong → the queue).
+const LEFT_AT_KEY = 'jomify_left_at';
+function noteLeftAt() {
+  const track = player().playbackState?.track_window?.current_track;
+  if (!track?.uri || String(track.uri).startsWith('pending:')) return;
+  try { localStorage.setItem(LEFT_AT_KEY, JSON.stringify({ uri: track.uri, positionMs: Math.round(interpolatedPosition()), at: Date.now() })); } catch { /* blocked */ }
+}
+function showLeftOff() {
+  const now = queueEngine.useQueue.getState().q.now;
+  if (!now?.uri) return;
+  let left = null;
+  try { left = JSON.parse(localStorage.getItem(LEFT_AT_KEY) || 'null'); } catch { /* blocked */ }
+  const duration = now.duration_ms || 0;
+  const position = left?.uri === now.uri ? Math.max(0, Math.min(left.positionMs || 0, duration - 1000)) : 0;
+  const s = player();
+  if (s.playbackState?.track_window?.current_track) return; // something arrived first
+  s.setPlaybackState({ paused: true, position, duration, shuffle: false, repeat_mode: 0, context: null, timestamp: Date.now(), loading: false, track_window: { current_track: toSdkTrack(now), previous_tracks: [], next_tracks: [] } });
+  log('sdk', 'ready, nothing playing anywhere: showing where you left off; Play starts it here', `${now.name || '?'} at ${Math.round(position / 1000)}s`);
+}
+
 // --- Remote state --------------------------------------------------------------------------
 
 function applyRemoteState(state) {
@@ -360,6 +385,7 @@ function noteBackgroundState() {
 function onVisibilityChange() {
   clearInterval(backgroundNotes);
   backgroundNotes = null;
+  if (document.hidden) noteLeftAt();
   if (document.hidden) {
     const s = player();
     const song = s.playbackState?.track_window?.current_track?.name;
@@ -519,6 +545,8 @@ function initLocalPlayer() {
         const devices = readyCount === 1 && document.visibilityState === 'visible' ? await fetchDevices(t).catch(() => null) : null;
         if (devices && devices.some((d) => d.is_active)) {
           log('sdk', 'ready; Spotify said nothing was playing but lists an active device, so leaving it', devices.filter((d) => d.is_active).map((d) => d.name).join(', '));
+        } else if (readyCount === 1 && devices && queueEngine.canResume()) {
+          showLeftOff();
         } else if (readyCount === 1 && document.visibilityState === 'visible' && devices) {
           log('sdk', 'ready, nothing playing anywhere: made this the device, paused');
           transferPlayback(t, device_id, false).catch(() => {});
@@ -872,6 +900,7 @@ export function startPlaybackController() {
   if (!polling) {
     polling = true;
     document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', noteLeftAt);
     refreshRemoteState();
     schedulePoll();
   }
@@ -881,6 +910,7 @@ export function startPlaybackController() {
     queueConductor.stop();
     queueEngine.stop();
     document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('pagehide', noteLeftAt);
   };
 }
 

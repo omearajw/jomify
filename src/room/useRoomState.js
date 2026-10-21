@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useUserStore } from '../store/userStore';
 import { useSlice } from '../store/selectors';
 import { useRoomStore } from './roomStore';
@@ -7,6 +7,7 @@ import LibraryTree from './LibraryTree';
 import SevensColumn from './SevensColumn';
 import PartyColumn from './PartyColumn';
 import UnaddedColumn from './UnaddedColumn';
+import DiscoverColumn from './DiscoverColumn';
 import { pileIdOf, useUnaddedStore } from './unadded';
 
 // The room's state, shared by the Mac (Room.jsx: a panel beside the rail) and the phone
@@ -16,15 +17,15 @@ import { pileIdOf, useUnaddedStore } from './unadded';
 // Every layer is a list on the left and the open thing on the right; half is the list alone.
 // `list` says which list: the library tree, or the Sevens. Which views are a list's own (open
 // at half) and which are an open thing (take the layer to full):
-export const LIST_OF_VIEW = { home: 'library', library: 'library', browse: 'library', album: 'library', artist: 'library', 'liked-songs': 'library', friends: 'library', user: 'library', lyrics: 'library', profile: 'library', discover: 'library', sevens: 'sevens', party: 'party', unadded: 'unadded' };
-export const OPEN_VIEWS = new Set(['profile', 'playlist', 'browse', 'album', 'artist', 'liked-songs', 'friends', 'user', 'lyrics', 'discover']);
+export const LIST_OF_VIEW = { home: 'library', library: 'library', browse: 'library', album: 'library', artist: 'library', 'liked-songs': 'library', friends: 'library', user: 'library', lyrics: 'library', profile: 'library', discover: 'discover', sevens: 'sevens', party: 'party', unadded: 'unadded' };
+export const OPEN_VIEWS = new Set(['profile', 'playlist', 'browse', 'album', 'artist', 'liked-songs', 'friends', 'user', 'lyrics']);
 // what Back steps through: the open things, and the library page itself
-export const BACK_VIEWS = new Set([...OPEN_VIEWS, 'library', 'sevens', 'unadded']);
+export const BACK_VIEWS = new Set([...OPEN_VIEWS, 'library', 'sevens', 'unadded', 'discover']);
 // a list's own page (set-up, the host view): the column opens at half, the page is there at full
-export const PAGE_VIEWS = new Set(['sevens', 'party']);
+export const PAGE_VIEWS = new Set(['sevens', 'party', 'discover']);
 // Unadded has no column yet, so it still takes the layer full as a mode
 export const MODE_VIEWS = new Set(['unadded']);
-export const LISTS = { library: LibraryTree, sevens: SevensColumn, party: PartyColumn, unadded: UnaddedColumn };
+export const LISTS = { library: LibraryTree, sevens: SevensColumn, party: PartyColumn, unadded: UnaddedColumn, discover: DiscoverColumn };
 
 // a mode that takes the layer full; on the phone Unadded is a screen of its own instead
 const takesLayerOn = (phone, v) => MODE_VIEWS.has(v) && !(phone && v === 'unadded');
@@ -40,8 +41,20 @@ export function useRoomState({ phone = false } = {}) {
   const suggestionsAttempt = useUnaddedStore((s) => s.suggestionsAttempt);
   const roomPlaylist = currentView === 'playlist' && !isSeven;
   // Opened at an open thing's own address (a shared link, or a reload on an album) the layer is
-  // already up on it; opened at / the room is at rest, as before
-  const [layer, setLayer] = useState(() => (typeof location !== 'undefined' && location.pathname !== '/' && OPEN_VIEWS.has(useUserStore.getState().currentView) ? 'full' : 'closed'));
+  // already up on it. Opened at / (the installed app always is) it comes back as it was left on
+  // this device (Jack, 21 Oct: it always opened closed): full only if the page restored can be
+  // shown open, otherwise at half.
+  const layerKey = phone ? 'jomify_layer_phone' : 'jomify_layer';
+  const [layer, setLayer] = useState(() => {
+    const view = useUserStore.getState().currentView;
+    if (useUserStore.getState().openedOnLink && OPEN_VIEWS.has(view)) return 'full';
+    if (phone && view === 'unadded') return 'closed';
+    let left = null;
+    try { left = localStorage.getItem(layerKey); } catch { /* blocked */ }
+    if (left === 'full') return OPEN_VIEWS.has(view) || PAGE_VIEWS.has(view) || takesLayerOn(phone, view) ? 'full' : 'half';
+    return left === 'half' ? 'half' : 'closed';
+  });
+  useEffect(() => { try { localStorage.setItem(layerKey, layer); } catch { /* blocked */ } }, [layer, layerKey]);
   // the list the view belongs to, from the start too (a reload lands on the view's own list)
   const [list, setList] = useState(() => (isSeven ? 'sevens' : LIST_OF_VIEW[currentView] || 'library'));
   // Back (DESIGN.md §5, 14 Oct): the history of open things only, never of modes, the library
