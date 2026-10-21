@@ -45,7 +45,7 @@ export default function RoomFriends() {
 
       {suggestions.length > 0 && (
         <>
-          <Head>People you already share playlists with</Head>
+          <Head>People from your playlists</Head>
           {suggestions.map((s, n) => (
             <div key={s.id} className="flex items-center gap-3 py-2.5 text-[13px]" style={{ borderTop: n ? '1px solid var(--room-hair)' : 'none' }}>
               <span className="min-w-0 flex-1">

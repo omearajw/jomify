@@ -18,16 +18,26 @@ export function useFriendsView() {
   ]);
   // people you share a collaborative playlist with: what is known at once, then read afresh
   const [sharers, setSharers] = useState(() => knownCollaborators(profile?.id));
-  const sharedKey = (playlists || []).filter((p) => p?.collaborative).map((p) => `${p.id}:${p.snapshot_id || ''}`).join(',');
+  const sharedKey = (playlists || []).filter((p) => p?.collaborative || (p?.owner?.id && p.owner.id !== profile?.id)).map((p) => `${p.id}:${p.snapshot_id || ''}`).join(',');
   useEffect(() => {
     if (!token || !profile?.id || !sharedKey) return undefined;
     let gone = false;
     scanCollaborators(token, useUserStore.getState().playlists, profile.id).then((found) => { if (!gone) setSharers(found); }).catch(() => {});
     return () => { gone = true; };
   }, [token, profile?.id, sharedKey]);
+  // names for the people suggested: a playlist's owner comes with their name; the rest are asked
+  // for ten at a time, spaced, rather than only the first twenty (the others showed as bare ids)
   useEffect(() => {
     const friendIds = new Set(friends.map((f) => f.id));
-    ensureUserProfiles(token, Object.keys(sharers).filter((id) => !friendIds.has(id)).slice(0, 20));
+    const unnamed = Object.entries(sharers).filter(([id, where]) => !friendIds.has(id) && !where.some((w) => w.personName)).map(([id]) => id);
+    let gone = false;
+    (async () => {
+      for (let i = 0; i < unnamed.length && !gone; i += 10) {
+        await ensureUserProfiles(token, unnamed.slice(i, i + 10));
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    })();
+    return () => { gone = true; };
   }, [token, sharers, friends]);
   const profiles = useUserProfilesStore((s) => s.profiles);
   const [input, setInput] = useState('');
@@ -43,13 +53,20 @@ export function useFriendsView() {
     sevens.forEach((seven) => {
       if (seven.partnerId) seen.set(seven.partnerId, { id: seven.partnerId, name: seven.partnerName || seven.partnerId, why: 'Sevens partner' });
     });
-    // shared collaborative playlists, most shared first: "adds to Road trips with you"
+    // shared collaborative playlists first, most shared first ("Shares Road trips with you"), then
+    // the people whose playlists you saved ("You saved their Gym")
+    const sharedOf = (where) => where.filter((w) => w.shared);
+    const savedOf = (where) => where.filter((w) => !w.shared);
     Object.entries(sharers)
-      .sort((a, b) => b[1].length - a[1].length || b[1].reduce((n, x) => n + x.songs, 0) - a[1].reduce((n, x) => n + x.songs, 0))
+      .sort((a, b) => sharedOf(b[1]).length - sharedOf(a[1]).length || b[1].reduce((n, x) => n + x.songs, 0) - a[1].reduce((n, x) => n + x.songs, 0) || savedOf(b[1]).length - savedOf(a[1]).length)
       .forEach(([id, where]) => {
-        const name = profiles[id]?.display_name || id;
-        const first = where[0]?.name || 'a playlist';
-        const why = where.length > 1 ? `Shares ${first} and ${where.length - 1} more with you` : `Shares ${first} with you`;
+        const name = profiles[id]?.display_name || where.find((w) => w.personName)?.personName || id;
+        const both = sharedOf(where), saved = savedOf(where);
+        const list = (ws, one, many) => (ws.length > 1 ? many(ws[0].name, ws.length - 1) : one(ws[0].name));
+        const why = [
+          both.length ? list(both, (n) => `Shares ${n} with you`, (n, k) => `Shares ${n} and ${k} more with you`) : null,
+          saved.length ? list(saved, (n) => `You saved their ${n}`, (n, k) => `You saved their ${n} and ${k} more`) : null
+        ].filter(Boolean).join(' · ');
         const before = seen.get(id);
         seen.set(id, { id, name: before?.name && before.name !== id ? before.name : name, why: before ? `${before.why} · ${why}` : why });
       });

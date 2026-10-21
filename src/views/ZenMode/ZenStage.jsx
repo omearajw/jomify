@@ -46,6 +46,10 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
     const colours = (live.current.palette || FALLBACK_PALETTE).map((c) => c.slice());
     let t = 0, speed = 1, dim = 1, intro = 0, beat = 0, big = 60;
     let fitted = { key: '', big: 60 };
+    // Where the box was when it last held lyrics. Hidden, the box collapses at once (the room
+    // glides the rest), and lines mapped through the collapsed box dropped onto the controls as
+    // they faded (Jack, 21 Oct); they fade where they were instead.
+    let held = null;
     // The song's character, eased so a new song's scene arrives over a few seconds
     const mood = { energy: 0.5, valence: 0.5, acoustic: 0, minor: 0, lift: 0 };
     let ending = 0;
@@ -222,8 +226,10 @@ export default function ZenStage({ lines, linesKey, showLyrics, palette, paused,
         if (to.alpha === 0 && it.alpha < 0.01) { r.freeLine(it.line); items.delete(key); }
       }
 
-      const kx = box && boxW ? box.width / boxW : 1, ky = box && boxH ? box.height / boxH : 1;
-      const ox = box ? box.left * dpr : 0, oy = box ? box.top * dpr : 0;
+      if (L.showLyrics && box && box.height > 0 && boxW > 0 && boxH > 0) held = { left: box.left, top: box.top, width: box.width, height: box.height, boxW, boxH };
+      const at = !L.showLyrics && held ? held : box ? { left: box.left, top: box.top, width: box.width, height: box.height, boxW, boxH } : null;
+      const kx = at && at.boxW ? at.width / at.boxW : 1, ky = at && at.boxH ? at.height / at.boxH : 1;
+      const ox = at ? at.left * dpr : 0, oy = at ? at.top * dpr : 0;
       const drawn = [...items.values()].filter((it) => it.alpha > 0.003).sort((a, b) => b.alpha - a.alpha).slice(0, 6)
         .map((it) => ({ ...it, x: ox + it.x * kx, y: oy + it.y * ky, scale: it.scale * kx }));
       // In a scene the lines stand in the room: turned a little towards its middle about the lyric

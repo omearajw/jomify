@@ -31,20 +31,25 @@ const BOX = 1000 * S;          // the icon's box
 const WORD_X = 72 * S;         // the wordmark within the icon's box
 const WORD_Y = 202 * S;
 
+// Closed it is half the size, centred on the rail (29 px). The size itself moves, not a scale:
+// a browser draws a scaled element once at its starting size and stretches that while it moves,
+// so the mark went blocky as it grew and only sharpened when it stopped (Jack, 20 Oct).
+const pct = (v) => `${(v / BOX) * 100}%`;
+
 export function UnfoldingMark({ open, left, top }) {
   const ease = 'var(--room-ease)';
+  const side = open ? BOX : BOX / 2;
   return (
     <span role="img" aria-label="Jomify" className="pointer-events-none absolute motion-reduce:!transition-none [&_*]:motion-reduce:!transition-none"
       style={{
-        left, top, width: BOX, height: BOX, opacity: 'var(--room-mark)',
-        transform: open ? 'none' : `translateX(${-(left + BOX / 2 - 29)}px) scale(0.5)`,
-        transition: `transform var(--room-mid) ${ease}`
+        left: open ? left : 29 - BOX / 4, top: open ? top : top + BOX / 4, width: side, height: side, opacity: 'var(--room-mark)',
+        transition: ['left', 'top', 'width', 'height'].map((p) => `${p} var(--room-mid) ${ease}`).join(', ')
       }}>
       <span className="absolute inset-0 motion-reduce:!transition-none"
         style={{ ...masked(ICON), transform: open ? 'rotate(90deg)' : 'none', transition: `transform var(--room-mid) ${ease}` }} />
       <span className="absolute motion-reduce:!transition-none"
         style={{
-          ...masked(WORD), left: WORD_X, top: WORD_Y, width: 880 * S, height: H,
+          ...masked(WORD), left: pct(WORD_X), top: pct(WORD_Y), width: pct(880 * S), height: pct(H),
           opacity: open ? 1 : 0,
           // in after the turn has mostly happened; out at once on the way back, before it turns
           transition: open ? `opacity 380ms ease-out 420ms` : 'opacity 160ms ease-in'
