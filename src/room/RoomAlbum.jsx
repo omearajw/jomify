@@ -1,15 +1,15 @@
 import { useEffect } from 'react';
-import { Play, Shuffle } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { getBlurredBackdrop } from '../utils/blurBackdrop';
 import { useRoomStore } from './roomStore';
 import { useAlbumView, ALBUM_KIND, formatReleaseDate } from '../views/Album/useAlbumView';
 import { useUserStore } from '../store/userStore';
-import { usePlayerStore } from '../store/playerStore';
 import LikeButton from '../components/LikeButton';
 import { formatTime } from '../utils/formatTime';
 import { rowButtonProps } from '../utils/a11y';
 import { isSameTrack, isUnplayable, unplayableWhy, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import Artists from './Artists';
+import { ShuffleToggle } from './ModeToggles';
 
 // An album on the room's language: the record-sleeve head of the open playlist (RoomPlaylist.jsx)
 // with the album's facts, then its songs on hairlines, split by disc where it has several, and
@@ -24,9 +24,8 @@ const withMark = ({ text, type }) => (/^(©|℗|\([cp]\))/i.test(text.trim()) ? 
 export default function RoomAlbum() {
   const {
     currentPlayingTrack, isCurrentTrackPaused, country, album, shown, tracks, loading, error, restError, retry, totalLength, discCount,
-    handleTrackPlay, playAlbum, shuffleAlbum, openTrackMenu, isSaved, saving, handleToggleSave
+    handleTrackPlay, playAlbum, openTrackMenu, isSaved, saving, handleToggleSave
   } = useAlbumView();
-  const isShuffled = usePlayerStore((s) => s.isShuffled);
   const heartsAlways = useUserStore((s) => (s.playbackSettings?.rowHearts || 'always') === 'always');
 
   const coverUrl = shown?.images?.[0]?.url || '';
@@ -76,7 +75,7 @@ export default function RoomAlbum() {
             <button type="button" onClick={playAlbum} aria-label={`Play ${shown.name}`} className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">
               <Play className="ml-0.5 h-[18px] w-[18px] fill-current" />
             </button>
-            <button type="button" onClick={shuffleAlbum} aria-label="Shuffle play" title="Shuffle play" className={`transition-colors ${isShuffled ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-dim)]'}`}><Shuffle className="h-[18px] w-[18px]" /></button>
+            <ShuffleToggle />
             <span className="ml-1 flex flex-wrap items-center gap-x-4 gap-y-2">
               <Word onClick={handleToggleSave} disabled={saving} lit={isSaved} tip={isSaved ? 'In your library. Press to remove it' : 'Save to your library'}>{isSaved ? 'Saved' : 'Save'}</Word>
             </span>

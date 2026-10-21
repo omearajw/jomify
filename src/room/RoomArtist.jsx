@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Play, Shuffle } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { getBlurredBackdrop } from '../utils/blurBackdrop';
 import { useRoomStore } from './roomStore';
 import { useUserStore } from '../store/userStore';
@@ -11,6 +11,7 @@ import { rowButtonProps } from '../utils/a11y';
 import { isSameTrack, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import Artists from './Artists';
 import { showPicture } from './picture';
+import { ShuffleToggle } from './ModeToggles';
 
 // An artist on the room's language (DESIGN.md §6, §11): the record-sleeve head with the artist
 // round, as artists are everywhere in the room, then popular songs and your liked songs by them
@@ -52,7 +53,7 @@ export default function RoomArtist() {
   const {
     setDraggedItem, navigateToAlbum, currentPlayingTrack, isCurrentTrackPaused, artist, topTracks, albums, albumsOnly, singles, shownAlbums, tab, pickTab, tabLoading,
     likedHere, likedProgress, loadLikedHere, playLikedHere, loading, error, retry,
-    isFollowed, followBusy, toggleFollow, openArtistMenu, openTrackMenu, openAlbumMenu, handleTrackPlay, playArtist, playAlbum, shufflePlay, share
+    isFollowed, followBusy, toggleFollow, openArtistMenu, openTrackMenu, openAlbumMenu, handleTrackPlay, playArtist, playAlbum, share
   } = useArtistView();
 
   const imageUrl = artist?.images?.[0]?.url || '';
@@ -138,7 +139,7 @@ export default function RoomArtist() {
             <button type="button" onClick={playArtist} aria-label={`Play ${artist.name}`} className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">
               <Play className="ml-0.5 h-[18px] w-[18px] fill-current" />
             </button>
-            <button type="button" onClick={shufflePlay} aria-label="Shuffle play" title="Shuffle play" className="text-[var(--room-faint)] transition-colors hover:text-[var(--room-dim)]"><Shuffle className="h-[18px] w-[18px]" /></button>
+            <ShuffleToggle />
             <span className="ml-1 flex flex-wrap items-center gap-x-4 gap-y-2">
               <Word onClick={toggleFollow} disabled={followBusy} lit={isFollowed}>{isFollowed ? 'Following' : 'Follow'}</Word>
               <Word onClick={share}>Share</Word>

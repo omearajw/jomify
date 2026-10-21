@@ -23,6 +23,7 @@ import { log } from '../../services/debugLog';
 import { initialLite, measureFrames, rememberLite, zenEffectsSetting, SLOW_FRAME_MS } from './zenEffects';
 import Artists from '../../room/Artists';
 import { flyIn, flightWaiting } from '../../room/flight';
+import { ShuffleToggle, RepeatToggle } from '../../room/ModeToggles';
 
 // Zen mode: a calm, cinematic room for the song. A WebGL stage draws slow light in the cover's
 // colours and the lyrics as glass that bends it, one line at a time; this component is the
@@ -92,6 +93,11 @@ function ZenProgress() {
 // 'full' (the room has left; the Room draws its strip).
 // The room's tempo for the parts that travel between the room and the strip (DESIGN.md §11)
 const ROOM_LAYOUT = { layout: { duration: 1.1, ease: [0.2, 0.75, 0.2, 1] } };
+
+// While the next song's lyrics are looked up with the box open, the wait is said as a lyric line:
+// the same renderers draw it, so it is the lyrics' own glass and size, and it leaves the way a sung
+// line does when the real ones arrive (Jack, 21 Oct: flat grey dots didn't belong in the glass).
+const FINDING_LINES = [{ timeMs: 0, text: 'Finding the words' }];
 
 export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = null, inRoom = false }) {
   const room = mode === 'room';
@@ -343,10 +349,16 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
   const hasPlain = showLyrics && !syncedLyrics && plainLyrics.length > 0;
   const noLyrics = showLyrics && answered && !hasSynced && !hasPlain;
   // while the next song's lyrics are on their way the stage keeps the shape it had
-  // (the last answer, for the previous song, says what that shape was)
+  // (the last answer, for the previous song, says what that shape was). A slow lookup after a song
+  // with none used to open the box for the wait and shut it again, moving the whole room twice
+  // (Jack, 21 Oct); with the box shut the wait is said in the no-lyrics line instead.
   const hadLyrics = Boolean(lyricsAnswer.synced?.length || lyricsAnswer.plain?.length);
-  const split = showLyrics && (answered ? !noLyrics : lyricsLoading || hadLyrics);
-  const linesKey = useMemo(() => `${trackId}:${syncedLyrics?.length || 0}:${syncedLyrics?.[0]?.timeMs ?? ''}`, [trackId, syncedLyrics]);
+  const split = showLyrics && (answered ? !noLyrics : hadLyrics);
+  const hadNone = lyricsAnswer.id !== null && !hadLyrics;
+  const lyricsLine = !showLyrics || !currentTrack || split ? null : noLyrics ? 'No lyrics for this one' : lyricsLoading ? 'Finding the words' : !answered && hadNone ? 'No lyrics for this one' : null;
+  const finding = lyricsLoading && split;
+  const stageLines = finding ? FINDING_LINES : hasSynced ? syncedLyrics : null;
+  const linesKey = useMemo(() => (finding ? `finding:${trackId}` : `${trackId}:${syncedLyrics?.length || 0}:${syncedLyrics?.[0]?.timeMs ?? ''}`), [finding, trackId, syncedLyrics]);
 
   const boxRef = useRef(null);
   const dotsRef = useRef(null);
@@ -376,9 +388,9 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
     >
       {useGl ? (
         <ZenStage
-          lines={hasSynced ? syncedLyrics : null}
+          lines={stageLines}
           linesKey={linesKey}
-          showLyrics={hasSynced}
+          showLyrics={Boolean(stageLines)}
           palette={palette}
           paused={isPaused}
           pulse={pulse}
@@ -468,20 +480,21 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
             >
               <p className="sr-only" aria-live="off">{sungLine || ''}</p>
               {hasPlain && split && <ZenPlainLyrics lines={plainLyrics} />}
-              {hasSynced && !useGl && split && <ZenFocusLyricsLite lines={syncedLyrics} />}
+              {stageLines && !useGl && split && <ZenFocusLyricsLite lines={stageLines} />}
               <div ref={roomGhost ? undefined : dotsRef} aria-hidden="true" className="absolute left-0 top-1/2 flex -translate-y-1/2 gap-3 transition-opacity duration-700" style={{ opacity: 0 }}>
                 {[0, 1, 2].map((k) => <span key={k} className="zen-dot h-3.5 w-3.5 rounded-full bg-white" style={{ '--k': k }} />)}
               </div>
-              {lyricsLoading && <div className="absolute left-0 top-1/2 flex -translate-y-1/2 gap-3" aria-label="Finding the lyrics">{[0, 1, 2].map((k) => <span key={k} className="h-3 w-3 animate-pulse rounded-full bg-white/40" style={{ animationDelay: `${k * 200}ms` }} />)}</div>}
             </motion.div>
-            {noLyrics && <p className="room-mono mt-4 text-[var(--room-faint)]">No lyrics for this one</p>}
+            {lyricsLine && <p className="room-mono mt-4 text-[var(--room-faint)]">{lyricsLine}</p>}
             <div className={`flex flex-wrap items-center ${roomLayout === 'full' ? 'mt-4 gap-3' : 'mt-7 gap-6'}`} data-control>
               <motion.div layout="position" transition={ROOM_LAYOUT} className={`flex items-center ${roomLayout === 'full' ? 'gap-3' : 'gap-6'}`}>
+              <ShuffleToggle size={17} />
               <button onClick={previousTrack} aria-label="Previous" className="room-press text-[var(--room-dim)] transition-colors hover:text-[var(--room-paper)]"><SkipBack className="h-5 w-5" /></button>
               <button onClick={togglePlay} aria-label={isPaused ? 'Play' : 'Pause'} className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-90">
                 {isPaused ? <Play key="play" className="room-turn ml-0.5 h-[18px] w-[18px] fill-current" /> : <Pause key="pause" className="room-turn h-[18px] w-[18px] fill-current" />}
               </button>
               <button onClick={nextTrack} aria-label="Next" className="room-press text-[var(--room-dim)] transition-colors hover:text-[var(--room-paper)]"><SkipForward className="h-5 w-5" /></button>
+              <RepeatToggle size={17} />
               </motion.div>
               <motion.span layout="position" transition={ROOM_LAYOUT} className={`flex items-center ${roomLayout === 'full' ? 'gap-3' : 'gap-6'}`} style={quiet}>
               {currentTrack?.id && <span className="room-like flex items-center [&_button]:p-0 [&_svg]:h-[17px] [&_svg]:w-[17px]"><LikeButton trackId={currentTrack.id} /></span>}
@@ -523,7 +536,7 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
                   <motion.p className="mt-3 text-[13px] font-semibold uppercase tracking-[0.38em] text-[var(--zen-accent)] [text-shadow:0_0_18px_var(--zen-glow)] transition-colors duration-1000" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.9, delay: 0.8 }}>{artists}</motion.p>
                   {requestedByGuest && <p className="mt-2.5 text-xs uppercase tracking-[0.2em] text-white/50">Requested by {requestedByGuest}</p>}
                   <AnimatePresence>
-                    {noLyrics && <motion.p key="none" className="mt-4 text-xs uppercase tracking-[0.25em] text-white/40" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.8 }}>No lyrics for this one</motion.p>}
+                    {lyricsLine && <motion.p key="none" className="mt-4 text-xs uppercase tracking-[0.25em] text-white/40" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.8 }}>{lyricsLine}</motion.p>}
                   </AnimatePresence>
                 </motion.div>
               </motion.div>
@@ -549,7 +562,7 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
               transition={{ duration: 0.8, ease: EASE }}
             >
               {hasPlain && <ZenPlainLyrics lines={plainLyrics} />}
-              {hasSynced && !useGl && <ZenFocusLyricsLite lines={syncedLyrics} />}
+              {stageLines && !useGl && <ZenFocusLyricsLite lines={stageLines} />}
               {hasSynced && useGl && (
                 <>
                   <p className="sr-only" aria-live="off">{sungLine || ''}</p>
@@ -560,7 +573,6 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
                   </div>
                 </>
               )}
-              {lyricsLoading && <div className={`absolute ${inScene ? 'right-0' : 'left-0'} top-1/2 -translate-y-1/2 flex gap-3`} aria-label="Finding the lyrics">{[0, 1, 2].map((k) => <span key={k} className="w-3 h-3 rounded-full bg-white/40 animate-pulse" style={{ animationDelay: `${k * 200}ms` }} />)}</div>}
             </motion.section>
           )}
         </AnimatePresence>

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Play, Shuffle, ArrowUp, ArrowDown, Undo2, X, Check, RefreshCw } from 'lucide-react';
+import { Play, ArrowUp, ArrowDown, Undo2, X, Check, RefreshCw } from 'lucide-react';
 import { getBlurredBackdrop } from '../utils/blurBackdrop';
 import { useRoomStore } from './roomStore';
 import { usePlaylistView, UNDO_MS } from '../views/Library/usePlaylistView';
@@ -16,6 +16,7 @@ import { artUrl } from '../utils/images';
 import { rowButtonProps } from '../utils/a11y';
 import { isSameTrack, isUnplayable, unplayableWhy, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import { TRACKS_DRAG_TYPE } from './LibraryTree';
+import { ShuffleToggle } from './ModeToggles';
 
 // The open playlist, on the room's language (DESIGN.md §6, §11): the record-sleeve head, cover,
 // name, a facts line, the white Play disc, then rows on hairlines with the playing row alone in
@@ -126,7 +127,7 @@ export default function RoomPlaylist() {
             <button type="button" onClick={() => (isShuffled ? handleShufflePlay() : handleTrackSelect(0))} aria-label={`Play ${view.name}`} className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">
               <Play className="ml-0.5 h-[18px] w-[18px] fill-current" />
             </button>
-            <button type="button" onClick={handleShufflePlay} aria-label="Shuffle play" title="Shuffle play" className={`transition-colors ${isShuffled ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-dim)]'}`}><Shuffle className="h-[18px] w-[18px]" /></button>
+            <ShuffleToggle />
             <span className="ml-1 flex flex-wrap items-center gap-x-4 gap-y-2">
               {ownsPlaylist ? <Word onClick={() => setEditDialogOpen(true)}>Edit</Word>
                 : <Word onClick={toggleSaved} disabled={savingPlaylist} lit={inLibrary}>{inLibrary ? 'In your library' : 'Save to library'}</Word>}

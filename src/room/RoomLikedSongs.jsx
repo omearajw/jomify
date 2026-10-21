@@ -1,4 +1,4 @@
-import { Play, Shuffle, Heart } from 'lucide-react';
+import { Play, Heart } from 'lucide-react';
 import { useLikedSongsView, SORTS } from '../views/Library/useLikedSongsView';
 import SelectionBar from '../components/SelectionBar';
 import LikeButton from '../components/LikeButton';
@@ -8,6 +8,7 @@ import { rowButtonProps } from '../utils/a11y';
 import { isSameTrack, isUnplayable, unplayableWhy, TRACK_DRAG_TYPE } from '../utils/spotifyUri';
 import { TRACKS_DRAG_TYPE } from './LibraryTree';
 import Artists from './Artists';
+import { ShuffleToggle } from './ModeToggles';
 
 // Liked Songs on the room's language: the same head and rows as the open playlist
 // (RoomPlaylist.jsx), on the Liked Songs hook. The one list that is not a playlist.
@@ -38,7 +39,7 @@ export default function RoomLikedSongs() {
           {loadError && <p className="room-mono mt-2 flex items-center gap-3 text-amber-300/80">{loadError}<Word onClick={() => { if (!trackData) setReloadNonce((n) => n + 1); else if (data.next && !isFetchingMore.current) loadRestOfTracks(data.next); }}>Try again</Word></p>}
           <div className="mt-5 flex items-center gap-5">
             <button type="button" onClick={() => (isShuffled ? handleShufflePlay() : handleTrackSelect(0))} aria-label="Play Liked Songs" className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95"><Play className="ml-0.5 h-[18px] w-[18px] fill-current" /></button>
-            <button type="button" onClick={handleShufflePlay} aria-label="Shuffle play" title="Shuffle play" className={`transition-colors ${isShuffled ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-dim)]'}`}><Shuffle className="h-[18px] w-[18px]" /></button>
+            <ShuffleToggle />
           </div>
         </div>
       </header>

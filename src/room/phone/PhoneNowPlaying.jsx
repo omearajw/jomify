@@ -15,6 +15,7 @@ import { useNowLyrics } from './useNowLyrics';
 import JomifyMark from '../../components/JomifyMark';
 import Artists from '../Artists';
 import { flyIn } from '../flight';
+import { ShuffleToggle, RepeatToggle } from '../ModeToggles';
 
 // The room on a phone (DESIGN.md §5, 13 Oct): the cover, the song, the controls and up next, on
 // the cover's own light. The queue stays here because it is edited; the phone is the controller.
@@ -149,15 +150,21 @@ export default function PhoneNowPlaying({ bottomInset }) {
         <motion.div layout="position" transition={MOVE} className="mt-4">
           <Progress />
           <div className="mt-1 flex items-center justify-between" data-control>
-            <button type="button" onClick={() => setPlaybackSetting('phoneLyrics', !lyricsOn)} aria-pressed={lyricsOn} aria-label={lyricsOn ? 'Hide lyrics' : 'Show lyrics'} className={`grid h-11 w-11 place-items-center ${lyricsOn ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)]'}`}><Mic2 className="h-5 w-5" /></button>
-            <div className="flex items-center gap-7">
+            {/* the sides are the same width so Play stays in the middle */}
+            <span className="flex w-[76px] items-center">
+              <button type="button" onClick={() => setPlaybackSetting('phoneLyrics', !lyricsOn)} aria-pressed={lyricsOn} aria-label={lyricsOn ? 'Hide lyrics' : 'Show lyrics'} className={`grid h-11 w-11 place-items-center ${lyricsOn ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)]'}`}><Mic2 className="h-5 w-5" /></button>
+            </span>
+            <div className="flex items-center gap-5">
               <button type="button" onClick={previous} aria-label="Previous" className="room-press grid h-11 w-11 place-items-center text-[var(--room-dim)]"><SkipBack className="h-6 w-6" /></button>
               <button type="button" onClick={togglePlay} aria-label={paused ? 'Play' : 'Pause'} className="grid h-16 w-16 place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform active:scale-90">
                 {paused ? <Play key="play" className="room-turn ml-0.5 h-7 w-7 fill-current" /> : <Pause key="pause" className="room-turn h-7 w-7 fill-current" />}
               </button>
               <button type="button" onClick={next} aria-label="Next" className="room-press grid h-11 w-11 place-items-center text-[var(--room-dim)]"><SkipForward className="h-6 w-6" /></button>
             </div>
-            <span className="h-11 w-11" aria-hidden="true" />
+            <span className="flex w-[76px] items-center justify-end">
+              <ShuffleToggle size={18} className="h-11 w-9" />
+              <RepeatToggle size={18} className="h-11 w-9" />
+            </span>
           </div>
           <RemoteVolume />
         </motion.div>
