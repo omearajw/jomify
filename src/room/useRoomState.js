@@ -9,6 +9,7 @@ import PartyColumn from './PartyColumn';
 import UnaddedColumn from './UnaddedColumn';
 import DiscoverColumn from './DiscoverColumn';
 import { pileIdOf, useUnaddedStore } from './unadded';
+import { log } from '../services/debugLog';
 
 // The room's state, shared by the Mac (Room.jsx: a panel beside the rail) and the phone
 // (phone/PhoneRoom.jsx: a sheet from the bottom): which list, how far the layer is open (closed,
@@ -30,6 +31,9 @@ export const LISTS = { library: LibraryTree, sevens: SevensColumn, party: PartyC
 // a mode that takes the layer full; on the phone Unadded is a screen of its own instead
 const takesLayerOn = (phone, v) => MODE_VIEWS.has(v) && !(phone && v === 'unadded');
 
+// the launch is logged once, not on every mount of the room (StrictMode, the phone/Mac switch)
+let loggedStart = false;
+
 export function useRoomState({ phone = false } = {}) {
   const takesLayer = (v) => takesLayerOn(phone, v);
   const { currentView, setCurrentView, isZenMode, setAccountOpen, activePlaylistId, currentAlbumId, currentArtistId, currentUserId, navSeq, sevens, viewHistory, playlists, albums, followedArtists } = useSlice(useUserStore, ['currentView', 'setCurrentView', 'isZenMode', 'setAccountOpen', 'activePlaylistId', 'currentAlbumId', 'currentArtistId', 'currentUserId', 'navSeq', 'sevens', 'viewHistory', 'playlists', 'albums', 'followedArtists']);
@@ -47,12 +51,16 @@ export function useRoomState({ phone = false } = {}) {
   const layerKey = phone ? 'jomify_layer_phone' : 'jomify_layer';
   const [layer, setLayer] = useState(() => {
     const view = useUserStore.getState().currentView;
-    if (useUserStore.getState().openedOnLink && OPEN_VIEWS.has(view)) return 'full';
+    if (useUserStore.getState().openedOnLink && OPEN_VIEWS.has(view)) {
+      if (!loggedStart) { loggedStart = true; log('room', 'opened', `on a link to ${useUserStore.getState().openedAt}; opens full`); }
+      return 'full';
+    }
     if (phone && view === 'unadded') return 'closed';
     let left = null;
     try { left = localStorage.getItem(layerKey); } catch { /* blocked */ }
-    if (left === 'full') return OPEN_VIEWS.has(view) || PAGE_VIEWS.has(view) || takesLayerOn(phone, view) ? 'full' : 'half';
-    return left === 'half' ? 'half' : 'closed';
+    const start = left === 'full' ? (OPEN_VIEWS.has(view) || PAGE_VIEWS.has(view) || takesLayerOn(phone, view) ? 'full' : 'half') : left === 'half' ? 'half' : 'closed';
+    if (!loggedStart) { loggedStart = true; log('room', 'opened', `at ${useUserStore.getState().openedAt} on ${view}; left ${left || 'never'}, opens ${start}`); }
+    return start;
   });
   useEffect(() => { try { localStorage.setItem(layerKey, layer); } catch { /* blocked */ } }, [layer, layerKey]);
   // the list the view belongs to, from the start too (a reload lands on the view's own list)

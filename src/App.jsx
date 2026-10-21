@@ -70,8 +70,15 @@ let launchCodeUsed = false;
 {
   const linked = typeof window !== 'undefined' ? pathToFrame(window.location.pathname, window.location.search) : null;
   // the room reads this, not the address: the address is rewritten to the page restored before the
-  // room's code has loaded, so a launch at / looked like a link to that page
-  useUserStore.setState({ openedOnLink: Boolean(linked && window.location.pathname !== '/') });
+  // room's code has loaded, so a launch at / looked like a link to that page. Nor is the page you
+  // were already on a link: the web app reopened, or a page the system had put to sleep reloaded,
+  // at its last address, and that opened the panel however it had been left (Jack, 21 Oct).
+  const was = useUserStore.getState();
+  const samePage = Boolean(linked) && linked.view === was.currentView
+    && (linked.playlistId ?? null) === (was.activePlaylistId ?? null) && (linked.artistId ?? null) === (was.currentArtistId ?? null)
+    && (linked.albumId ?? null) === (was.currentAlbumId ?? null) && (linked.userId ?? null) === (was.currentUserId ?? null)
+    && (linked.folderId ?? null) === (was.activeFolderId ?? null);
+  useUserStore.setState({ openedOnLink: Boolean(linked && window.location.pathname !== '/' && !samePage), openedAt: window.location.pathname });
   if (linked && window.location.pathname !== '/') {
     useUserStore.setState({
       currentView: linked.view, activePlaylistId: linked.playlistId, currentArtistId: linked.artistId,

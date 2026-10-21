@@ -575,6 +575,7 @@ export const useUserStore = create(
 
       // Opened at a page's own address (a shared link, a reload) rather than at / (App.jsx)
       openedOnLink: false,
+      openedAt: '/',
 
       // A picture shown large over the room (room/PictureViewer.jsx): { url, name, from } or null
       bigPicture: null,
