@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { UnfoldingMark } from '../components/JomifyMark';
 import { useUserStore } from '../store/userStore';
 
-// The launcher: Library · Search · Sevens · Unadded · Party, living at the left edge and shown
+// The launcher: Library · Search · Discover · Sevens · Unadded · Party, living at the left edge and shown
 // only when reached for (DESIGN.md §5). The reveal must not be finicky: it opens on a deliberate
 // reach (the pointer held near the edge, or a drag of real distance from it), never on a pointer
 // passing through; it closes on a click elsewhere or on the pointer leaving the rail for a
@@ -19,6 +19,7 @@ const DRAG_PX = 36;        // a touch drag from the edge this far opens it
 const RAIL_ITEMS = [
   { id: 'library', label: 'Library' },
   { id: 'browse', label: 'Search' },
+  { id: 'discover', label: 'Discover' },
   { id: 'sevens', label: 'Sevens' },
   { id: 'unadded', label: 'Unadded' },
   { id: 'party', label: 'Party' },

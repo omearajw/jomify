@@ -15,6 +15,7 @@ import { BAR_PX } from './PhoneMiniPlayer';
 const LAUNCHER = [
   { id: 'library', label: 'Library' },
   { id: 'browse', label: 'Search' },
+  { id: 'discover', label: 'Discover' },
   { id: 'sevens', label: 'Sevens' },
   { id: 'unadded', label: 'Unadded' },
   { id: 'party', label: 'Party' }

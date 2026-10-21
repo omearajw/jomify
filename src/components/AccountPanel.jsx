@@ -84,6 +84,7 @@ function Choice({ label, value, options, onChange }) {
 // Off, a mode leaves the rail and the phone's launcher; what it holds is kept, so on again
 // brings it back as it was.
 const MODES = [
+  { id: 'discover', label: 'Discover' },
   { id: 'sevens', label: 'Sevens' },
   { id: 'unadded', label: 'Unadded' },
   { id: 'party', label: 'Party' }
