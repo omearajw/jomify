@@ -1,5 +1,6 @@
 import { solveHomography, homographyToMatrix3d, isConvexQuad } from '../../utils/homography';
-import { aspectOf, WIDGETS } from './projectorLayouts';
+import { aspectOf, WIDGETS, halloweenOf } from './projectorLayouts';
+import { BatsLayer, WallCreatures } from './projectorHalloween';
 import { WidgetView } from './projectorWidgets';
 import { contentBox, wallRect, itemPx } from './projectorGeometry';
 
@@ -23,8 +24,10 @@ export function WallContent({ items, track, bw, bh, editing }) {
 export function ProjectionCanvas({ layout, track, w, h, guides = null, editing = false }) {
   const g = guides?.on ? guides : null;
   const line = Math.max(1.5, w / 900);
+  const spooky = halloweenOf(layout);
+  const themed = spooky.theme !== 'off' ? `proj-halloween${spooky.theme === 'font' ? ' proj-halloween-font' : ''}` : '';
   return (
-    <div className="absolute left-0 top-0 overflow-hidden bg-black" style={{ width: w, height: h }}>
+    <div className={`absolute left-0 top-0 overflow-hidden bg-black ${themed}`} style={{ width: w, height: h }}>
       {layout.walls.map((wall) => {
         const { corners, bw, bh, convex } = wallRect(wall, w, h);
         if (!convex) return null;
@@ -35,6 +38,7 @@ export function ProjectionCanvas({ layout, track, w, h, guides = null, editing =
         return (
           <div key={wall.id} className="absolute left-0 top-0 overflow-hidden" style={{ width: bw, height: bh, transform: warp, transformOrigin: '0 0', backfaceVisibility: 'hidden' }}>
             <WallContent items={items} track={track} bw={bw} bh={bh} editing={editing} />
+            <WallCreatures bw={bw} bh={bh} rects={items.map((i) => i.rect)} settings={spooky} />
             {here && g.grid && (
               <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.35) 1px, transparent 1px)', backgroundSize: `${bw / 8}px ${bh / 8}px` }} />
             )}
@@ -42,6 +46,8 @@ export function ProjectionCanvas({ layout, track, w, h, guides = null, editing =
           </div>
         );
       })}
+      {/* in front of every wall: black, so seen only where they cross something lit */}
+      <BatsLayer w={w} h={h} count={spooky.bats} />
       {g && (
         <svg className="pointer-events-none absolute left-0 top-0" width={w} height={h} aria-hidden="true">
           {layout.walls.map((wall) => {

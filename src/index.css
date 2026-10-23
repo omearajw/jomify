@@ -291,6 +291,17 @@
   box-shadow: 0 0 14px rgba(255, 255, 255, 0.55), 0 0 30px var(--zen-glow); animation: zen-breathe 3.2s ease-in-out infinite; }
 @keyframes zen-breathe { 50% { filter: brightness(1.25); } }
 @media (prefers-reduced-motion: reduce) { .zen-dot { animation: none; } }
+/* The projector's Halloween theme (projectorCanvas.jsx, layout.halloween.theme): its white text in
+   candlelight orange, the quieter text in purple, a slow flicker; with "font", Creepster for the
+   headings. The background stays black: the picture must not light the wall. */
+.proj-halloween .text-white { color: #ff8a1c; text-shadow: 0 0 0.3em rgba(255, 108, 18, 0.6), 0 0 0.9em rgba(255, 90, 10, 0.25); animation: proj-candle 5.3s infinite; }
+.proj-halloween [class*="text-white/"] { color: rgba(190, 132, 255, 0.82); text-shadow: 0 0 0.45em rgba(140, 70, 255, 0.45); }
+.proj-halloween .bg-white { background: #ff8a1c; box-shadow: 0 0 14px rgba(255, 108, 18, 0.6); }
+.proj-halloween .bg-white\/20 { background: rgba(140, 70, 255, 0.32); }
+@keyframes proj-candle { 0%, 100% { opacity: 1; } 8% { opacity: 0.9; } 11% { opacity: 1; } 47% { opacity: 0.94; } 52% { opacity: 0.84; } 55% { opacity: 1; } 81% { opacity: 0.93; } }
+.proj-halloween-font .font-semibold { font-family: 'Creepster', var(--font-room), cursive; font-weight: 400; letter-spacing: 0.03em; }
+@media (prefers-reduced-motion: reduce) { .proj-halloween .text-white { animation: none; } }
+
 
 /* The room (the new layout): one language, see DESIGN.md §11. Two faces: one to read, one for
    facts. Off-white at four strengths. Planes are a slightly lighter dark with a hair of light at

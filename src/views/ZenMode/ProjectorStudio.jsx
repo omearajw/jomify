@@ -6,7 +6,7 @@ import { ProjectionCanvas, WallContent } from './projectorCanvas';
 import { wallRect, itemPx } from './projectorGeometry';
 import { openProjectorWindow } from './projectorBridge';
 import {
-  WIDGETS, newWall, newItem, dropRect, cornerLayout, flatWallLayout, cloneLayout, exportLayout, parseLayoutFile, newLayoutId
+  WIDGETS, newWall, newItem, dropRect, cornerLayout, flatWallLayout, cloneLayout, exportLayout, parseLayoutFile, newLayoutId, halloweenSaved, HALLOWEEN_ON
 } from './projectorLayouts';
 import { isConvexQuad } from '../../utils/homography';
 
@@ -236,6 +236,9 @@ export default function ProjectorStudio({ inWindow = false }) {
   const removeItem = (id) => { remember(); update((l) => ({ ...l, items: l.items.filter((i) => i.id !== id) })); setItemId(null); };
   const nudgeShape = (w, f) => { remember(); updateWall(w.id, (x) => ({ ...x, aspect: clamp((x.aspect || wallRect(x, frame.w, frame.h).aspect) * f, 0.2, 5) })); };
   const setOption = (key, value) => { remember(); updateItem(item.id, (i) => ({ ...i, options: { ...i.options, [key]: value } })); };
+  // Halloween (projectorHalloween.jsx): first switched on, the party amounts; after that what was set
+  const spooky = halloweenSaved(layout);
+  const setSpooky = (patch) => { remember(); update((l) => ({ ...l, halloween: { ...(l.halloween ? halloweenSaved(l) : { ...HALLOWEEN_ON, on: false }), ...patch } })); };
   const addLayout = (make) => { remember(); setLayouts((prev) => { const l = make(); return { ...prev, activeId: l.id, layouts: [...prev.layouts, l] }; }); setWallId(null); setItemId(null); };
   const removeLayout = () => { if (layouts.layouts.length <= 1) return; remember(); setLayouts((prev) => { const rest = prev.layouts.filter((l) => l.id !== prev.activeId); return { ...prev, activeId: rest[0].id, layouts: rest }; }); setWallId(null); setItemId(null); };
   const rename = (target, name) => {
@@ -328,6 +331,33 @@ export default function ProjectorStudio({ inWindow = false }) {
           <input ref={fileInput} type="file" accept="application/json,.json" onChange={importFile} className="hidden" />
         </div>
 
+        <div>
+          <div className="flex items-center justify-between">
+            <Mono className="text-[var(--room-faint)]">Halloween</Mono>
+            <Word lit={Boolean(layout.halloween) && spooky.on} onClick={() => setSpooky({ on: !(layout.halloween && spooky.on) })} tip="Bats, eyes, ghosts and spiders on the walls, and the theme">{layout.halloween && spooky.on ? 'On' : 'Off'}</Word>
+          </div>
+          {layout.halloween && spooky.on && (
+            <div className="mt-3 space-y-3 text-[13px]">
+              {[['bats', 'Bats', [0, 8, 16]], ['eyes', 'Eyes', [0, 3, 6]], ['ghosts', 'Ghosts', [0, 1, 3]], ['spiders', 'Spiders', [0, 1, 3]]].map(([key, name, [off, few, many]]) => (
+                <div key={key} className="flex items-baseline gap-4">
+                  <span className="w-16 shrink-0 text-[var(--room-dim)]">{name}</span>
+                  {[[off, 'Off'], [few, 'Few'], [many, 'Many']].map(([n, l]) => <Word key={l} lit={l === 'Off' ? !spooky[key] : l === 'Few' ? spooky[key] > 0 && spooky[key] <= few : spooky[key] > few} onClick={() => setSpooky({ [key]: n })}>{l}</Word>)}
+                </div>
+              ))}
+              {spooky.eyes > 0 && (
+                <div className="flex items-baseline gap-4">
+                  <span className="w-16 shrink-0 text-[var(--room-dim)]">Eye colour</span>
+                  {[['orange', 'Orange'], ['white', 'White']].map(([v, l]) => <Word key={v} lit={spooky.eyeColour === v} onClick={() => setSpooky({ eyeColour: v })}>{l}</Word>)}
+                </div>
+              )}
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+                <span className="w-16 shrink-0 text-[var(--room-dim)]">Theme</span>
+                {[['off', 'Off'], ['colour', 'Colour'], ['font', 'Colour and font']].map(([v, l]) => <Word key={v} lit={spooky.theme === v} onClick={() => setSpooky({ theme: v })}>{l}</Word>)}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="flex gap-5 border-b border-[var(--room-hair)] pb-3" role="tablist" aria-label="Step">
           <Word lit={mode === 'walls'} onClick={() => setMode('walls')} tip="Line the walls up with the real ones (W)">1 · Walls</Word>
           <Word lit={mode === 'assets'} onClick={() => setMode('assets')} tip="Put things on the walls (A)">2 · Assets</Word>
@@ -397,7 +427,7 @@ export default function ProjectorStudio({ inWindow = false }) {
                     <div className="flex gap-4"><Word lit={item.options?.numbers !== false} onClick={() => setOption('numbers', true)}>Times shown</Word><Word lit={item.options?.numbers === false} onClick={() => setOption('numbers', false)}>Bar only</Word></div>
                   )}
                   {item.widget === 'partyqr' && (
-                    <div className="flex flex-wrap gap-x-4 gap-y-2">{[['both', 'QR and code'], ['qr', 'QR only'], ['code', 'Code only']].map(([v, l]) => <Word key={v} lit={(item.options?.show || 'both') === v} onClick={() => setOption('show', v)}>{l}</Word>)}</div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">{[['both', 'QR and code'], ['qr', 'QR only'], ['code', 'Code only'], ['grave', 'Gravestone']].map(([v, l]) => <Word key={v} lit={(item.options?.show || 'both') === v} onClick={() => setOption('show', v)}>{l}</Word>)}</div>
                   )}
                   <Mono className="text-[var(--room-faint)]">{Math.round(item.rect.w * 100)}% × {Math.round(item.rect.h * 100)}% of the wall</Mono>
                   <div className="flex gap-4">

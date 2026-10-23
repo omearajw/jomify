@@ -29,11 +29,29 @@ export const WIDGETS = {
 };
 export const DROPPED_WIDGETS = new Set(['waveform', 'wash']);
 
+// Halloween on the layout (projectorHalloween.jsx): bats, eyes, ghosts and spiders are how many at
+// once (0 is off); eyeColour 'orange' | 'white'; theme 'off' | 'colour' | 'font' (colour and a
+// spooky typeface). Spiders were 'off' | 'black' | 'pale' with spiderCount for a day; read as a count.
+export const HALLOWEEN_OFF = { bats: 0, eyes: 0, eyeColour: 'orange', ghosts: 0, spiders: 0, theme: 'off' };
+// switched on for the first time: the studio's "Few" of each (ProjectorStudio.jsx)
+export const HALLOWEEN_ON = { bats: 8, eyes: 3, eyeColour: 'orange', ghosts: 1, spiders: 1, theme: 'colour' };
+// The settings as saved (amounts kept while switched off), and as shown (all off when switched off)
+export function halloweenSaved(layout) {
+  const h = { on: true, ...HALLOWEEN_OFF, ...(layout?.halloween || {}) };
+  if (typeof h.spiders === 'string') h.spiders = h.spiders === 'off' ? 0 : (h.spiderCount ?? 2);
+  delete h.spiderCount;
+  return h;
+}
+export function halloweenOf(layout) {
+  const h = halloweenSaved(layout);
+  return layout?.halloween && h.on ? h : { on: false, ...HALLOWEEN_OFF };
+}
+
 // The shape an asset's content takes, which some options change (a QR alone is square)
 export function aspectOf(item) {
   if (item.widget === 'partyqr') {
     const show = item.options?.show || 'both';
-    return show === 'qr' ? 1 : show === 'code' ? 3.2 : 0.78;
+    return show === 'qr' ? 1 : show === 'code' ? 3.2 : show === 'grave' ? 0.74 : 0.78;
   }
   return WIDGETS[item.widget]?.aspect ?? null;
 }

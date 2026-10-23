@@ -221,6 +221,24 @@ function PartyQrWidget({ box, editing, label, options }) {
       </div>
     );
   }
+  // Halloween: the code on a gravestone, engraved
+  if (show === 'grave') {
+    const sw = Math.min(box.width, box.height * 0.74);
+    const qr = sw * 0.56;
+    const ink = { color: '#2a2d33', textShadow: '0 1px 0 rgba(255,255,255,0.28), 0 -1px 0 rgba(0,0,0,0.35)' };
+    return (
+      <div className="absolute flex items-end justify-center" style={px(box)}>
+        <div className="flex flex-col items-center" style={{ width: sw, height: Math.min(box.height, sw / 0.74), paddingTop: sw * 0.13, borderRadius: `${sw * 0.5}px ${sw * 0.5}px ${sw * 0.03}px ${sw * 0.03}px`, background: 'linear-gradient(170deg, #9a9ea7 0%, #7c8089 45%, #5d6169 100%)', boxShadow: `inset 0 ${-sw * 0.05}px ${sw * 0.12}px rgba(0,0,0,0.45), inset 0 ${sw * 0.02}px ${sw * 0.03}px rgba(255,255,255,0.25)` }}>
+          <p style={{ ...ink, fontFamily: "'Creepster', var(--font-room), cursive", fontSize: sw * 0.17, lineHeight: 1, letterSpacing: '0.06em' }}>R.I.P.</p>
+          <div style={{ width: qr, height: qr, marginTop: sw * 0.05, padding: qr * 0.05, borderRadius: qr * 0.04, background: '#fff' }}>
+            <div className="h-full w-full [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: qrSvg(partyLink(code)) }} />
+          </div>
+          <p className="font-semibold" style={{ ...ink, fontFamily: FONT, fontSize: sw * 0.058, marginTop: sw * 0.05 }}>scan to request a song</p>
+          <p className="tabular-nums" style={{ ...ink, fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: sw * 0.1, letterSpacing: '0.22em', marginTop: sw * 0.02 }}>{code}</p>
+        </div>
+      </div>
+    );
+  }
   const side = show === 'qr' ? Math.min(box.width, box.height) : Math.min(box.width, box.height * 0.74);
   return (
     <div className="absolute flex flex-col items-center justify-center text-white" style={{ ...px(box), fontFamily: FONT }}>
