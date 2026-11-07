@@ -17,7 +17,7 @@ import PhoneMiniPlayer from './PhoneMiniPlayer';
 export default function PhoneRoom({ children }) {
   const {
     currentView, isSeven, pileId, suggestionsAttempt, roomPlaylist, layer, setLayer, list,
-    backFrame, nameOf, backOverride, goBackInRoom, expand, less, lit, pick
+    backFrame, nameOf, backOverride, goBackInRoom, expand, lit, pick, setCurrentView
   } = useRoomState({ phone: true });
   const [closedH, setClosedH] = useState(76);
   const onHeadHeight = useCallback((h) => setClosedH(h), []);
@@ -31,8 +31,14 @@ export default function PhoneRoom({ children }) {
   // Unadded is a screen of its own under the sheet (PhoneUnadded); raised, the sheet shows its pile
   const unadded = currentView === 'unadded';
   const opensThing = isSeven || OPEN_VIEWS.has(currentView) || (MODE_VIEWS.has(currentView) && !unadded) || PAGE_VIEWS.has(currentView);
-  const showThing = layer === 'full' && opensThing;
+  // at half an open thing (a playlist, a profile, search) shows itself with a compact head rather
+  // than the list it belongs to; a list's own page (Discover, Sevens, Party) keeps its column, and
+  // the library's covers page is there at full (Jack, 6 Nov)
+  const showThing = layer === 'full' ? opensThing || currentView === 'library' : layer === 'half' && OPEN_VIEWS.has(currentView) && !isSeven;
   const back = backOverride ? { name: backOverride.name, go: goBackInRoom } : backFrame ? { name: nameOf(backFrame.frame), go: goBackInRoom } : null;
+  // with nowhere to go back to, the back word goes to the list the open thing belongs to (the
+  // library's covers page lowers to its list)
+  const toList = () => (currentView === list ? setLayer('half') : setCurrentView(LISTS[list] ? list : 'library'));
   const listName = { library: 'Library', sevens: 'Sevens', party: 'Party', unadded: 'Unadded' }[list] || 'Library';
   // Search on the Mac uses the library list's field beside the results; here the results fill the
   // sheet, so the field sits in its head (the same words, in the room's store)
@@ -40,7 +46,7 @@ export default function PhoneRoom({ children }) {
   const setSearchQuery = useRoomStore((s) => s.setSearchQuery);
   const head = showThing ? (
     <div className="flex shrink-0 items-center justify-between border-b border-[var(--room-hair)] px-5 pb-1">
-      <button type="button" onClick={back ? back.go : less} className="ui-word inline-flex min-h-[44px] max-w-[70%] shrink-0 items-center truncate">← {back ? back.name : listName}</button>
+      <button type="button" onClick={back ? back.go : toList} className="ui-word inline-flex min-h-[44px] max-w-[70%] shrink-0 items-center truncate">← {back ? back.name : listName}</button>
       {currentView === 'browse' && (
         <label className="ml-4 flex min-w-0 flex-1 items-center gap-2 border-b border-[var(--room-hair)]">
           <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} data-room-search enterKeyHint="search" autoCapitalize="none" autoCorrect="off" spellCheck={false}

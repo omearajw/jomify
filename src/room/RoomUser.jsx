@@ -43,14 +43,14 @@ export default function RoomUser() {
 
   return (
     <Shell>
-      <header className="flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4">
-        <button type="button" onClick={(e) => showPicture(e.currentTarget, user.images, name)} disabled={!avatar} aria-label={`See ${name}'s picture`} className="grid h-[168px] w-[168px] shrink-0 cursor-zoom-in place-items-center overflow-hidden rounded-full bg-white/5 text-[56px] font-semibold text-[var(--room-dim)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-default disabled:hover:scale-100 @max-md:h-[120px] @max-md:w-[120px] @max-md:text-[40px]" style={{ transitionDuration: 'var(--room-mid)' }}>
+      <header className="flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4 half:flex-row half:items-center half:gap-4 half:pt-1">
+        <button type="button" onClick={(e) => showPicture(e.currentTarget, user.images, name)} disabled={!avatar} aria-label={`See ${name}'s picture`} className="grid half:h-[88px] half:w-[88px] half:shadow-none half:text-[28px] h-[168px] w-[168px] shrink-0 cursor-zoom-in place-items-center overflow-hidden rounded-full bg-white/5 text-[56px] font-semibold text-[var(--room-dim)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-default disabled:hover:scale-100 @max-md:h-[120px] @max-md:w-[120px] @max-md:text-[40px]" style={{ transitionDuration: 'var(--room-mid)' }}>
           {avatar ? <img src={avatar} alt="" draggable="false" className="h-full w-full object-cover" /> : name.charAt(0).toUpperCase()}
         </button>
         <div className="min-w-0 flex-1 pb-1">
-          <Mono className="text-[var(--room-faint)]">{facts}</Mono>
-          <h1 className="mt-2 break-words text-[34px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] [text-wrap:balance] @max-md:text-[26px]">{name}</h1>
-          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
+          <Mono className="text-[var(--room-faint)] half:line-clamp-1">{facts}</Mono>
+          <h1 className="half:mt-1 half:text-[20px] half:line-clamp-1 mt-2 break-words text-[34px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] [text-wrap:balance] @max-md:text-[26px]">{name}</h1>
+          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3 half:mt-2.5 half:gap-x-4 half:gap-y-1.5">
             {!isMe && (<>
               <Word onClick={toggleFollow} disabled={busy || current.following === null} lit={Boolean(current.following)} tip={current.following ? 'Press to unfollow' : undefined}>{current.following ? 'Following' : 'Follow'}</Word>
               <Word onClick={toggleFriend}>{isFriend ? 'Remove friend' : 'Add friend'}</Word>

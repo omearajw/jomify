@@ -62,17 +62,17 @@ export default function RoomAlbum() {
   return (
     <div className="relative min-h-full pb-10" style={{ fontFamily: 'var(--font-room)' }}>
 
-      <header className="relative flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4">
-        <div className="h-[168px] w-[168px] shrink-0 overflow-hidden rounded-[5px] @max-md:h-[132px] @max-md:w-[132px] bg-white/5 shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)]">
+      <header className="relative flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4 half:flex-row half:items-center half:gap-4 half:pt-1">
+        <div className="half:h-[88px] half:w-[88px] half:shadow-none half:text-[28px] h-[168px] w-[168px] shrink-0 overflow-hidden rounded-[5px] @max-md:h-[132px] @max-md:w-[132px] bg-white/5 shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)]">
           {coverUrl && <img src={coverUrl} alt="" className="h-full w-full object-cover" draggable="false" />}
         </div>
         <div className="min-w-0 flex-1 pb-1">
-          <Mono className="text-[var(--room-faint)]">{facts}</Mono>
-          <h1 className="mt-2 text-[34px] @max-md:text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] [text-wrap:balance] line-clamp-2">{shown.name}</h1>
-          <Artists artists={shown.artists} className="mt-2 block text-[14px] text-[var(--room-dim)]" />
+          <Mono className="text-[var(--room-faint)] half:line-clamp-1">{facts}</Mono>
+          <h1 className="half:mt-1 half:text-[20px] half:line-clamp-1 mt-2 text-[34px] @max-md:text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] [text-wrap:balance] line-clamp-2">{shown.name}</h1>
+          <Artists artists={shown.artists} className="mt-2 block text-[14px] text-[var(--room-dim)] half:mt-0.5 half:truncate half:text-[13px]" />
           {restError && <p className="room-mono mt-2 flex items-center gap-3 text-amber-300/80">{restError}<Word onClick={retry}>Try again</Word></p>}
-          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
-            <button type="button" onClick={playAlbum} aria-label={`Play ${shown.name}`} className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">
+          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3 half:mt-2.5 half:gap-x-4 half:gap-y-1.5">
+            <button type="button" onClick={playAlbum} aria-label={`Play ${shown.name}`} className="half:h-[38px] half:w-[38px] grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">
               <Play className="ml-0.5 h-[18px] w-[18px] fill-current" />
             </button>
             <ShuffleToggle />
@@ -83,7 +83,7 @@ export default function RoomAlbum() {
         </div>
       </header>
 
-      <div className="mt-8 border-b border-[var(--room-hair)] @max-md:mt-6" />
+      <div className="mt-8 border-b border-[var(--room-hair)] @max-md:mt-6 half:mt-3" />
 
       <div className="room-rise-list mt-1">
         {loading && tracks.length === 0 && <p className="room-mono py-6 text-[var(--room-faint)]">Loading the songs</p>}

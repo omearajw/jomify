@@ -22,14 +22,14 @@ export default function RoomFriends() {
   return (
     <div className="relative pb-10" style={{ fontFamily: 'var(--font-room)' }}>
       <Mono className="text-[var(--room-faint)]">People{friends.length ? ` · ${friends.length} friend${friends.length === 1 ? '' : 's'}` : ''}</Mono>
-      <h1 className="mt-2 text-[30px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] @max-md:text-[26px]">Friends</h1>
-      <p className="mt-3 max-w-xl text-[13px] text-[var(--room-dim)]">
+      <h1 className="mt-2 text-[30px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] @max-md:text-[26px] half:mt-1 half:text-[20px]">Friends</h1>
+      <p className="mt-3 max-w-xl text-[13px] text-[var(--room-dim)] half:hidden">
         See a friend's public playlists and follow them. Spotify doesn't let apps list who you
         follow, so add people by their profile link: in Spotify, open a profile, tap the three
         dots, then Share, then Copy link.
       </p>
 
-      <form onSubmit={submit} className="mt-6 flex max-w-2xl items-end gap-5 @max-md:flex-col @max-md:items-stretch @max-md:gap-4">
+      <form onSubmit={submit} className="half:mt-3 mt-6 flex max-w-2xl items-end gap-5 @max-md:flex-col @max-md:items-stretch @max-md:gap-4">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}

@@ -110,21 +110,21 @@ export default function RoomPlaylist() {
     <div className="relative min-h-full pb-10" style={{ fontFamily: 'var(--font-room)' }}>
 
       {/* the head */}
-      <header className="relative flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4">
-        <div className="h-[168px] w-[168px] shrink-0 overflow-hidden rounded-[5px] @max-md:h-[132px] @max-md:w-[132px] bg-white/5 shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)]">
+      <header className="relative flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4 half:flex-row half:items-center half:gap-4 half:pt-1">
+        <div className="h-[168px] w-[168px] shrink-0 overflow-hidden rounded-[5px] @max-md:h-[132px] @max-md:w-[132px] bg-white/5 shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)] half:h-[88px] half:w-[88px] half:shadow-none">
           {coverUrl && <img src={coverUrl} alt="" className="h-full w-full object-cover" draggable="false" />}
         </div>
-        <div className="min-w-0 flex-1 pb-1">
-          <Mono className="text-[var(--room-faint)]">{facts}</Mono>
-          <h1 className="mt-2 text-[34px] @max-md:text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] [text-wrap:balance] line-clamp-2">{view.name}</h1>
-          {description && <p className="mt-2 max-w-xl text-[13px] text-[var(--room-dim)] line-clamp-2">{description}</p>}
+        <div className="min-w-0 flex-1 pb-1 half:pb-0">
+          <Mono className="text-[var(--room-faint)] half:line-clamp-1">{facts}</Mono>
+          <h1 className="mt-2 text-[34px] @max-md:text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] [text-wrap:balance] line-clamp-2 half:mt-1 half:text-[20px] half:line-clamp-1">{view.name}</h1>
+          {description && <p className="mt-2 max-w-xl text-[13px] text-[var(--room-dim)] line-clamp-2 half:hidden">{description}</p>}
           {isCollaborative && collaboratorIds.length > 0 && (
-            <div className="mt-3 flex items-center gap-2" aria-label="Collaborators">
+            <div className="mt-3 flex items-center gap-2 half:hidden" aria-label="Collaborators">
               <div className="flex -space-x-1.5">{collaboratorIds.slice(0, 6).map((id) => <UserChip key={id} userId={id} fallbackName={collaborators[id]?.display_name || id} size="sm" showName={false} className="ring-2 ring-[#0c0c12] rounded-full" />)}</div>
             </div>
           )}
-          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
-            <button type="button" onClick={() => (isShuffled ? handleShufflePlay() : handleTrackSelect(0))} aria-label={`Play ${view.name}`} className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">
+          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3 half:mt-2.5 half:gap-x-4 half:gap-y-1.5">
+            <button type="button" onClick={() => (isShuffled ? handleShufflePlay() : handleTrackSelect(0))} aria-label={`Play ${view.name}`} className="half:h-[38px] half:w-[38px] grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">
               <Play className="ml-0.5 h-[18px] w-[18px] fill-current" />
             </button>
             <ShuffleToggle />
@@ -142,7 +142,7 @@ export default function RoomPlaylist() {
       </header>
 
       {/* find and sort, on one hairline */}
-      <div className="mt-8 flex items-center gap-6 border-b border-[var(--room-hair)] pb-3 @max-md:mt-6 @max-md:flex-wrap @max-md:gap-y-2">
+      <div className="mt-8 flex items-center gap-6 border-b border-[var(--room-hair)] pb-3 @max-md:mt-6 @max-md:flex-wrap @max-md:gap-y-2 half:hidden">
         {playlist && sortedTracks.length > 8 && (
           <input type="search" value={find} onChange={(e) => setFind(e.target.value)} placeholder="Find in playlist" aria-label="Find in playlist"
             className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--room-paper)] outline-none placeholder:text-[var(--room-faint)] [&::-webkit-search-cancel-button]:hidden" />

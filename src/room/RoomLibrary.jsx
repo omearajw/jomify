@@ -289,12 +289,16 @@ export default function RoomLibrary() {
   return (
     <div className="relative min-h-full pb-12" style={{ fontFamily: 'var(--font-room)' }}>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--room-hair)] pb-3">
-        {SORT_OPTIONS.map((o) => <Word key={o.id} lit={sort === o.id} onClick={() => setLibrarySort(o.id)}>{o.label}</Word>)}
-        <span className="mx-1 h-3 w-px bg-[var(--room-hair)]" aria-hidden="true" />
-        {FILTER_WORDS.map((f) => <Word key={f.id} lit={filter === f.id} onClick={() => setLibraryFilter(f.id)}>{f.label}</Word>)}
-        <span className="mx-1 h-3 w-px bg-[var(--room-hair)]" aria-hidden="true" />
-        {['small', 'medium', 'large'].map((id) => <Word key={id} lit={(libraryGridSize || 'medium') === id} onClick={() => setLibraryGridSize(id)}>{id[0].toUpperCase()}</Word>)}
-        <span className="ml-auto flex items-center gap-5">
+        {/* narrow (the phone's sheet), sort and filter are one line that scrolls sideways, the
+            actions under it, and the cover size goes: the covers fill the width anyway */}
+        <span className="contents @max-md:flex @max-md:w-full @max-md:items-center @max-md:gap-x-5 @max-md:overflow-x-auto @max-md:pb-1 @max-md:[&>*]:shrink-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {SORT_OPTIONS.map((o) => <Word key={o.id} lit={sort === o.id} onClick={() => setLibrarySort(o.id)}>{o.label}</Word>)}
+          <span className="mx-1 h-3 w-px bg-[var(--room-hair)]" aria-hidden="true" />
+          {FILTER_WORDS.map((f) => <Word key={f.id} lit={filter === f.id} onClick={() => setLibraryFilter(f.id)}>{f.label}</Word>)}
+        </span>
+        <span className="mx-1 h-3 w-px bg-[var(--room-hair)] @max-md:hidden" aria-hidden="true" />
+        <span className="contents @max-md:hidden">{['small', 'medium', 'large'].map((id) => <Word key={id} lit={(libraryGridSize || 'medium') === id} onClick={() => setLibraryGridSize(id)}>{id[0].toUpperCase()}</Word>)}</span>
+        <span className="ml-auto flex items-center gap-5 @max-md:ml-0">
           <Word onClick={() => setPlaylistDialog(true)}>New playlist</Word>
           <Word onClick={() => setFolderDialog(true)}>New folder</Word>
           <Word onClick={() => setImportOpen(true)}>Import from Spotify</Word>

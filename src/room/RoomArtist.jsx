@@ -127,16 +127,16 @@ export default function RoomArtist() {
   return (
     <div className="relative min-h-full pb-10" style={{ fontFamily: 'var(--font-room)' }}>
 
-      <header className="relative flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4">
-        <button type="button" onClick={(e) => showPicture(e.currentTarget, artist.images, artist.name)} disabled={!imageUrl} aria-label={`See ${artist.name}'s picture`} className="h-[168px] w-[168px] shrink-0 cursor-zoom-in overflow-hidden rounded-full bg-white/5 shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-default disabled:hover:scale-100 @max-md:h-[132px] @max-md:w-[132px]" style={{ transitionDuration: 'var(--room-mid)' }}>
+      <header className="relative flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4 half:flex-row half:items-center half:gap-4 half:pt-1">
+        <button type="button" onClick={(e) => showPicture(e.currentTarget, artist.images, artist.name)} disabled={!imageUrl} aria-label={`See ${artist.name}'s picture`} className="half:h-[88px] half:w-[88px] half:shadow-none half:text-[28px] h-[168px] w-[168px] shrink-0 cursor-zoom-in overflow-hidden rounded-full bg-white/5 shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-default disabled:hover:scale-100 @max-md:h-[132px] @max-md:w-[132px]" style={{ transitionDuration: 'var(--room-mid)' }}>
           {imageUrl && <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable="false" />}
         </button>
         <div className="min-w-0 flex-1 pb-1">
-          <Mono className="text-[var(--room-faint)]">{facts}</Mono>
-          <h1 className="mt-2 text-[34px] @max-md:text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] [text-wrap:balance] line-clamp-2">{artist.name}</h1>
-          {genres.length > 0 && <p className="mt-2 max-w-xl text-[13px] text-[var(--room-dim)] line-clamp-2">{genres.join(', ')}</p>}
-          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
-            <button type="button" onClick={playArtist} aria-label={`Play ${artist.name}`} className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">
+          <Mono className="text-[var(--room-faint)] half:line-clamp-1">{facts}</Mono>
+          <h1 className="half:mt-1 half:text-[20px] half:line-clamp-1 mt-2 text-[34px] @max-md:text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)] [text-wrap:balance] line-clamp-2">{artist.name}</h1>
+          {genres.length > 0 && <p className="mt-2 max-w-xl text-[13px] text-[var(--room-dim)] line-clamp-2 half:hidden">{genres.join(', ')}</p>}
+          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3 half:mt-2.5 half:gap-x-4 half:gap-y-1.5">
+            <button type="button" onClick={playArtist} aria-label={`Play ${artist.name}`} className="half:h-[38px] half:w-[38px] grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95">
               <Play className="ml-0.5 h-[18px] w-[18px] fill-current" />
             </button>
             <ShuffleToggle />

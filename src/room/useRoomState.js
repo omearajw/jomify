@@ -58,7 +58,8 @@ export function useRoomState({ phone = false } = {}) {
     if (phone && view === 'unadded') return 'closed';
     let left = null;
     try { left = localStorage.getItem(layerKey); } catch { /* blocked */ }
-    const start = left === 'full' ? (OPEN_VIEWS.has(view) || PAGE_VIEWS.has(view) || takesLayerOn(phone, view) ? 'full' : 'half') : left === 'half' ? 'half' : 'closed';
+    // (the phone's sheet shows the library's covers page at full, PhoneRoom.jsx)
+    const start = left === 'full' ? (OPEN_VIEWS.has(view) || PAGE_VIEWS.has(view) || takesLayerOn(phone, view) || (phone && view === 'library') ? 'full' : 'half') : left === 'half' ? 'half' : 'closed';
     if (!loggedStart) { loggedStart = true; log('room', 'opened', `at ${useUserStore.getState().openedAt} on ${view}; left ${left || 'never'}, opens ${start}`); }
     return start;
   });
@@ -131,6 +132,9 @@ export function useRoomState({ phone = false } = {}) {
   const lit = railOf(currentView, list);
   const pick = useCallback((id) => {
     if (id === 'account') { setAccountOpen(true); return; }
+    // on the phone the sheet shows an open thing in place of its list, at half too, so the list's
+    // own pick goes to the list rather than putting the sheet away
+    if (phone && lit === id && layer !== 'closed' && OPEN_VIEWS.has(currentView) && !isSeven && LISTS[id]) { setCurrentView(id); return; }
     if (lit === id && layer !== 'closed') { close(); return; }
     if (id === 'unadded' && !pileId) { toast('Make a playlist called "unadded songs" first: that is the pile Unadded works from', { tone: 'info' }); return; }
     if (PAGE_VIEWS.has(id)) {
@@ -151,7 +155,7 @@ export function useRoomState({ phone = false } = {}) {
     }
     if (currentView !== id) setCurrentView(id);
     else setLayer(takesLayerOn(phone, id) ? 'full' : phone && id === 'unadded' ? 'closed' : 'half');
-  }, [currentView, layer, list, lit, setCurrentView, setAccountOpen, close, pileId, phone]);
+  }, [currentView, layer, list, lit, setCurrentView, setAccountOpen, close, pileId, phone, isSeven]);
 
   return {
     currentView, setCurrentView, isZenMode, setAccountOpen, activePlaylistId, currentAlbumId, currentArtistId,

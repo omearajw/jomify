@@ -168,7 +168,7 @@ export default function PhoneSheet({ state, onState, lit, litAtRest = null, onPi
         </nav>
       </div>
       {head}
-      <div className="@container min-h-0 overflow-y-auto overscroll-y-contain px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-2" style={{ height: contentH }}>
+      <div data-sheet={state} className="@container min-h-0 overflow-y-auto overscroll-y-contain px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-2" style={{ height: contentH }}>
         {state !== 'closed' || dragH !== null ? children : null}
       </div>
     </section>

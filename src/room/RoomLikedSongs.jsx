@@ -29,22 +29,22 @@ export default function RoomLikedSongs() {
 
   return (
     <div className="relative pb-10" style={{ fontFamily: 'var(--font-room)' }}>
-      <header className="relative flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4">
-        <div className="grid h-[168px] w-[168px] @max-md:h-[132px] @max-md:w-[132px] shrink-0 place-items-center rounded-[5px] bg-[var(--room-paper)]/[0.07] shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)]">
-          <Heart className="h-12 w-12 fill-[var(--room-paper)] text-[var(--room-paper)] opacity-80" />
+      <header className="relative flex items-end gap-7 pt-4 @max-md:flex-col @max-md:items-start @max-md:gap-4 half:flex-row half:items-center half:gap-4 half:pt-1">
+        <div className="half:h-[88px] half:w-[88px] half:shadow-none grid h-[168px] w-[168px] @max-md:h-[132px] @max-md:w-[132px] shrink-0 place-items-center rounded-[5px] bg-[var(--room-paper)]/[0.07] shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)]">
+          <Heart className="half:h-7 half:w-7 h-12 w-12 fill-[var(--room-paper)] text-[var(--room-paper)] opacity-80" />
         </div>
         <div className="min-w-0 flex-1 pb-1">
-          <Mono className="text-[var(--room-faint)]">Your songs · {facts}</Mono>
-          <h1 className="mt-2 text-[34px] @max-md:text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">Liked Songs</h1>
+          <Mono className="text-[var(--room-faint)] half:line-clamp-1">Your songs · {facts}</Mono>
+          <h1 className="half:mt-1 half:text-[20px] mt-2 text-[34px] @max-md:text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--room-paper)]">Liked Songs</h1>
           {loadError && <p className="room-mono mt-2 flex items-center gap-3 text-amber-300/80">{loadError}<Word onClick={() => { if (!trackData) setReloadNonce((n) => n + 1); else if (data.next && !isFetchingMore.current) loadRestOfTracks(data.next); }}>Try again</Word></p>}
-          <div className="mt-5 flex items-center gap-5">
-            <button type="button" onClick={() => (isShuffled ? handleShufflePlay() : handleTrackSelect(0))} aria-label="Play Liked Songs" className="grid h-[46px] w-[46px] place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95"><Play className="ml-0.5 h-[18px] w-[18px] fill-current" /></button>
+          <div className="mt-5 flex items-center gap-5 half:mt-2.5 half:gap-4">
+            <button type="button" onClick={() => (isShuffled ? handleShufflePlay() : handleTrackSelect(0))} aria-label="Play Liked Songs" className="half:h-[38px] half:w-[38px] grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full bg-[var(--room-paper)] text-[#0a0810] transition-transform hover:scale-105 active:scale-95"><Play className="ml-0.5 h-[18px] w-[18px] fill-current" /></button>
             <ShuffleToggle />
           </div>
         </div>
       </header>
 
-      <div className="mt-8 flex items-center gap-6 border-b border-[var(--room-hair)] pb-3 @max-md:mt-6 @max-md:flex-wrap @max-md:gap-y-2">
+      <div className="mt-8 flex items-center gap-6 border-b border-[var(--room-hair)] pb-3 @max-md:mt-6 @max-md:flex-wrap @max-md:gap-y-2 half:hidden">
         <input type="search" value={find} onChange={(e) => setFind(e.target.value)} placeholder="Find in Liked Songs" aria-label="Find in Liked Songs" className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--room-paper)] outline-none placeholder:text-[var(--room-faint)] [&::-webkit-search-cancel-button]:hidden" />
         {needle && <Mono className="text-[var(--room-faint)]">{items.length} match{items.length === 1 ? '' : 'es'}{trackData?.next ? ' so far' : ''}</Mono>}
         <span className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-1 @max-md:ml-0 @max-md:w-full @max-md:justify-start">

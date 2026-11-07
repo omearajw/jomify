@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* A page shown in the phone's sheet at half (PhoneSheet marks its scroll box): a compact head,
+   so the page's own content starts above the fold (Jack, 6 Nov: look A, the cover beside) */
+@custom-variant half (&:where([data-sheet="half"] *));
+
 :root {
   /* Your core brand colors - change these anytime to rebrand the whole app */
   --brand-start: #ff8e44;
