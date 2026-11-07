@@ -2,14 +2,12 @@
 
 
 import { artUrl } from '../../utils/images';
-import { startPlaying } from '../../queue/play';
 import { ChevronUp as StageUpIcon, ChevronDown as StageDownIcon, Shuffle as ShuffleIcon } from 'lucide-react';
 
 import { collaboratorStyleFor } from '../../utils/collaboratorStyle';
 
 
 import { Skeleton, SkeletonHeader } from '../../components/Skeleton';
-import { playPlaylistTrack } from '../../services/spotify/api';
 
 import { formatTime } from '../../utils/formatTime';
 import { Play, X, LayoutPanelLeft, ArrowRight, Loader2, Disc3 } from 'lucide-react';
@@ -19,7 +17,7 @@ import UserChip from '../../components/UserChip';
 import { rowButtonProps } from '../../utils/a11y';
 import { getCollaboratorStyle } from '../../utils/collaboratorStyle';
 import { isSameTrack, isUnplayable, unplayableWhy } from '../../utils/spotifyUri';
-import { useSevenView, formatBatchDate } from './useSevenView';
+import { useSevenView, formatBatchDate, LIKED_POOL } from './useSevenView';
 
 // One batch's worth of placeholder rows while earlier pages stream in
 function BatchSkeleton() {
@@ -43,7 +41,7 @@ function BatchSkeleton() {
 
 export default function PlaylistView_2() {
   const {
-    token, activePlaylistId, playlists, profile, addStagedTrack, removeStagedTrack, setStagedSeven, navigateToArtist, navigateToAlbum, updateSeven, openTrackMenu, stagedSeven, currentPlayingTrack, isCurrentTrackPaused, isShuffled, isMobile, playFromTop, shufflePlay, playlist, view, stillLoading, isWorkspaceOpen, setIsWorkspaceOpen, workspacePane, setWorkspacePane, poolPlaylist, poolError, setPoolError, setPoolAttempt, poolQuery, setPoolQuery, poolNeedle, poolMatches, isPublishing, publishError, thisSeven, poolPlaylistId, setPoolPlaylistId, crossSevenHistory, draggedIdx, setDraggedIdx, dragOverIdx, setDragOverIdx, collaborators, loadError, partnerSevens, isCheckingHistory, crossSevenMatches, partnerDisplayName, chunks, mainPlaylistUris, handlePublishSeven, handleTrackSelect, turnIndicator
+    token, activePlaylistId, playlists, profile, addStagedTrack, removeStagedTrack, setStagedSeven, navigateToArtist, navigateToAlbum, updateSeven, openTrackMenu, stagedSeven, currentPlayingTrack, isCurrentTrackPaused, isShuffled, isMobile, playFromTop, shufflePlay, playlist, view, stillLoading, isWorkspaceOpen, setIsWorkspaceOpen, workspacePane, setWorkspacePane, poolPlaylist, poolError, setPoolError, setPoolAttempt, poolQuery, setPoolQuery, poolNeedle, poolMatches, isPublishing, publishError, thisSeven, poolPlaylistId, setPoolPlaylistId, crossSevenHistory, draggedIdx, setDraggedIdx, dragOverIdx, setDragOverIdx, collaborators, loadError, partnerSevens, isCheckingHistory, crossSevenMatches, partnerDisplayName, chunks, mainPlaylistUris, handlePublishSeven, handleTrackSelect, turnIndicator, playPoolTrack
   } = useSevenView();
 
   if (loadError?.id === activePlaylistId && !playlist) return <p className="text-neutral-400 text-lg mt-8 px-8">{loadError.message}</p>;
@@ -287,6 +285,7 @@ export default function PlaylistView_2() {
                 className="bg-black/50 border border-white/10 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-[var(--brand-mid)] w-full font-bold"
               >
                 <option value="">-- Select your Pool Playlist --</option>
+                <option value={LIKED_POOL}>Liked Songs</option>
                 {playlists.map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
@@ -368,7 +367,7 @@ export default function PlaylistView_2() {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (!token || !poolPlaylist) return;
-                          startPlaying({ uri: `spotify:playlist:${poolPlaylistId}`, kind: 'playlist', name: poolPlaylist.name || 'Pool', tracks: poolPlaylist.tracks?.next ? undefined : poolPlaylist.tracks.items.map((i) => i.track), start: idx, track: item.track }, (deviceId) => playPlaylistTrack(token, deviceId, poolPlaylistId, idx));
+                          playPoolTrack(item.track);
                         }}
                       >
                         <img src={artUrl(item.track.album.images, 40)} width="40" height="40" loading="lazy" decoding="async" className="w-full h-full object-cover" alt="" />

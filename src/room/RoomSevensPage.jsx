@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSevensSettings } from '../views/Sevens/useSevensSettings';
 import { artUrl } from '../utils/images';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { LIKED_POOL } from '../views/Library/useSevenView';
 import NotificationToggle from '../components/NotificationToggle';
 
 // The Sevens page on the room's language: which playlists are Sevens, who each is with, the
@@ -55,6 +56,7 @@ export default function RoomSevensPage() {
             <Mono className="text-[var(--room-faint)]">Pool</Mono>
             <Select label="The playlist this Seven drafts from" value={seven.poolPlaylistId || ''} onChange={(e) => updateSeven(seven.playlistId, { poolPlaylistId: e.target.value })}>
               <option value="">None chosen</option>
+              <option value={LIKED_POOL}>Liked Songs</option>
               {playlists.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
           </span>

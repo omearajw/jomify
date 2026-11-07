@@ -6,7 +6,7 @@ import { startPlaying } from '../../queue/play';
 import { usePlayerStore } from '../../store/playerStore';
 import { useUserProfilesStore, ensureUserProfiles } from '../../store/userProfilesStore';
 import { useIsMobile } from '../../hooks/useMediaQuery';
-import { fetchPlaylistDetails, fetchMoreTracks, addTracksToPlaylist, playPlaylistTrack, playUris, reorderPlaylistTracks, fetchSevenTrackMeta } from '../../services/spotify/api';
+import { fetchPlaylistDetails, fetchMoreTracks, addTracksToPlaylist, playPlaylistTrack, playUris, reorderPlaylistTracks, fetchSevenTrackMeta, fetchInitialLikedSongs, playLikedSongsQueue } from '../../services/spotify/api';
 import { toast } from '../../store/toastStore';
 import { playlistItemsUrl } from '../../services/spotify/compat';
 
@@ -64,9 +64,14 @@ async function loadSeven(token, playlistId, onUpdate, isCancelled = () => false)
   publish();
 }
 
+// A Seven can draft from Liked Songs (Jack, 7 Nov): the pool's id is then this word, not a playlist
+export const LIKED_POOL = 'liked';
+
 // The pool's order doesn't matter, so it streams forwards: first page at once, the rest appended
 async function loadPool(token, playlistId, onUpdate, isCancelled = () => false) {
-  const data = await fetchPlaylistDetails(token, playlistId);
+  const data = playlistId === LIKED_POOL
+    ? await fetchInitialLikedSongs(token).then((page) => ({ id: LIKED_POOL, name: 'Liked Songs', tracks: page }))
+    : await fetchPlaylistDetails(token, playlistId);
   let items = [...data.tracks.items];
   let next = data.tracks.next;
   if (!isCancelled()) onUpdate({ ...data, tracks: { ...data.tracks, items, next } });
@@ -344,13 +349,19 @@ const turnIndicator = useMemo(() => {
     if (!token || !track) return;
     const items = poolPlaylist?.tracks?.items || [];
     const index = items.findIndex((i) => i.track?.uri === track.uri);
-    if (poolPlaylistId && index !== -1) startPlaying({ uri: `spotify:playlist:${poolPlaylistId}`, kind: 'playlist', name: poolPlaylist?.name || 'Pool', tracks: poolPlaylist?.tracks?.next ? undefined : items.map((i) => i.track), start: index, track }, (deviceId) => playPlaylistTrack(token, deviceId, poolPlaylistId, index));
+    if (poolPlaylistId === LIKED_POOL && index !== -1) {
+      // as Liked Songs itself, so Next goes on through the whole library
+      const userId = profile?.id;
+      const uris = items.map((i) => i.track?.uri).filter(Boolean);
+      startPlaying({ uri: userId ? `spotify:user:${userId}:collection` : undefined, kind: userId ? 'liked' : 'list', name: 'Liked Songs', tracks: userId ? undefined : items.map((i) => i.track), start: index, track }, (deviceId) => playLikedSongsQueue(token, deviceId, uris, index, userId));
+    } else if (poolPlaylistId && index !== -1) startPlaying({ uri: `spotify:playlist:${poolPlaylistId}`, kind: 'playlist', name: poolPlaylist?.name || 'Pool', tracks: poolPlaylist?.tracks?.next ? undefined : items.map((i) => i.track), start: index, track }, (deviceId) => playPlaylistTrack(token, deviceId, poolPlaylistId, index));
     else startPlaying({ kind: 'list', tracks: [track], start: 0, track }, (deviceId) => playUris(token, deviceId, [track.uri], 0));
   };
   // move the pool item at `from` so it sits before index `to` (Spotify's insert_before)
   const reorderPool = (from, to) => {
     const items = poolPlaylist?.tracks?.items || [];
-    if (!token || !poolPlaylistId || from === to || from === to - 1 || from < 0 || from >= items.length || to < 0 || to > items.length) return;
+    // Spotify keeps Liked Songs in the order they were liked; apps can't move them
+    if (!token || !poolPlaylistId || poolPlaylistId === LIKED_POOL || from === to || from === to - 1 || from < 0 || from >= items.length || to < 0 || to > items.length) return;
     const landing = to > from ? to - 1 : to;
     const move = (list, a, b) => { const next = [...list]; const [moved] = next.splice(a, 1); next.splice(b, 0, moved); return next; };
     setPoolPlaylist((prev) => (prev ? { ...prev, tracks: { ...prev.tracks, items: move(prev.tracks.items, from, landing) } } : prev));

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Play, Shuffle, X } from 'lucide-react';
-import { useSevenView, formatBatchDate } from '../views/Library/useSevenView';
+import { useSevenView, formatBatchDate, LIKED_POOL } from '../views/Library/useSevenView';
 import { searchSpotify, checkTracksLiked, playUris } from '../services/spotify/api';
 import { startPlaying } from '../queue/play';
 import { useUserStore } from '../store/userStore';
@@ -164,7 +164,7 @@ export default function RoomSeven() {
     const taken = Boolean(mark);
     const current = isSameTrack(track, currentPlayingTrack);
     const isSel = sel.zone === 'pool' && selected.has(track.uri);
-    const canSort = !onSpotify && !poolQuery.trim();
+    const canSort = !onSpotify && !poolQuery.trim() && poolPlaylistId !== LIKED_POOL;
     return (
       <div
         key={`${track.uri}-${i}`}
@@ -355,6 +355,7 @@ export default function RoomSeven() {
                 <Mono className="text-[var(--room-faint)]">Pool</Mono>
                 <select value={poolPlaylistId} onChange={(e) => setPoolPlaylistId(e.target.value)} aria-label="Pool playlist" className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--room-dim)] outline-none [&>option]:bg-[var(--room-solid)]">
                   <option value="">Choose a playlist to draft from</option>
+                  <option value={LIKED_POOL}>Liked Songs</option>
                   {playlists.filter((p) => p.id !== activePlaylistId).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
                 {isCheckingHistory && <Mono className="shrink-0 text-[var(--room-faint)]">Checking other Sevens</Mono>}
