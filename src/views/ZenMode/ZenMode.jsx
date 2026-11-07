@@ -1,7 +1,7 @@
 import { cloneElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, Projector } from 'lucide-react';
+import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, Projector, Speaker } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { findLyrics } from '../../lib/lrc';
 import { useSlice } from '../../store/selectors';
@@ -24,6 +24,7 @@ import { initialLite, measureFrames, rememberLite, zenEffectsSetting, SLOW_FRAME
 import Artists from '../../room/Artists';
 import { flyIn, flightWaiting } from '../../room/flight';
 import { ShuffleToggle, RepeatToggle } from '../../room/ModeToggles';
+import { localDeviceLabel, describePlatform } from '../../services/spotify/playbackAdapter';
 
 // Zen mode: a calm, cinematic room for the song. A WebGL stage draws slow light in the cover's
 // colours and the lyrics as glass that bends it, one line at a time; this component is the
@@ -142,6 +143,7 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
   const fade = (ghost) => ({ position: 'absolute', inset: 0, pointerEvents: ghost ? 'none' : undefined, animation: `${ghost ? 'room-fade-out' : 'room-fade-in'} var(--room-mid) var(--room-ease) forwards` });
   const { isZenMode, toggleZenMode, savedVolume, setSavedVolume, playbackSettings, setPlaybackSetting } = useSlice(useUserStore, ['isZenMode', 'toggleZenMode', 'savedVolume', 'setSavedVolume', 'playbackSettings', 'setPlaybackSetting']);
   const { playbackState, activeDevice, isLocalActive, remoteVolume } = useSlice(usePlayerStore, ['playbackState', 'activeDevice', 'isLocalActive', 'remoteVolume']);
+  const deviceName = isLocalActive ? localDeviceLabel(describePlatform()) : activeDevice?.name || 'Choose where it plays';
 
   const [prevVolume, setPrevVolume] = useState(50);
   const [isActive, setIsActive] = useState(true);
@@ -501,6 +503,10 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
               <button onClick={() => setShowLyrics(!showLyrics)} aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'} aria-pressed={showLyrics} className={`transition-colors ${roomLayout === 'full' ? '' : 'ml-2'} ${showLyrics ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-dim)]'}`}><Mic2 className="h-[17px] w-[17px]" /></button>
               <button onClick={toggleMute} disabled={!volumeSupported} aria-label={volumeValue === 0 ? 'Unmute' : 'Mute'} className="text-[var(--room-faint)] transition-colors hover:text-[var(--room-dim)] disabled:opacity-40">{volumeValue === 0 ? <VolumeX className="h-[17px] w-[17px]" /> : <Volume2 className="h-[17px] w-[17px]" />}</button>
               <input type="range" min="0" max="100" value={volumeValue} onChange={(e) => applyVolume(parseInt(e.target.value, 10))} disabled={!volumeSupported} aria-label="Volume" className="zen-range w-20" style={{ '--v': `${volumeValue}%` }} />
+              {/* where it plays, as on the phone; the old player bar had this and the room lost it (Jack, 7 Nov) */}
+              <button type="button" onClick={() => useUserStore.getState().setDevicePickerOpen(true)} aria-label={`Playing on ${deviceName}; choose where it plays`} title={deviceName} className="room-mono inline-flex min-w-0 max-w-[14rem] items-center gap-1.5 text-[var(--room-faint)] transition-colors hover:text-[var(--room-dim)]">
+                <Speaker className="h-[17px] w-[17px] shrink-0" />{roomLayout !== 'full' && <span className="truncate">{deviceName}</span>}
+              </button>
               </motion.span>
             </div>
             <motion.div layout="position" transition={ROOM_LAYOUT} className={roomLayout === 'full' ? 'mt-4' : 'mt-7'} style={quiet} data-control><ZenProgress /></motion.div>
