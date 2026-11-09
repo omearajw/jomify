@@ -1,7 +1,7 @@
 import { cloneElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, Projector, Speaker } from 'lucide-react';
+import { Minimize2, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, Projector, Speaker, ListPlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { findLyrics } from '../../lib/lrc';
 import { useSlice } from '../../store/selectors';
@@ -500,6 +500,7 @@ export default function ZenMode({ mode = 'zen', roomLayout = 'rest', aside = nul
               </motion.div>
               <motion.span layout="position" transition={ROOM_LAYOUT} className={`flex items-center ${roomLayout === 'full' ? 'gap-3' : 'gap-6'}`} style={quiet}>
               {currentTrack?.id && <span className="room-like flex items-center [&_button]:p-0 [&_svg]:h-[17px] [&_svg]:w-[17px]"><LikeButton trackId={currentTrack.id} /></span>}
+              {currentTrack?.uri && <button type="button" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); useUserStore.getState().setContextMenu({ type: 'track', track: currentTrack, picker: 'add', x: r.left, y: r.bottom + 8 }); }} aria-label="Add to playlist" title="Add to playlist" className="text-[var(--room-faint)] transition-colors hover:text-[var(--room-dim)]"><ListPlus className="h-[17px] w-[17px]" /></button>}
               <button onClick={() => setShowLyrics(!showLyrics)} aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'} aria-pressed={showLyrics} className={`transition-colors ${roomLayout === 'full' ? '' : 'ml-2'} ${showLyrics ? 'text-[var(--room-paper)]' : 'text-[var(--room-faint)] hover:text-[var(--room-dim)]'}`}><Mic2 className="h-[17px] w-[17px]" /></button>
               <button onClick={toggleMute} disabled={!volumeSupported} aria-label={volumeValue === 0 ? 'Unmute' : 'Mute'} className="text-[var(--room-faint)] transition-colors hover:text-[var(--room-dim)] disabled:opacity-40">{volumeValue === 0 ? <VolumeX className="h-[17px] w-[17px]" /> : <Volume2 className="h-[17px] w-[17px]" />}</button>
               <input type="range" min="0" max="100" value={volumeValue} onChange={(e) => applyVolume(parseInt(e.target.value, 10))} disabled={!volumeSupported} aria-label="Volume" className="zen-range w-20" style={{ '--v': `${volumeValue}%` }} />

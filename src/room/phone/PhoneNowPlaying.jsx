@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, SkipBack, SkipForward, Mic2, Speaker, Volume1, Volume2 } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Mic2, Speaker, Volume1, Volume2, ListPlus } from 'lucide-react';
 import { useUserStore } from '../../store/userStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { useProgress } from '../../hooks/useProgress';
@@ -134,6 +134,7 @@ export default function PhoneNowPlaying({ bottomInset }) {
                 <h1 className={`m-0 truncate font-semibold leading-tight tracking-[-0.02em] ${lyricsOn ? 'text-[18px]' : 'text-[24px]'}`}>{track?.name || 'Nothing playing'}</h1>
                 <Artists artists={track?.artists} className="room-mono mt-1.5 block truncate text-[var(--room-dim)]" />
               </div>
+              {track?.uri && <button type="button" onClick={() => useUserStore.getState().setContextMenu({ type: 'track', track, picker: 'add', x: 0, y: 0 })} aria-label="Add to playlist" className="-mr-2 grid h-11 w-11 shrink-0 place-items-center text-[var(--room-dim)]"><ListPlus className="h-5 w-5" /></button>}
               {track?.id && <span className="room-like -mr-2 flex h-11 w-11 shrink-0 items-center justify-center [&_svg]:h-5 [&_svg]:w-5"><LikeButton trackId={track.id} /></span>}
             </div>
           </motion.div>

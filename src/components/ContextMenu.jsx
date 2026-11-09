@@ -147,7 +147,8 @@ export default function ContextMenu() {
   const [picker, setPicker] = useState(null);
   const [pickerQuery, setPickerQuery] = useState('');
   const [pickerFor, setPickerFor] = useState(null);
-  if (pickerFor !== contextMenu) { setPickerFor(contextMenu); setPicker(null); setPickerQuery(''); }
+  // an opener can ask for the picker straight away (the room's add-to-playlist button)
+  if (pickerFor !== contextMenu) { setPickerFor(contextMenu); setPicker(contextMenu?.picker === 'add' ? { kind: 'add' } : null); setPickerQuery(''); }
 
   const closeMenu = () => {
     setContextMenu(null);
