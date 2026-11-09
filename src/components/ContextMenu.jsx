@@ -156,8 +156,21 @@ export default function ContextMenu() {
     setPickerQuery('');
   };
 
+  // When the menu opened. A left-click opener (the room's add-to-playlist button, the selection
+  // bar) renders the menu while its own click is still on its way up, so that click reached the
+  // document listener below as a click outside and shut the menu at once. A click that began
+  // before the menu opened cannot be one outside it. Set in a layout effect, which commits
+  // before the opening click reaches the document.
+  const openedAt = useRef({ perf: 0, epoch: 0 });
+  useLayoutEffect(() => {
+    if (contextMenu) openedAt.current = { perf: performance.now(), epoch: Date.now() };
+  }, [contextMenu]);
+
   useEffect(() => {
     const handleClickOutside = (e) => {
+      // (event times are on performance.now()'s clock; very old engines used the epoch)
+      const began = e.timeStamp > 1e12 ? openedAt.current.epoch : openedAt.current.perf;
+      if (e.timeStamp && e.timeStamp <= began) return;
       if (menuRef.current && !menuRef.current.contains(e.target)) closeMenu();
     };
     // Arrow keys walk the entries, Home/End jump, Enter and Space activate (they are buttons)
