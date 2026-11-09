@@ -54,6 +54,16 @@ const SDK_RECOVER_WAIT_MS = 25000;
 // The player stops playing if it asks for a token and never gets one, so a slow renewal must
 // not mean silence: past this we hand over the token we already hold
 const SDK_TOKEN_DEADLINE_MS = 5000;
+// 'ready' is the player's word that it is on Spotify Connect, and it has been wrong: back from a
+// day out (Jack, 7 Nov) it said ready as the same device over and over while Spotify listed no such
+// device and answered every play to it with 404. Spotify's device list is checked after each
+// 'ready', these long after it (registration can lag a second or two).
+const SDK_LISTED_CHECKS_MS = [1500, 3000, 4000];
+// The player lives in one hidden iframe the SDK script makes when it loads; a new Spotify.Player
+// only re-initialises that same iframe, so a stuck connection survives it. Rebuilding means
+// removing the iframe and loading the script again. Not more often than this.
+const SDK_HARD_REBUILD_GAP_MS = 60000;
+const SDK_IFRAME_SELECTOR = 'iframe[src^="https://sdk.scdn.co/"]';
 
 // Poll cadence while remote. Spotify's rate limit is shared with everything else the app does,
 // so the fast tier only applies while someone is actually looking at the player.
@@ -423,6 +433,8 @@ function initLocalPlayer() {
   let readyAt = 0;
   let readyCount = 0;
   let lastAliveCheckAt = 0;
+  let listedCheck = 0;
+  let lastHardRebuildAt = 0;
   // Nothing is worth retrying after these two: the browser cannot run the player at all, or the
   // account may not use it. Every other failure is the network having a moment.
   let permanentlyFailed = false;
@@ -472,12 +484,69 @@ function initLocalPlayer() {
     rebuildTimer = setTimeout(() => {
       rebuildTimer = null;
       if (player().sdkStatus === 'ready') return;
-      log('sdk', 'the player did not come back after reconnecting; starting a new one');
-      try { sdkPlayer.disconnect(); } catch { /* already gone */ }
-      window.onSpotifyWebPlaybackSDKReady();
+      log('sdk', 'the player did not come back after reconnecting; reloading it');
+      hardRebuild();
     }, SDK_RECONNECT_DEADLINE_MS);
   };
   reconnectLocalPlayer = freshConnect;
+
+  const loadScript = () => {
+    const script = document.createElement('script');
+    script.id = SDK_SCRIPT_ID;
+    script.src = SDK_SCRIPT_SRC;
+    script.async = true;
+    script.onerror = () => fail('the SDK script could not be loaded');
+    document.body.appendChild(script);
+  };
+  // From scratch: the old iframe (and the connection inside it) goes, and the script runs again,
+  // which makes a new iframe and calls onSpotifyWebPlaybackSDKReady for a new player
+  const hardRebuild = () => {
+    if (permanentlyFailed) return;
+    lastHardRebuildAt = Date.now();
+    markGone();
+    if (player().sdkStatus !== 'reconnecting') player().setSdkStatus('reconnecting');
+    clearTimeout(reconnectTimer);
+    clearTimeout(rebuildTimer);
+    rebuildTimer = null;
+    listedCheck += 1;
+    const old = sdkPlayer;
+    sdkPlayer = null; // its events are no longer ours
+    try { old?.disconnect(); } catch { /* already gone */ }
+    document.querySelectorAll(SDK_IFRAME_SELECTOR).forEach((frame) => frame.remove());
+    document.getElementById(SDK_SCRIPT_ID)?.remove();
+    try { delete window.Spotify; } catch { window.Spotify = undefined; }
+    loadScript();
+  };
+  // Spotify's list, a few times after 'ready'. An answer that fails is no answer; only a list
+  // without the player counts against it.
+  const confirmListed = async (deviceId) => {
+    const mine = ++listedCheck;
+    let answered = false;
+    for (const wait of SDK_LISTED_CHECKS_MS) {
+      await new Promise((r) => setTimeout(r, wait));
+      if (mine !== listedCheck || player().deviceId !== deviceId || player().sdkStatus !== 'ready') return;
+      const t = token();
+      if (!t) return;
+      let devices;
+      try { devices = await fetchDevices(t); } catch { continue; }
+      answered = true;
+      if (devices.some((d) => d.id === deviceId)) {
+        log('sdk', 'Spotify lists this browser\'s player', `device ${String(deviceId).slice(0, 8)}`);
+        return;
+      }
+    }
+    if (!answered || mine !== listedCheck) return;
+    // one rebuild a minute at most; coming back to the app after that tries again
+    if (Date.now() - lastHardRebuildAt > SDK_HARD_REBUILD_GAP_MS) {
+      log('sdk', "the player says it is on Spotify Connect but Spotify does not list it; reloading the player", `device ${String(deviceId).slice(0, 8)}`);
+      hardRebuild();
+      return;
+    }
+    // Nothing may aim at it: every play there is a 404 that opens the device list again
+    log('sdk', "Spotify still does not list this browser's player after reloading it; not playing here until it does", `device ${String(deviceId).slice(0, 8)}`);
+    markGone();
+    player().setSdkStatus('unlisted', 'Spotify does not list this player');
+  };
 
   // Defined before the script is injected so the callback can never be missed
   window.onSpotifyWebPlaybackSDKReady = () => {
@@ -524,6 +593,7 @@ function initLocalPlayer() {
       const s = player();
       s.setDeviceId(device_id);
       s.setSdkStatus('ready');
+      confirmListed(device_id);
 
       // Apply the volume again once ready; the SDK sometimes starts at its own default regardless
       sdkPlayer.setVolume(startupGain(useUserStore.getState().savedVolume, !isMobileViewport())).catch(() => {});
@@ -701,12 +771,7 @@ function initLocalPlayer() {
   };
 
   if (!document.getElementById(SDK_SCRIPT_ID)) {
-    const script = document.createElement('script');
-    script.id = SDK_SCRIPT_ID;
-    script.src = SDK_SCRIPT_SRC;
-    script.async = true;
-    script.onerror = () => fail('the SDK script could not be loaded');
-    document.body.appendChild(script);
+    loadScript();
   } else if (window.Spotify) {
     window.onSpotifyWebPlaybackSDKReady();
   }
@@ -974,14 +1039,14 @@ function waitForLocalDevice(ms = SDK_WAIT_FOR_DEVICE_MS) {
   };
   const already = readyId();
   if (already) return Promise.resolve(already);
-  if (player().sdkStatus === 'failed') return Promise.resolve(null);
+  if (player().sdkStatus === 'failed' || player().sdkStatus === 'unlisted') return Promise.resolve(null);
   return new Promise((resolve) => {
     const finish = (value) => { clearTimeout(timer); unsubscribe(); resolve(value); };
     const timer = setTimeout(() => finish(null), ms);
     const unsubscribe = usePlayerStore.subscribe(() => {
       const id = readyId();
       if (id) finish(id);
-      else if (player().sdkStatus === 'failed') finish(null);
+      else if (player().sdkStatus === 'failed' || player().sdkStatus === 'unlisted') finish(null);
     });
   });
 }

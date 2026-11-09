@@ -94,6 +94,18 @@ function DevicePickerBody() {
       </div>
 
       <div className="overflow-y-auto">
+        {sdkStatus === 'unlisted' && (
+          // The player says it is connected but Spotify has no such device, so choosing it would
+          // only 404 and bring this list back. A reload starts the player from nothing.
+          <div className="ui-row cursor-default" aria-disabled="true">
+            <Globe className="h-4 w-4 shrink-0 opacity-50" />
+            <span className="flex-1 min-w-0">
+              <span className="block truncate text-[13px] font-medium text-[var(--room-dim)]">{LOCAL_LABEL}</span>
+              <span className="room-mono block text-[var(--room-faint)]">Spotify isn't accepting it right now</span>
+            </span>
+            <button type="button" onClick={() => window.location.reload()} className="ui-word shrink-0">Reload Jomify</button>
+          </div>
+        )}
         {list.map((device) => {
           const Icon = device.isLocal ? Globe : (ICONS[device.type] || MonitorSpeaker);
           const active = device.isActive || device.id === activeDevice?.id;
